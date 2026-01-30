@@ -33,31 +33,5 @@ INSERT INTO departments (name, code, dept_type, description) VALUES
 ON CONFLICT (code) DO NOTHING;
 
 
--- ============================================
--- SUPER ADMIN USER (password: admin123)
--- ============================================
--- Note: You can also create admin via /api/setup endpoint
 
-INSERT INTO users (email, password_hash, first_name, last_name, role, is_active)
-VALUES (
-    'admin@college.edu',
-    '$2b$10$Y5K9z9E8qZj7hM3yV1wJOevSH3GQJqB5H8PNxq2d8R6L0M7F4W2KS',
-    'Super',
-    'Admin',
-    'super_admin',
-    true
-)
-ON CONFLICT (email) DO UPDATE SET
-    password_hash = EXCLUDED.password_hash,
-    is_active = true;
-
-
--- ============================================
--- INSTRUCTIONS
--- ============================================
--- After running this seed:
--- 1. Login as admin@college.edu with password 'admin123'
--- 2. Create HODs and Teachers from the UI
--- 3. Import subjects for each department
--- 4. Import students from Excel
 

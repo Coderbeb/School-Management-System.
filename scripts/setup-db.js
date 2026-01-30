@@ -58,10 +58,30 @@ async function setup() {
         await client.query(seedSql);
         console.log('Seed data inserted successfully.');
 
+        // Dynamic Super Admin Creation
+        console.log('Creating Super Admin user...');
+        const bcrypt = require('bcrypt');
+        const password = 'admin123';
+        const saltRounds = 10;
+        const hash = await bcrypt.hash(password, saltRounds);
+
+        const insertUserQuery = `
+            INSERT INTO users (email, password_hash, first_name, last_name, role, is_active)
+            VALUES ($1, $2, $3, $4, 'super_admin', true)
+            ON CONFLICT (email) DO UPDATE SET
+                password_hash = EXCLUDED.password_hash,
+                is_active = true;
+        `;
+
+        await client.query(insertUserQuery, ['admin@college.edu', hash, 'Super', 'Admin']);
+        console.log(`✅ Super Admin created with password: ${password}`);
+
         console.log('Database setup complete!');
     } catch (err) {
         console.error('Error running setup:', err);
     } finally {
+        // ... (rest of cleanup)
+
         client.release();
         await pool.end();
     }
