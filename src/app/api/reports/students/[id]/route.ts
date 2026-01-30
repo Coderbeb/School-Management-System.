@@ -1,0 +1,165 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { query } from '@/lib/db';
+import { verifyToken } from '@/lib/auth';
+
+interface StudentDetail {
+    id: string;
+    roll_number: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    department_name: string;
+    current_semester: number;
+}
+
+interface SubjectStats {
+    subject_id: string;
+    subject_name: string;
+    subject_code: string;
+    total_classes: string;
+    attended: string;
+    attendance_pct: string;
+}
+
+interface MonthlyStats {
+    month: string;
+    total_classes: string;
+    attended: string;
+    attendance_pct: string;
+}
+
+// GET - Get detailed stats for a specific student
+export async function GET(
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    try {
+        const authHeader = request.headers.get('authorization');
+        if (!authHeader?.startsWith('Bearer ')) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const token = authHeader.split(' ')[1];
+        const payload = verifyToken(token);
+        if (!payload) {
+            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+        }
+
+        const { id: studentId } = await params;
+
+        // Get student basic info
+        const studentInfo = await query<StudentDetail>(
+            `SELECT s.id, s.roll_number, s.first_name, s.last_name, s.email, 
+                    s.current_semester, d.name as department_name
+             FROM students s
+             LEFT JOIN departments d ON d.id = s.department_id
+             WHERE s.id = $1`,
+            [studentId]
+        );
+
+        if (studentInfo.length === 0) {
+            return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+        }
+
+        // Get subject-wise stats
+        const subjectStats = await query<SubjectStats>(
+            `SELECT 
+                s.id as subject_id,
+                s.name as subject_name,
+                s.code as subject_code,
+                COUNT(ar.id) as total_classes,
+                COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as attended,
+                COALESCE(
+                    ROUND(
+                        COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
+                        NULLIF(COUNT(ar.id), 0),
+                        1
+                    ),
+                    0
+                ) as attendance_pct
+             FROM student_subjects ss
+             JOIN subjects s ON s.id = ss.subject_id
+             LEFT JOIN attendance_records ar ON ar.subject_id = s.id AND ar.student_id = $1
+             WHERE ss.student_id = $1
+             GROUP BY s.id, s.name, s.code
+             ORDER BY s.name`,
+            [studentId]
+        );
+
+        // Get monthly stats (last 6 months)
+        const monthlyStats = await query<MonthlyStats>(
+            `SELECT 
+                TO_CHAR(ar.date, 'YYYY-MM') as month,
+                COUNT(ar.id) as total_classes,
+                COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as attended,
+                COALESCE(
+                    ROUND(
+                        COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
+                        NULLIF(COUNT(ar.id), 0),
+                        1
+                    ),
+                    0
+                ) as attendance_pct
+             FROM attendance_records ar
+             WHERE ar.student_id = $1
+               AND ar.date >= CURRENT_DATE - INTERVAL '6 months'
+             GROUP BY TO_CHAR(ar.date, 'YYYY-MM')
+             ORDER BY month DESC`,
+            [studentId]
+        );
+
+        // Overall summary
+        const overallStats = await query<{ total_classes: string; attended: string; attendance_pct: string }>(
+            `SELECT 
+                COUNT(ar.id) as total_classes,
+                COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as attended,
+                COALESCE(
+                    ROUND(
+                        COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
+                        NULLIF(COUNT(ar.id), 0),
+                        1
+                    ),
+                    0
+                ) as attendance_pct
+             FROM attendance_records ar
+             WHERE ar.student_id = $1`,
+            [studentId]
+        );
+
+        const student = studentInfo[0];
+        const overall = overallStats[0] || { total_classes: '0', attended: '0', attendance_pct: '0' };
+
+        return NextResponse.json({
+            student: {
+                id: student.id,
+                rollNumber: student.roll_number,
+                name: `${student.first_name} ${student.last_name}`,
+                email: student.email || 'N/A',
+                department: student.department_name || 'N/A',
+                semester: student.current_semester
+            },
+            summary: {
+                totalClasses: parseInt(overall.total_classes) || 0,
+                attended: parseInt(overall.attended) || 0,
+                attendancePercentage: Math.round(parseFloat(overall.attendance_pct) || 0)
+            },
+            subjects: subjectStats.map(s => ({
+                id: s.subject_id,
+                name: s.subject_name,
+                code: s.subject_code,
+                totalClasses: parseInt(s.total_classes) || 0,
+                attended: parseInt(s.attended) || 0,
+                attendance: Math.round(parseFloat(s.attendance_pct) || 0)
+            })),
+            monthlyTrend: monthlyStats.map(m => ({
+                month: m.month,
+                totalClasses: parseInt(m.total_classes) || 0,
+                attended: parseInt(m.attended) || 0,
+                attendance: Math.round(parseFloat(m.attendance_pct) || 0)
+            }))
+        });
+    } catch (error) {
+        console.error('Student detail error:', error);
+        return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    }
+}

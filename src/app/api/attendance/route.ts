@@ -1,0 +1,134 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { query } from '@/lib/db';
+import { verifyToken } from '@/lib/auth';
+
+interface AttendanceInput {
+    studentId: string;
+    subjectId: string;
+    status: 'present' | 'absent' | 'late' | 'excused';
+    date: string;
+    lectureNumber?: number;
+}
+
+// POST - Save attendance records (per-lecture)
+export async function POST(request: NextRequest) {
+    try {
+        const authHeader = request.headers.get('authorization');
+        if (!authHeader?.startsWith('Bearer ')) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const token = authHeader.split(' ')[1];
+        const payload = verifyToken(token);
+        if (!payload) {
+            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+        }
+
+        // Only HOD and Teacher can mark attendance
+        if (!['hod', 'teacher'].includes(payload.role)) {
+            return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+        }
+
+        const { records, subjectId, date, lectureNumber = 1 } = await request.json() as {
+            records: AttendanceInput[];
+            subjectId?: string;
+            date?: string;
+            lectureNumber?: number;
+        };
+
+        if (!records || records.length === 0) {
+            return NextResponse.json({ error: 'No attendance records provided' }, { status: 400 });
+        }
+
+        // Insert or update attendance records
+        let savedCount = 0;
+        for (const record of records) {
+            try {
+                const recordSubjectId = record.subjectId || subjectId;
+                const recordDate = record.date || date;
+                const recordLecture = record.lectureNumber || lectureNumber;
+
+                if (!recordSubjectId || !recordDate) {
+                    continue;
+                }
+
+                await query(
+                    `INSERT INTO attendance_records (subject_id, student_id, teacher_id, date, lecture_number, status)
+                     VALUES ($1, $2, $3, $4, $5, $6)
+                     ON CONFLICT (subject_id, student_id, date, lecture_number) 
+                     DO UPDATE SET status = EXCLUDED.status, teacher_id = EXCLUDED.teacher_id`,
+                    [recordSubjectId, record.studentId, payload.userId, recordDate, recordLecture, record.status]
+                );
+                savedCount++;
+            } catch (err) {
+                console.error('Error saving record:', err);
+            }
+        }
+
+        return NextResponse.json({
+            message: `Saved ${savedCount} attendance records`,
+            savedCount,
+        });
+    } catch (error) {
+        console.error('Save attendance error:', error);
+        return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    }
+}
+
+// GET - Get attendance records for a date and subject
+export async function GET(request: NextRequest) {
+    try {
+        const authHeader = request.headers.get('authorization');
+        if (!authHeader?.startsWith('Bearer ')) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const token = authHeader.split(' ')[1];
+        const payload = verifyToken(token);
+        if (!payload) {
+            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+        }
+
+        const { searchParams } = new URL(request.url);
+        const date = searchParams.get('date');
+        const subjectId = searchParams.get('subjectId');
+        const lectureNumber = searchParams.get('lectureNumber');
+
+        if (!date) {
+            return NextResponse.json({ error: 'Date is required' }, { status: 400 });
+        }
+
+        try {
+            let queryStr = `
+                SELECT ar.*, 
+                       s.roll_number, s.first_name, s.last_name,
+                       sub.code as subject_code, sub.name as subject_name
+                FROM attendance_records ar
+                JOIN students s ON ar.student_id = s.id
+                JOIN subjects sub ON ar.subject_id = sub.id
+                WHERE ar.date = $1
+            `;
+            const params: (string | number)[] = [date];
+
+            if (subjectId) {
+                params.push(subjectId);
+                queryStr += ` AND ar.subject_id = $${params.length}`;
+            }
+
+            if (lectureNumber) {
+                params.push(parseInt(lectureNumber));
+                queryStr += ` AND ar.lecture_number = $${params.length}`;
+            }
+
+            queryStr += ' ORDER BY s.roll_number';
+
+            const records = await query(queryStr, params);
+            return NextResponse.json({ records });
+        } catch {
+            return NextResponse.json({ records: [] });
+        }
+    } catch (error) {
+        console.error('Get attendance error:', error);
+        return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    }
+}
