@@ -1,18 +1,41 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+
 ## Getting Started
 
-First, run the development server:
+Follow these steps to set up the project locally:
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/Alpha060/YSM-Attendance.git
+    cd YSM-Attendance
+    ```
+
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+
+3.  **Environment Setup:**
+    Create a `.env.local` file in the root directory and add your database connection string:
+    ```env
+    DATABASE_URL="postgresql://user:password@localhost:5432/college_attendance"
+    JWT_SECRET="your-secret-key"
+    ```
+
+4.  **Initialize Database:**
+    Run the setup script to create tables, seed data, and create the super admin user:
+    ```bash
+    node scripts/setup-db.js
+    ```
+
+5.  **Run the development server:**
+    ```bash
+    npm run dev
+    ```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
