@@ -19,9 +19,16 @@ export async function POST(req: Request) {
         };
 
         // Cache departments for validation
-        const deptRes: any = await query('SELECT id, code, dept_type FROM departments', []);
-        const departments = deptRes.rows as { id: string; code: string; dept_type: string }[];
-        const departmentMap = new Map(departments.map((d: any) => [d.code.toUpperCase(), d.id]));
+        const departments = await query<{ id: string; code: string; dept_type: string }>('SELECT id, code, dept_type FROM departments', []);
+        const departmentMap = new Map(departments.map((d) => [d.code.toUpperCase(), d.id]));
+
+        // Cache ALL subjects for matching by name or code
+        const allSubjects = await query<{ id: string; code: string; name: string; department_id: string; semester: number }>(
+            'SELECT id, code, name, department_id, semester FROM subjects', []
+        );
+
+        // Get current academic year
+        const academicYear = '2025-2026';
 
         // Process each student
         for (let i = 0; i < students.length; i++) {
@@ -69,12 +76,12 @@ export async function POST(req: Request) {
                 }
 
                 // 4. Check for Duplicates (Student ID or Email)
-                const existingCheck: any = await query(
+                const existingCheck = await query<{ id: string }>(
                     'SELECT id FROM students WHERE student_id = $1 OR (email = $2 AND email IS NOT NULL AND email != \'\')',
                     [student.student_id.toUpperCase(), student.email || null]
                 );
 
-                if (existingCheck.rows.length > 0) {
+                if (existingCheck.length > 0) {
                     throw new Error(`Duplicate Student ID (${student.student_id}) or Email`);
                 }
 
@@ -83,6 +90,7 @@ export async function POST(req: Request) {
                 const finalSemester = student.semester ? parseInt(student.semester) : (parsed.semester || 1);
 
                 // 6. Insert Student
+                const newStudentId = uuidv4();
                 await query(
                     `INSERT INTO students (
                         id, 
@@ -97,7 +105,7 @@ export async function POST(req: Request) {
                         batch_year
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
                     [
-                        uuidv4(),
+                        newStudentId,
                         student.student_id.toUpperCase(),
                         finalRollNumber,
                         finalRollNumber.toString(),
@@ -109,6 +117,54 @@ export async function POST(req: Request) {
                         parsed.admissionYear || new Date().getFullYear()
                     ]
                 );
+
+                // 7. Handle Subject Assignment from CSV
+                // Collect subject codes/names from various possible columns
+                const subjectInputs: string[] = [];
+
+                // Check for subject_codes column (comma-separated codes)
+                if (student.subject_codes) {
+                    subjectInputs.push(...student.subject_codes.split(',').map((s: string) => s.trim()).filter(Boolean));
+                }
+
+                // Check for individual subject columns (vocational template)
+                ['core1', 'core2', 'ge1', 'ge2', 'major_subject'].forEach(col => {
+                    if (student[col] && typeof student[col] === 'string' && student[col].trim()) {
+                        subjectInputs.push(student[col].trim());
+                    }
+                });
+
+                // If we have subject inputs, try to find and enroll
+                if (subjectInputs.length > 0) {
+                    // Filter subjects for this department and semester
+                    const availableSubjects = allSubjects.filter(s =>
+                        s.department_id === deptId && s.semester === finalSemester
+                    );
+
+                    // Match subject inputs to actual subjects
+                    for (const input of subjectInputs) {
+                        const inputUpper = input.toUpperCase();
+                        const matchedSubject = availableSubjects.find(s =>
+                            s.code.toUpperCase() === inputUpper ||
+                            s.name.toUpperCase() === inputUpper ||
+                            s.name.toUpperCase().includes(inputUpper) ||
+                            inputUpper.includes(s.name.toUpperCase())
+                        );
+
+                        if (matchedSubject) {
+                            try {
+                                await query(
+                                    `INSERT INTO student_subjects (student_id, subject_id, academic_year)
+                                     VALUES ($1, $2, $3)
+                                     ON CONFLICT (student_id, subject_id, academic_year) DO NOTHING`,
+                                    [newStudentId, matchedSubject.id, academicYear]
+                                );
+                            } catch {
+                                // Ignore duplicate enrollment errors
+                            }
+                        }
+                    }
+                }
 
                 results.success++;
 
@@ -129,4 +185,3 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
-

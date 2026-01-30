@@ -484,12 +484,22 @@ export default function StudentsPage() {
     const normalizeData = (data: any[]) => {
         const keyMap: { [key: string]: string } = {
             'student id': 'student_id', 'studentid': 'student_id', 'id': 'student_id',
+            'student_id*': 'student_id', 'studentid*': 'student_id',
             'roll number': 'roll_number', 'rollnumber': 'roll_number', 'roll': 'roll_number', 'roll_no': 'roll_number',
             'first name': 'first_name', 'firstname': 'first_name', 'name': 'first_name',
+            'first_name*': 'first_name', 'firstname*': 'first_name',
             'last name': 'last_name', 'lastname': 'last_name', 'surname': 'last_name',
-            'email': 'email', 'email address': 'email',
+            'last_name*': 'last_name', 'lastname*': 'last_name',
+            'email': 'email', 'email address': 'email', 'email*': 'email',
             'department': 'department_code', 'dept': 'department_code', 'course': 'department_code',
-            'semester': 'semester', 'sem': 'semester'
+            'semester': 'semester', 'sem': 'semester',
+            // Subject columns
+            'major_subject': 'major_subject', 'majorsubject': 'major_subject', 'major subject': 'major_subject',
+            'core1': 'core1', 'core 1': 'core1',
+            'core2': 'core2', 'core 2': 'core2',
+            'ge1': 'ge1', 'ge 1': 'ge1',
+            'ge2': 'ge2', 'ge 2': 'ge2',
+            'subject_codes': 'subject_codes', 'subjectcodes': 'subject_codes', 'subjects': 'subject_codes'
         };
 
         return data.map(row => {

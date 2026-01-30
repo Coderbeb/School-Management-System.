@@ -18,8 +18,8 @@ export async function POST(req: Request) {
         };
 
         // Cache departments for validation
-        const deptRes: any = await query('SELECT id, code FROM departments', []);
-        const departmentMap = new Map(deptRes.rows.map((d: any) => [d.code.toUpperCase(), d.id]));
+        const departments = await query<{ id: string; code: string }>('SELECT id, code FROM departments', []);
+        const departmentMap = new Map(departments.map((d) => [d.code.toUpperCase(), d.id]));
 
         // Check duplicates within the batch itself
         const emailsInBatch = new Set();
@@ -57,8 +57,8 @@ export async function POST(req: Request) {
                 }
 
                 // 2. Check for Duplicates in DB
-                const existingCheck: any = await query('SELECT id FROM users WHERE email = $1', [email]);
-                if (existingCheck.rows.length > 0) {
+                const existingCheck = await query<{ id: string }>('SELECT id FROM users WHERE email = $1', [email]);
+                if (existingCheck.length > 0) {
                     throw new Error(`Email already exists: ${email}`);
                 }
 
