@@ -6,10 +6,7 @@ interface SubjectRow {
     id: string;
     code: string;
     name: string;
-    subject_type: string;
-    department_id: string;
-    department_name: string;
-    department_code: string;
+    degree_type: string;
     semester: number;
     credits: number;
     created_at: string;
@@ -30,27 +27,35 @@ export async function GET(request: NextRequest) {
         }
 
         const { searchParams } = new URL(request.url);
-        const departmentId = searchParams.get('departmentId');
+        const degreeType = searchParams.get('degreeType');
         const semester = searchParams.get('semester');
 
+        const { role, departmentId } = payload;
+
         let queryStr = `
-            SELECT s.*, 
-                   d.name as department_name, d.code as department_code
+            SELECT s.* 
             FROM subjects s
-            LEFT JOIN departments d ON d.id = s.department_id
             WHERE 1=1
         `;
         const params: (string | number)[] = [];
 
-        // HODs can only see subjects from their department
-        if (payload.role === 'hod' && payload.departmentId) {
-            params.push(payload.departmentId);
-            queryStr += ` AND s.department_id = $${params.length}`;
+        // HOD: filter by their department's degree_type
+        if (role === 'hod' && departmentId) {
+            // Get HOD's department degree_type
+            const deptResult = await query<{ degree_type: string }>(
+                'SELECT degree_type FROM departments WHERE id = $1',
+                [departmentId]
+            );
+            if (deptResult.length > 0) {
+                params.push(deptResult[0].degree_type);
+                queryStr += ` AND s.degree_type = $${params.length}`;
+            }
         }
 
-        if (departmentId) {
-            params.push(departmentId);
-            queryStr += ` AND s.department_id = $${params.length}`;
+        // Filter by degree type if provided (overrides HOD filter if super_admin)
+        if (degreeType && role === 'super_admin') {
+            params.push(degreeType);
+            queryStr += ` AND s.degree_type = $${params.length}`;
         }
 
         if (semester) {
@@ -67,10 +72,7 @@ export async function GET(request: NextRequest) {
                 id: s.id,
                 code: s.code,
                 name: s.name,
-                subjectType: s.subject_type,
-                departmentId: s.department_id,
-                departmentName: s.department_name,
-                departmentCode: s.department_code,
+                degreeType: s.degree_type,
                 semester: s.semester,
                 credits: s.credits,
                 createdAt: s.created_at
@@ -101,43 +103,50 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
-        const { code, name, subjectType, departmentId, semesters, semester, credits } = await request.json();
+        const { code, name, degreeType, degreeTypes, semesters, semester, credits } = await request.json();
 
         // Support both single semester (legacy) and multi-semesters
         const semesterList: number[] = semesters || (semester ? [parseInt(semester)] : []);
 
-        if (!code || !name || !subjectType || semesterList.length === 0 || !departmentId) {
-            return NextResponse.json({ error: 'Code, name, subject type, department, and at least one semester are required' }, { status: 400 });
+        // Support both single degreeType (legacy) and multi-degreeTypes
+        const degreeTypeList: string[] = degreeTypes || (degreeType ? [degreeType] : []);
+
+        if (!code || !name || semesterList.length === 0 || degreeTypeList.length === 0) {
+            return NextResponse.json({ error: 'Code, name, degree type(s), and at least one semester are required' }, { status: 400 });
         }
 
-        // Verify department exists
-        const deptCheck = await query<{ id: string }>('SELECT id FROM departments WHERE id = $1', [departmentId]);
-        if (deptCheck.length === 0) {
-            return NextResponse.json({ error: 'Invalid department' }, { status: 400 });
+        // Validate degree types
+        const validDegreeTypes = ['ba', 'bsc', 'bcom', 'it', 'bba', 'mcom'];
+        for (const dt of degreeTypeList) {
+            if (!validDegreeTypes.includes(dt)) {
+                return NextResponse.json({ error: `Invalid degree type: ${dt}` }, { status: 400 });
+            }
         }
 
-        // Create entries for each semester
+        // Create entries for each semester and degree type combination
         const createdIds: string[] = [];
-        for (const sem of semesterList) {
-            // Check if this combination already exists
-            const existing = await query<{ id: string }>(
-                'SELECT id FROM subjects WHERE code = $1 AND department_id = $2 AND semester = $3',
-                [code, departmentId, sem]
-            );
-
-            if (existing.length === 0) {
-                const result = await query<{ id: string }>(
-                    `INSERT INTO subjects (code, name, subject_type, department_id, semester, credits)
-                     VALUES ($1, $2, $3, $4, $5, $6)
-                     RETURNING id`,
-                    [code, name, subjectType, departmentId, sem, credits || 3]
+        for (const dt of degreeTypeList) {
+            for (const sem of semesterList) {
+                // Check if this combination already exists
+                const existing = await query<{ id: string }>(
+                    'SELECT id FROM subjects WHERE code = $1 AND degree_type = $2 AND semester = $3',
+                    [code, dt, sem]
                 );
-                createdIds.push(result[0].id);
+
+                if (existing.length === 0) {
+                    const result = await query<{ id: string }>(
+                        `INSERT INTO subjects (code, name, degree_type, semester, credits)
+                         VALUES ($1, $2, $3, $4, $5)
+                         RETURNING id`,
+                        [code, name, dt, sem, credits || 3]
+                    );
+                    createdIds.push(result[0].id);
+                }
             }
         }
 
         return NextResponse.json({
-            message: `Subject created for ${createdIds.length} semester(s)`,
+            message: `Subject created for ${createdIds.length} semester/degree-type combination(s)`,
             ids: createdIds,
             count: createdIds.length
         }, { status: 201 });
@@ -147,7 +156,7 @@ export async function POST(request: NextRequest) {
     }
 }
 
-// PUT - Update subject (supports semester sync for grouped subjects)
+// PUT - Update subject (supports semester sync and degree type changes)
 export async function PUT(request: NextRequest) {
     try {
         const authHeader = request.headers.get('authorization');
@@ -165,7 +174,7 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
-        const { id, code, name, subjectType, semesters, semester, credits, oldCode, departmentId } = await request.json();
+        const { id, code, name, semesters, semester, credits, oldCode, oldDegreeType, newDegreeType, degreeType } = await request.json();
 
         if (!id && !oldCode) {
             return NextResponse.json({ error: 'Subject ID or code required' }, { status: 400 });
@@ -173,32 +182,108 @@ export async function PUT(request: NextRequest) {
 
         // If semesters array is provided, do a sync operation
         if (semesters && Array.isArray(semesters) && semesters.length > 0) {
-            // Get the department_id from the reference subject
-            let refDepartmentId = departmentId;
-            if (!refDepartmentId && id) {
-                const refSubject = await query<{ department_id: string, code: string }>(
-                    'SELECT department_id, code FROM subjects WHERE id = $1',
+            // Determine old and new degree types
+            const sourceDegreeType = oldDegreeType || degreeType;
+            const targetDegreeType = newDegreeType || degreeType || sourceDegreeType;
+
+            // Get the source degree_type from the reference subject if not provided
+            let refDegreeType = sourceDegreeType;
+            if (!refDegreeType && id) {
+                const refSubject = await query<{ degree_type: string, code: string }>(
+                    'SELECT degree_type, code FROM subjects WHERE id = $1',
                     [id]
                 );
                 if (refSubject.length > 0) {
-                    refDepartmentId = refSubject[0].department_id;
+                    refDegreeType = refSubject[0].degree_type;
                 }
             }
 
-            if (!refDepartmentId) {
-                return NextResponse.json({ error: 'Could not determine department' }, { status: 400 });
+            if (!refDegreeType) {
+                return NextResponse.json({ error: 'Could not determine degree type' }, { status: 400 });
             }
 
             const subjectCode = code || oldCode;
+            const degreeTypeChanged = targetDegreeType && targetDegreeType !== refDegreeType;
 
-            // Get existing semesters for this subject code + department
+            // Get existing semesters for this subject code + source degree_type
             const existingEntries = await query<{ id: string, semester: number }>(
-                'SELECT id, semester FROM subjects WHERE code = $1 AND department_id = $2',
-                [oldCode || subjectCode, refDepartmentId]
+                'SELECT id, semester FROM subjects WHERE code = $1 AND degree_type = $2',
+                [oldCode || subjectCode, refDegreeType]
             );
             const existingSemesters = existingEntries.map(e => e.semester);
 
-            // Semesters to add
+            if (degreeTypeChanged) {
+                // Degree type is changing - need to delete old entries and create new ones
+                // First check if any have attendance records
+                for (const entry of existingEntries) {
+                    const attendanceCheck = await query<{ count: string }>(
+                        'SELECT COUNT(*) as count FROM attendance_records WHERE subject_id = $1',
+                        [entry.id]
+                    );
+                    if (parseInt(attendanceCheck[0].count) > 0) {
+                        return NextResponse.json({
+                            error: 'Cannot change degree type: subject has attendance records. Delete attendance first.'
+                        }, { status: 400 });
+                    }
+                }
+
+                // Delete old entries
+                for (const entry of existingEntries) {
+                    await query('DELETE FROM teacher_subjects WHERE subject_id = $1', [entry.id]);
+                    await query('DELETE FROM student_subjects WHERE subject_id = $1', [entry.id]);
+                    await query('DELETE FROM subjects WHERE id = $1', [entry.id]);
+                }
+
+                // Create new entries with new degree type
+                const createdIds: string[] = [];
+                for (const sem of semesters) {
+                    const result = await query<{ id: string }>(
+                        `INSERT INTO subjects (code, name, degree_type, semester, credits)
+                         VALUES ($1, $2, $3, $4, $5)
+                         RETURNING id`,
+                        [subjectCode, name, targetDegreeType, sem, credits || 3]
+                    );
+                    createdIds.push(result[0].id);
+                }
+
+                return NextResponse.json({
+                    message: 'Subject degree type updated successfully',
+                    degreeTypeChanged: true,
+                    newDegreeType: targetDegreeType,
+                    count: createdIds.length
+                });
+            }
+
+            // Degree type not changing - just sync semesters
+            const codeChanged = oldCode && code && oldCode !== code;
+
+            // If code changed, first update all existing entries to new code
+            if (codeChanged) {
+                // Check for unique constraint - make sure new code doesn't already exist
+                const existingWithNewCode = await query<{ id: string }>(
+                    'SELECT id FROM subjects WHERE code = $1 AND degree_type = $2',
+                    [code, refDegreeType]
+                );
+                if (existingWithNewCode.length > 0) {
+                    return NextResponse.json({
+                        error: `Subject with code "${code}" already exists for this degree type`
+                    }, { status: 400 });
+                }
+
+                // Update all existing entries with new code
+                for (const entry of existingEntries) {
+                    await query(
+                        `UPDATE subjects SET code = $1, name = $2, credits = $3, updated_at = CURRENT_TIMESTAMP 
+                         WHERE id = $4`,
+                        [code, name, credits || 3, entry.id]
+                    );
+                }
+            }
+
+            // Use the final code for new entries
+            const finalCode = code || oldCode;
+
+            // Semesters to add (for entries that don't already exist)
             const semestersToAdd = semesters.filter((s: number) => !existingSemesters.includes(s));
 
             // Semesters to remove  
@@ -207,9 +292,9 @@ export async function PUT(request: NextRequest) {
             // Add new semester entries
             for (const sem of semestersToAdd) {
                 await query(
-                    `INSERT INTO subjects (code, name, subject_type, department_id, semester, credits)
-                     VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [subjectCode, name, subjectType, refDepartmentId, sem, credits || 3]
+                    `INSERT INTO subjects (code, name, degree_type, semester, credits)
+                     VALUES ($1, $2, $3, $4, $5)`,
+                    [finalCode, name, refDegreeType, sem, credits || 3]
                 );
             }
 
@@ -231,16 +316,18 @@ export async function PUT(request: NextRequest) {
                 }
             }
 
-            // Update common fields for all remaining entries
-            const remainingSemesters = semesters.filter((s: number) => existingSemesters.includes(s));
-            for (const sem of remainingSemesters) {
-                const entry = existingEntries.find(e => e.semester === sem);
-                if (entry) {
-                    await query(
-                        `UPDATE subjects SET code = $1, name = $2, subject_type = $3, credits = $4, updated_at = CURRENT_TIMESTAMP 
-                         WHERE id = $5`,
-                        [subjectCode, name, subjectType, credits || 3, entry.id]
-                    );
+            // Update common fields for all remaining entries (if code didn't change - already updated above)
+            if (!codeChanged) {
+                const remainingSemesters = semesters.filter((s: number) => existingSemesters.includes(s));
+                for (const sem of remainingSemesters) {
+                    const entry = existingEntries.find(e => e.semester === sem);
+                    if (entry) {
+                        await query(
+                            `UPDATE subjects SET code = $1, name = $2, credits = $3, updated_at = CURRENT_TIMESTAMP 
+                             WHERE id = $4`,
+                            [finalCode, name, credits || 3, entry.id]
+                        );
+                    }
                 }
             }
 
@@ -262,7 +349,6 @@ export async function PUT(request: NextRequest) {
 
         if (code) { updateFields.push(`code = $${++paramCount}`); params.push(code); }
         if (name) { updateFields.push(`name = $${++paramCount}`); params.push(name); }
-        if (subjectType) { updateFields.push(`subject_type = $${++paramCount}`); params.push(subjectType); }
         if (semester) { updateFields.push(`semester = $${++paramCount}`); params.push(parseInt(semester)); }
         if (credits) { updateFields.push(`credits = $${++paramCount}`); params.push(parseInt(credits)); }
 
@@ -304,44 +390,26 @@ export async function DELETE(request: NextRequest) {
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
         const code = searchParams.get('code');
-        const departmentId = searchParams.get('departmentId');
+        const degreeType = searchParams.get('degreeType');
 
-        // Support deleting by code+departmentId (all semesters) or by single id
+        // Support deleting by code+degreeType (all semesters) or by single id
         let subjectIds: string[] = [];
 
-        if (code && departmentId) {
+        if (code && degreeType) {
             // Delete all semester entries for this subject
             const entries = await query<{ id: string }>(
-                'SELECT id FROM subjects WHERE code = $1 AND department_id = $2',
-                [code, departmentId]
+                'SELECT id FROM subjects WHERE code = $1 AND degree_type = $2',
+                [code, degreeType]
             );
             subjectIds = entries.map(e => e.id);
         } else if (id) {
             subjectIds = [id];
         } else {
-            return NextResponse.json({ error: 'Subject ID or code+departmentId required' }, { status: 400 });
+            return NextResponse.json({ error: 'Subject ID or code+degreeType required' }, { status: 400 });
         }
 
         if (subjectIds.length === 0) {
             return NextResponse.json({ error: 'No subjects found' }, { status: 404 });
-        }
-
-        // For HOD, verify all subjects belong to their department
-        if (payload.role === 'hod' && payload.departmentId) {
-            for (const subId of subjectIds) {
-                const subjectCheck = await query<{ department_id: string }>(
-                    'SELECT department_id FROM subjects WHERE id = $1',
-                    [subId]
-                );
-
-                if (subjectCheck.length === 0) {
-                    return NextResponse.json({ error: 'Subject not found' }, { status: 404 });
-                }
-
-                if (subjectCheck[0].department_id !== payload.departmentId) {
-                    return NextResponse.json({ error: 'Access denied - subject not in your department' }, { status: 403 });
-                }
-            }
         }
 
         // Check for related attendance records for all subjects

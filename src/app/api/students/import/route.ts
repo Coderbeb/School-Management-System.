@@ -19,12 +19,14 @@ export async function POST(req: Request) {
         };
 
         // Cache departments for validation
-        const departments = await query<{ id: string; code: string; dept_type: string }>('SELECT id, code, dept_type FROM departments', []);
-        const departmentMap = new Map(departments.map((d) => [d.code.toUpperCase(), d.id]));
+        const departments = await query<{ id: string; code: string; dept_type: string; degree_type: string }>(
+            'SELECT id, code, dept_type, degree_type FROM departments', []
+        );
+        const departmentMap = new Map(departments.map((d) => [d.code.toUpperCase(), { id: d.id, degreeType: d.degree_type }]));
 
         // Cache ALL subjects for matching by name or code
-        const allSubjects = await query<{ id: string; code: string; name: string; department_id: string; semester: number }>(
-            'SELECT id, code, name, department_id, semester FROM subjects', []
+        const allSubjects = await query<{ id: string; code: string; name: string; degree_type: string; semester: number }>(
+            'SELECT id, code, name, degree_type, semester FROM subjects', []
         );
 
         // Get current academic year
@@ -50,25 +52,33 @@ export async function POST(req: Request) {
 
                 // 3. Find department based on parsed info
                 let deptId: string | undefined;
+                let degreeType: string | undefined;
 
                 if (parsed.courseType === 'vocational') {
                     // Vocational students go to IT or BBA department
                     if (parsed.prefix === 'BBA') {
-                        deptId = departmentMap.get('BBA');
+                        deptId = departmentMap.get('BBA')?.id;
+                        degreeType = departmentMap.get('BBA')?.degreeType;
                     } else {
-                        deptId = departmentMap.get('IT');
+                        deptId = departmentMap.get('IT')?.id;
+                        degreeType = departmentMap.get('IT')?.degreeType;
                     }
                 } else if (parsed.courseType === 'regular' && parsed.deptCode) {
                     // Regular students - match dept code
-                    deptId = departmentMap.get(parsed.deptCode.toUpperCase());
+                    deptId = departmentMap.get(parsed.deptCode.toUpperCase())?.id;
+                    degreeType = departmentMap.get(parsed.deptCode.toUpperCase())?.degreeType;
                 } else if (parsed.courseType === 'pg' && parsed.deptCode) {
-                    deptId = departmentMap.get(parsed.deptCode.toUpperCase());
+                    deptId = departmentMap.get(parsed.deptCode.toUpperCase())?.id;
+                    degreeType = departmentMap.get(parsed.deptCode.toUpperCase())?.degreeType;
                 }
 
                 // Allow override: if department_code is provided, use it instead
                 if (student.department_code) {
                     const overrideDept = departmentMap.get(student.department_code.toUpperCase());
-                    if (overrideDept) deptId = overrideDept;
+                    if (overrideDept) {
+                        deptId = overrideDept.id;
+                        degreeType = overrideDept.degreeType;
+                    }
                 }
 
                 if (!deptId) {
@@ -120,31 +130,43 @@ export async function POST(req: Request) {
 
                 // 7. Handle Subject Assignment from CSV
                 // Collect subject codes/names from various possible columns
-                const subjectInputs: string[] = [];
+                const subjectInputs: { value: string; isCrossDegree: boolean }[] = [];
 
-                // Check for subject_codes column (comma-separated codes)
+                // Check for subject_codes column (comma-separated codes) - these are department-specific
                 if (student.subject_codes) {
-                    subjectInputs.push(...student.subject_codes.split(',').map((s: string) => s.trim()).filter(Boolean));
+                    student.subject_codes.split(',').map((s: string) => s.trim()).filter(Boolean).forEach((code: string) => {
+                        subjectInputs.push({ value: code, isCrossDegree: false });
+                    });
                 }
 
-                // Check for individual subject columns (vocational template)
-                ['core1', 'core2', 'ge1', 'ge2', 'major_subject'].forEach(col => {
-                    if (student[col] && typeof student[col] === 'string' && student[col].trim()) {
-                        subjectInputs.push(student[col].trim());
-                    }
-                });
+                // Check for individual subject columns
+                // ALL subjects filter by department degree type (no cross-degree)
+                ['core1', 'core2', 'major_subject', 'major', 'minor', 'mdc', 'vac', 'aec', 'aecc',
+                    'ge1', 'ge2', 'generic1', 'generic2'].forEach(col => {
+                        if (student[col] && typeof student[col] === 'string' && student[col].trim()) {
+                            subjectInputs.push({ value: student[col].trim(), isCrossDegree: false });
+                        }
+                    });
 
                 // If we have subject inputs, try to find and enroll
                 if (subjectInputs.length > 0) {
-                    // Filter subjects for this department and semester
-                    const availableSubjects = allSubjects.filter(s =>
-                        s.department_id === deptId && s.semester === finalSemester
+                    // Filter subjects for this degree type and semester (for core/major)
+                    const departmentSubjects = allSubjects.filter(s =>
+                        s.degree_type === degreeType && s.semester === finalSemester
+                    );
+
+                    // All subjects for this semester (for generic/minor electives)
+                    const allSemesterSubjects = allSubjects.filter(s =>
+                        s.semester === finalSemester
                     );
 
                     // Match subject inputs to actual subjects
                     for (const input of subjectInputs) {
-                        const inputUpper = input.toUpperCase();
-                        const matchedSubject = availableSubjects.find(s =>
+                        const inputUpper = input.value.toUpperCase();
+                        // Use department subjects for core/major, all semester subjects for cross-degree
+                        const searchPool = input.isCrossDegree ? allSemesterSubjects : departmentSubjects;
+
+                        const matchedSubject = searchPool.find(s =>
                             s.code.toUpperCase() === inputUpper ||
                             s.name.toUpperCase() === inputUpper ||
                             s.name.toUpperCase().includes(inputUpper) ||

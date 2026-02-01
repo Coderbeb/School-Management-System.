@@ -44,13 +44,18 @@ export async function GET(request: NextRequest) {
             params.push(userDeptId);
             filters.push(`s.department_id = $${params.length}`);
         } else if (role === 'teacher') {
-            // Teacher: filter by students in their assigned subjects
-            params.push(userId);
-            filters.push(`s.id IN (
-                SELECT ss.student_id FROM student_subjects ss
-                JOIN teacher_subjects ts ON ss.subject_id = ts.subject_id
-                WHERE ts.teacher_id = $${params.length}
-            )`);
+            // Teacher: if departmentId param is provided, filter by it
+            if (departmentId) {
+                params.push(departmentId);
+                filters.push(`s.department_id = $${params.length}`);
+            } else {
+                params.push(userId);
+                filters.push(`s.id IN (
+                    SELECT ss.student_id FROM student_subjects ss
+                    JOIN teacher_subjects ts ON ss.subject_id = ts.subject_id
+                    WHERE ts.teacher_id = $${params.length}
+                )`);
+            }
         } else if (role === 'super_admin' && departmentId) {
             // Super admin with department filter (students.department_id)
             params.push(departmentId);

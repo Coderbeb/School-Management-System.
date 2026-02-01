@@ -10,6 +10,7 @@ import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 
 interface User {
+    id: string;
     role: 'super_admin' | 'hod' | 'teacher';
     firstName: string;
     lastName: string;
@@ -90,6 +91,8 @@ export default function StudentReportPage() {
 
         if (parsedUser.role === 'super_admin') {
             fetchDepartments(token);
+        } else if (parsedUser.role === 'teacher' || parsedUser.role === 'hod') {
+            fetchTeacherDepartments(token, parsedUser.id);
         }
     }, [router]);
 
@@ -115,6 +118,39 @@ export default function StudentReportPage() {
             setDepartments(data.departments || []);
         } catch (err) {
             console.error('Error fetching departments:', err);
+        }
+    };
+
+    // Fetch departments for teachers (based on their assignments)
+    const fetchTeacherDepartments = async (token: string, teacherId: string) => {
+        try {
+            const res = await fetch('/api/teachers', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            const teacher = data.teachers?.find((t: any) => t.id === teacherId);
+            if (teacher) {
+                const allDepts: Department[] = [];
+                if (teacher.department_id && teacher.department_name) {
+                    allDepts.push({
+                        id: teacher.department_id,
+                        name: teacher.department_name,
+                        code: teacher.department_code || ''
+                    });
+                }
+                if (teacher.departments && Array.isArray(teacher.departments)) {
+                    teacher.departments.forEach((dept: any) => {
+                        if (!allDepts.find(d => d.id === dept.id)) {
+                            allDepts.push({ id: dept.id, name: dept.name, code: dept.code || '' });
+                        }
+                    });
+                }
+                if (allDepts.length > 1) {
+                    setDepartments(allDepts);
+                }
+            }
+        } catch (err) {
+            console.error('Error fetching teacher departments:', err);
         }
     };
 
@@ -370,7 +406,7 @@ export default function StudentReportPage() {
                     )}
 
                     <div className="flex gap-2">
-                        {user?.role === 'super_admin' && (
+                        {(user?.role === 'super_admin' || departments.length > 1) && (
                             <select
                                 value={selectedDepartmentId}
                                 onChange={(e) => setSelectedDepartmentId(e.target.value)}
@@ -424,7 +460,7 @@ export default function StudentReportPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="flex flex-wrap gap-4 items-end">
-                                {user?.role === 'super_admin' && (
+                                {(user?.role === 'super_admin' || departments.length > 1) && (
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
                                         <select

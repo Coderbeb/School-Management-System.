@@ -20,20 +20,15 @@ interface Subject {
     id: string;
     code: string;
     name: string;
-    subjectType: string;
     semester: number;
-    departmentId?: string;
-    departmentName?: string;
-    departmentCode?: string;
+    degreeType: string;
     credits: number;
 }
 
 interface GroupedSubject {
     code: string;
     name: string;
-    subjectType: string;
-    departmentId?: string;
-    departmentCode?: string;
+    degreeType: string;
     credits: number;
     semesters: number[];
     ids: string[];
@@ -44,6 +39,7 @@ interface Department {
     name: string;
     code: string;
     dept_type: string;
+    degree_type: string;
 }
 
 interface User {
@@ -63,17 +59,18 @@ export default function SubjectsPage() {
     const [user, setUser] = useState<User | null>(null);
     const [showModal, setShowModal] = useState(false);
 
-    // Form data - now with semesters array and deptType
+    // Form data - with deptType and degreeType for degree selection
     const [formData, setFormData] = useState({
-        code: '', name: '', subjectType: 'major', departmentId: '', credits: '3', deptType: 'regular'
+        code: '', name: '', credits: '3', deptType: 'regular', degreeType: 'ba'
     });
     const [selectedSemesters, setSelectedSemesters] = useState<number[]>([1]);
+    const [selectedDegreeTypes, setSelectedDegreeTypes] = useState<string[]>(['it']); // For multi-select degree types (vocational)
     const [editingGroup, setEditingGroup] = useState<GroupedSubject | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
     // Search & Filter
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterDepartmentId, setFilterDepartmentId] = useState('');
+    const [filterDegreeType, setFilterDegreeType] = useState('');
     const [filterSemester, setFilterSemester] = useState('');
 
 
@@ -119,12 +116,12 @@ export default function SubjectsPage() {
         }
     };
 
-    // Group subjects by code + department
+    // Group subjects by code + degreeType
     const groupedSubjects = useMemo(() => {
         const groups: Map<string, GroupedSubject> = new Map();
 
         subjects.forEach(subject => {
-            const key = `${subject.code}-${subject.departmentId}`;
+            const key = `${subject.code}-${subject.degreeType}`;
 
             if (groups.has(key)) {
                 const group = groups.get(key)!;
@@ -136,9 +133,7 @@ export default function SubjectsPage() {
                 groups.set(key, {
                     code: subject.code,
                     name: subject.name,
-                    subjectType: subject.subjectType,
-                    departmentId: subject.departmentId,
-                    departmentCode: subject.departmentCode,
+                    degreeType: subject.degreeType,
                     credits: subject.credits,
                     semesters: [subject.semester],
                     ids: [subject.id]
@@ -158,36 +153,27 @@ export default function SubjectsPage() {
             const matchesSearch =
                 group.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 group.code.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesDept = !filterDepartmentId || group.departmentId === filterDepartmentId;
+            const matchesDegreeType = !filterDegreeType || group.degreeType === filterDegreeType;
             const matchesSem = !filterSemester || group.semesters.includes(parseInt(filterSemester));
-            return matchesSearch && matchesDept && matchesSem;
+            return matchesSearch && matchesDegreeType && matchesSem;
         });
-    }, [groupedSubjects, searchTerm, filterDepartmentId, filterSemester]);
-
-    // Filter departments by selected deptType for form
-    const filteredDepartments = useMemo(() => {
-        return departments.filter(dept => dept.dept_type === formData.deptType);
-    }, [departments, formData.deptType]);
-
-    // Get HOD's department type for auto-detection
-    const hodDeptType = useMemo(() => {
-        if (user?.role !== 'hod' || !user.departmentId) return null;
-        const hodDept = departments.find(d => d.id === user.departmentId);
-        return hodDept?.dept_type || 'regular';
-    }, [user, departments]);
+    }, [groupedSubjects, searchTerm, filterDegreeType, filterSemester]);
 
     const handleEdit = (group: GroupedSubject) => {
-        // Find the department to get its type
-        const dept = departments.find(d => d.id === group.departmentId);
-        const deptType = dept?.dept_type || 'regular';
+        // Determine course type from degree type
+        const getDeptTypeFromDegreeType = (dt: string) => {
+            if (['ba', 'bsc', 'bcom'].includes(dt)) return 'regular';
+            if (['it', 'bba'].includes(dt)) return 'vocational';
+            if (dt === 'mcom') return 'pg';
+            return 'regular';
+        };
 
         setFormData({
             code: group.code,
             name: group.name,
-            subjectType: group.subjectType,
-            departmentId: group.departmentId || '',
             credits: group.credits.toString(),
-            deptType: deptType
+            deptType: getDeptTypeFromDegreeType(group.degreeType),
+            degreeType: group.degreeType
         });
         setSelectedSemesters([...group.semesters]);
         setEditingGroup(group);
@@ -196,13 +182,40 @@ export default function SubjectsPage() {
         setSuccess('');
     };
 
+    // Get HOD's department info for auto-detection
+    const hodDeptInfo = useMemo(() => {
+        if (user?.role !== 'hod' || !user.departmentId) return null;
+        const hodDept = departments.find(d => d.id === user.departmentId);
+        return hodDept ? { deptType: hodDept.dept_type, degreeType: hodDept.degree_type } : null;
+    }, [user, departments]);
+
+    // Get degree type label for display
+    const getDegreeTypeLabel = (dt: string) => {
+        const labels: Record<string, string> = {
+            'ba': 'BA',
+            'bsc': 'B.Sc',
+            'bcom': 'B.Com',
+            'it': 'BCA/IT',
+            'bba': 'BBA',
+            'mcom': 'M.Com'
+        };
+        return labels[dt] || dt.toUpperCase();
+    };
+
+    // Get default degree type based on course type
+    const getDefaultDegreeType = (deptType: string) => {
+        if (deptType === 'regular') return 'ba';
+        if (deptType === 'vocational') return 'it';
+        if (deptType === 'pg') return 'mcom';
+        return 'ba';
+    };
+
     const resetForm = () => {
-        const defaultDeptId = user?.role === 'hod' ? (user.departmentId || '') : '';
-        // For HOD: auto-set deptType based on their department's type
-        const defaultDeptType = hodDeptType || 'regular';
-        const defaultSubjectType = defaultDeptType === 'vocational' ? 'core1' : 'major';
-        setFormData({ code: '', name: '', subjectType: defaultSubjectType, departmentId: defaultDeptId, credits: '3', deptType: defaultDeptType });
+        const defaultDeptType = hodDeptInfo?.deptType || 'regular';
+        const defaultDegreeType = hodDeptInfo?.degreeType || getDefaultDegreeType(defaultDeptType);
+        setFormData({ code: '', name: '', credits: '3', deptType: defaultDeptType, degreeType: defaultDegreeType });
         setSelectedSemesters([1]);
+        setSelectedDegreeTypes([defaultDegreeType]);
         setEditingGroup(null);
         setError('');
         setSuccess('');
@@ -211,7 +224,7 @@ export default function SubjectsPage() {
     const toggleSemester = (sem: number) => {
         setSelectedSemesters(prev =>
             prev.includes(sem)
-                ? prev.filter(s => s !== sem)
+                ? prev.filter((s: number) => s !== sem)
                 : [...prev, sem].sort((a, b) => a - b)
         );
     };
@@ -235,6 +248,12 @@ export default function SubjectsPage() {
             return;
         }
 
+        // For vocational, require at least one degree type selected
+        if (formData.deptType === 'vocational' && selectedDegreeTypes.length === 0) {
+            setError('Please select at least one degree type (BCA/IT or BBA)');
+            return;
+        }
+
         try {
             if (editingGroup) {
                 // UPDATE - sync semesters
@@ -247,10 +266,10 @@ export default function SubjectsPage() {
                     body: JSON.stringify({
                         id: editingGroup.ids[0],
                         oldCode: editingGroup.code,
-                        departmentId: editingGroup.departmentId,
+                        oldDegreeType: editingGroup.degreeType,  // Original degree type
+                        newDegreeType: formData.degreeType,      // New degree type from form
                         code: formData.code,
                         name: formData.name,
-                        subjectType: formData.subjectType,
                         credits: formData.credits,
                         semesters: selectedSemesters
                     }),
@@ -263,7 +282,11 @@ export default function SubjectsPage() {
                 }
                 setSuccess('Subject updated successfully!');
             } else {
-                // CREATE - with multiple semesters
+                // CREATE - with degreeTypes array for vocational, single degreeType for others
+                const degreeTypesToSend = formData.deptType === 'vocational'
+                    ? selectedDegreeTypes
+                    : [formData.degreeType];
+
                 const res = await fetch('/api/subjects', {
                     method: 'POST',
                     headers: {
@@ -271,7 +294,10 @@ export default function SubjectsPage() {
                         Authorization: `Bearer ${token}`,
                     },
                     body: JSON.stringify({
-                        ...formData,
+                        code: formData.code,
+                        name: formData.name,
+                        credits: formData.credits,
+                        degreeTypes: degreeTypesToSend,
                         semesters: selectedSemesters
                     }),
                 });
@@ -281,7 +307,7 @@ export default function SubjectsPage() {
                     setError(data.error || 'Failed to create subject');
                     return;
                 }
-                setSuccess(`Subject created for ${data.count} semester(s)!`);
+                setSuccess(`Subject created for ${data.count} semester/degree-type combination(s)!`);
             }
 
             fetchSubjects(token!);
@@ -300,7 +326,7 @@ export default function SubjectsPage() {
         const token = localStorage.getItem('token');
 
         try {
-            const res = await fetch(`/api/subjects?code=${encodeURIComponent(group.code)}&departmentId=${group.departmentId}`, {
+            const res = await fetch(`/api/subjects?code=${encodeURIComponent(group.code)}&degreeType=${group.degreeType}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -314,17 +340,6 @@ export default function SubjectsPage() {
         } catch (err) {
             console.error('Error deleting:', err);
             alert('Network error while deleting subject');
-        }
-    };
-
-    // Get type badge color
-    const getTypeBadgeClass = (type: string) => {
-        switch (type) {
-            case 'core': return 'bg-blue-100 text-blue-800';
-            case 'generic': return 'bg-green-100 text-green-800';
-            case 'major': return 'bg-purple-100 text-purple-800';
-            case 'minor': return 'bg-orange-100 text-orange-800';
-            default: return 'bg-gray-100 text-gray-800';
         }
     };
 
@@ -405,15 +420,16 @@ export default function SubjectsPage() {
                             <div className="relative w-full md:w-auto">
                                 <select
                                     className="w-full md:w-48 bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none cursor-pointer"
-                                    value={filterDepartmentId}
-                                    onChange={(e) => setFilterDepartmentId(e.target.value)}
+                                    value={filterDegreeType}
+                                    onChange={(e) => setFilterDegreeType(e.target.value)}
                                 >
-                                    <option value="">All Departments</option>
-                                    {departments.map((dept) => (
-                                        <option key={dept.id} value={dept.id}>
-                                            {dept.name} ({dept.code})
-                                        </option>
-                                    ))}
+                                    <option value="">All Degrees</option>
+                                    <option value="ba">BA (Bachelor of Arts)</option>
+                                    <option value="bsc">B.Sc (Bachelor of Science)</option>
+                                    <option value="bcom">B.Com (Bachelor of Commerce)</option>
+                                    <option value="it">BCA / IT</option>
+                                    <option value="bba">BBA</option>
+                                    <option value="mcom">M.Com (Master of Commerce)</option>
                                 </select>
                                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                             </div>
@@ -463,8 +479,7 @@ export default function SubjectsPage() {
                                 <thead className="bg-gray-50/50 border-b border-gray-100">
                                     <tr>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject Info</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Department</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Degree</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Semesters</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Credits</th>
                                         {canManage && <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>}
@@ -472,7 +487,7 @@ export default function SubjectsPage() {
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
                                     {filteredGroups.map((group) => (
-                                        <tr key={`${group.code}-${group.departmentId}`} className="hover:bg-gray-50/80 transition-colors">
+                                        <tr key={`${group.code}-${group.degreeType}`} className="hover:bg-gray-50/80 transition-colors">
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold shadow-sm shadow-indigo-200">
@@ -485,26 +500,8 @@ export default function SubjectsPage() {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                {group.departmentCode ? (
-                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-100">
-                                                        {group.departmentCode}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-gray-400 text-xs">-</span>
-                                                )}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${group.subjectType === 'major' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                                                    group.subjectType === 'minor' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                                        group.subjectType === 'mdc' ? 'bg-purple-50 text-purple-700 border-purple-100' :
-                                                            group.subjectType === 'vac' ? 'bg-orange-50 text-orange-700 border-orange-100' :
-                                                                group.subjectType === 'aec' ? 'bg-pink-50 text-pink-700 border-pink-100' :
-                                                                    group.subjectType.startsWith('core') ? 'bg-cyan-50 text-cyan-700 border-cyan-100' :
-                                                                        group.subjectType.startsWith('ge') ? 'bg-teal-50 text-teal-700 border-teal-100' :
-                                                                            group.subjectType.startsWith('dse') ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
-                                                                                'bg-gray-50 text-gray-700 border-gray-100'
-                                                    }`}>
-                                                    {group.subjectType.toUpperCase()}
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-100">
+                                                    {getDegreeTypeLabel(group.degreeType)}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4">
@@ -562,7 +559,7 @@ export default function SubjectsPage() {
                         <div className="space-y-3">
                             {filteredGroups.map((group) => (
                                 <div
-                                    key={`${group.code}-${group.departmentId}`}
+                                    key={`${group.code}-${group.degreeType}`}
                                     className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 relative"
                                 >
                                     <div className="flex justify-between items-start mb-3">
@@ -600,22 +597,8 @@ export default function SubjectsPage() {
                                     </div>
 
                                     <div className="flex flex-wrap gap-2 mt-3">
-                                        {group.departmentCode && (
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-100">
-                                                {group.departmentCode}
-                                            </span>
-                                        )}
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${group.subjectType === 'major' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                                            group.subjectType === 'minor' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                                group.subjectType === 'mdc' ? 'bg-purple-50 text-purple-700 border-purple-100' :
-                                                    group.subjectType === 'vac' ? 'bg-orange-50 text-orange-700 border-orange-100' :
-                                                        group.subjectType === 'aec' ? 'bg-pink-50 text-pink-700 border-pink-100' :
-                                                            group.subjectType.startsWith('core') ? 'bg-cyan-50 text-cyan-700 border-cyan-100' :
-                                                                group.subjectType.startsWith('ge') ? 'bg-teal-50 text-teal-700 border-teal-100' :
-                                                                    group.subjectType.startsWith('dse') ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
-                                                                        'bg-gray-50 text-gray-700 border-gray-100'
-                                            }`}>
-                                            {group.subjectType.toUpperCase()}
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-100">
+                                            {getDegreeTypeLabel(group.degreeType)}
                                         </span>
                                     </div>
 
@@ -691,77 +674,6 @@ export default function SubjectsPage() {
                                         required
                                     />
                                 </div>
-                                {/* Course Type Selection - Only for Admin (HOD's type is auto-detected) */}
-                                {user?.role === 'super_admin' && (
-                                    <div>
-                                        <Label htmlFor="deptType">Course Type *</Label>
-                                        <select
-                                            id="deptType"
-                                            className="w-full p-2 border rounded bg-gradient-to-r from-cyan-50 to-white"
-                                            value={formData.deptType}
-                                            onChange={(e) => {
-                                                const newDeptType = e.target.value;
-                                                // Reset subject type to appropriate default and clear department
-                                                const defaultSubjectType = newDeptType === 'regular' ? 'major' :
-                                                    newDeptType === 'vocational' ? 'core1' : 'major';
-                                                setFormData({
-                                                    ...formData,
-                                                    deptType: newDeptType,
-                                                    subjectType: defaultSubjectType,
-                                                    departmentId: ''
-                                                });
-                                            }}
-                                        >
-                                            <option value="regular">Regular (BA/BSc/BCom)</option>
-                                            <option value="vocational">Vocational (BCA/IT, BBA)</option>
-                                            <option value="pg">Postgraduate (MCom)</option>
-                                        </select>
-                                    </div>
-                                )}
-
-                                {/* Subject Type - Based on Course Type */}
-                                <div>
-                                    <Label htmlFor="type">Subject Type *</Label>
-                                    <select
-                                        id="type"
-                                        className="w-full p-2 border rounded"
-                                        value={formData.subjectType}
-                                        onChange={(e) => setFormData({ ...formData, subjectType: e.target.value })}
-                                    >
-                                        {formData.deptType === 'regular' && (
-                                            <>
-                                                <option value="major">Major</option>
-                                                <option value="minor">Minor</option>
-                                                <option value="mdc">MDC (Multi-Disciplinary)</option>
-                                                <option value="vac">VAC (Value Added)</option>
-                                                <option value="aec">AEC (Ability Enhancement)</option>
-                                            </>
-                                        )}
-                                        {formData.deptType === 'vocational' && (
-                                            <>
-                                                <option value="core1">Core 1</option>
-                                                <option value="core2">Core 2</option>
-                                                <option value="core3">Core 3</option>
-                                                <option value="ge1">GE 1 (Generic Elective)</option>
-                                                <option value="ge2">GE 2 (Generic Elective)</option>
-                                                <option value="aecc">AECC</option>
-                                                <option value="sec1">SEC 1 (Skill Enhancement)</option>
-                                                <option value="dse1">DSE 1 (Discipline Specific)</option>
-                                                <option value="dse2">DSE 2 (Discipline Specific)</option>
-                                            </>
-                                        )}
-                                        {formData.deptType === 'pg' && (
-                                            <>
-                                                <option value="major">Major</option>
-                                                <option value="minor">Minor</option>
-                                                <option value="mdc">MDC (Multi-Disciplinary)</option>
-                                                <option value="vac">VAC (Value Added)</option>
-                                                <option value="aec">AEC (Ability Enhancement)</option>
-                                            </>
-                                        )}
-                                    </select>
-                                </div>
-
                                 {/* Multi-Semester Selection */}
                                 <div>
                                     <div className="flex items-center justify-between mb-2">
@@ -800,30 +712,119 @@ export default function SubjectsPage() {
                                     </p>
                                 </div>
 
-                                {/* Department Selection - Filtered by Course Type */}
-                                {user?.role === 'super_admin' ? (
+                                {/* Course Type Selection - Only for Super Admin */}
+                                {user?.role === 'super_admin' && (
                                     <div>
-                                        <Label htmlFor="departmentId">Department * <span className="text-xs text-gray-400">({filteredDepartments.length} available)</span></Label>
+                                        <Label htmlFor="deptType">Course Type *</Label>
                                         <select
-                                            id="departmentId"
-                                            className="w-full p-2 border rounded"
-                                            value={formData.departmentId}
-                                            onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })}
-                                            required
+                                            id="deptType"
+                                            className="w-full p-2 border rounded bg-gradient-to-r from-cyan-50 to-white"
+                                            value={formData.deptType}
+                                            onChange={(e) => {
+                                                const newDeptType = e.target.value;
+                                                const newDegreeType = newDeptType === 'regular' ? 'ba' :
+                                                    newDeptType === 'vocational' ? 'it' : 'mcom';
+                                                setFormData({
+                                                    ...formData,
+                                                    deptType: newDeptType,
+                                                    degreeType: newDegreeType
+                                                });
+                                                // Reset selectedDegreeTypes based on course type
+                                                if (newDeptType === 'vocational') {
+                                                    setSelectedDegreeTypes(['it']); // Default to BCA/IT selected
+                                                } else {
+                                                    setSelectedDegreeTypes([newDegreeType]);
+                                                }
+                                            }}
                                         >
-                                            <option value="">Select Department</option>
-                                            {filteredDepartments.map((dept) => (
-                                                <option key={dept.id} value={dept.id}>
-                                                    {dept.name} ({dept.code})
-                                                </option>
-                                            ))}
+                                            <option value="regular">Regular (BA/BSc/BCom)</option>
+                                            <option value="vocational">Vocational (BCA/IT, BBA)</option>
+                                            <option value="pg">Postgraduate (MCom)</option>
                                         </select>
-                                        {filteredDepartments.length === 0 && (
-                                            <p className="text-xs text-amber-600 mt-1">No departments found for this course type</p>
+                                    </div>
+                                )}
+
+                                {/* Degree Type Selection - Only for Super Admin */}
+                                {user?.role === 'super_admin' && (
+                                    <div>
+                                        <Label htmlFor="degreeType">Degree Type *</Label>
+
+                                        {/* For Vocational - Multi-select checkboxes */}
+                                        {formData.deptType === 'vocational' ? (
+                                            <>
+                                                <div className="grid grid-cols-2 gap-2 mt-2">
+                                                    {[
+                                                        { value: 'it', label: 'BCA / IT' },
+                                                        { value: 'bba', label: 'BBA' }
+                                                    ].map(opt => (
+                                                        <label
+                                                            key={opt.value}
+                                                            className={`flex items-center justify-center gap-2 p-2 border rounded cursor-pointer transition-colors ${selectedDegreeTypes.includes(opt.value)
+                                                                ? 'bg-purple-100 border-purple-500 text-purple-800'
+                                                                : 'bg-white hover:bg-gray-50'
+                                                                }`}
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedDegreeTypes.includes(opt.value)}
+                                                                onChange={() => {
+                                                                    setSelectedDegreeTypes(prev =>
+                                                                        prev.includes(opt.value)
+                                                                            ? prev.filter(dt => dt !== opt.value)
+                                                                            : [...prev, opt.value]
+                                                                    );
+                                                                }}
+                                                                className="sr-only"
+                                                            />
+                                                            <span className="text-sm font-medium">{opt.label}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Selected: {selectedDegreeTypes.length === 0 ? 'None' : selectedDegreeTypes.map(dt => dt === 'it' ? 'BCA/IT' : 'BBA').join(', ')}
+                                                </p>
+                                            </>
+                                        ) : (
+                                            /* For Regular/PG - Single select dropdown */
+                                            <>
+                                                <select
+                                                    id="degreeType"
+                                                    className="w-full p-2 border rounded"
+                                                    value={formData.degreeType}
+                                                    onChange={(e) => {
+                                                        setFormData({
+                                                            ...formData,
+                                                            degreeType: e.target.value
+                                                        });
+                                                    }}
+                                                >
+                                                    {formData.deptType === 'regular' && (
+                                                        <>
+                                                            <option value="ba">BA (Bachelor of Arts)</option>
+                                                            <option value="bsc">B.Sc (Bachelor of Science)</option>
+                                                            <option value="bcom">B.Com (Bachelor of Commerce)</option>
+                                                        </>
+                                                    )}
+                                                    {formData.deptType === 'pg' && (
+                                                        <option value="mcom">M.Com (Master of Commerce)</option>
+                                                    )}
+                                                </select>
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Subject will be assigned to: {getDegreeTypeLabel(formData.degreeType)}
+                                                </p>
+                                            </>
                                         )}
                                     </div>
-                                ) : (
-                                    <input type="hidden" value={user?.departmentId || ''} />
+                                )}
+
+                                {/* For HOD, show their degree type (read-only) */}
+                                {user?.role === 'hod' && hodDeptInfo && (
+                                    <div>
+                                        <Label>Degree Type</Label>
+                                        <p className="text-sm text-gray-700 bg-gray-50 p-2 rounded border">
+                                            {getDegreeTypeLabel(hodDeptInfo.degreeType)}
+                                        </p>
+                                    </div>
                                 )}
 
                                 {error && <p className="text-red-500 text-sm">{error}</p>}

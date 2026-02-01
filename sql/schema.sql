@@ -3,12 +3,13 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 
--- Departments Table (with dept_type)
+-- Departments Table (with dept_type and degree_type)
 CREATE TABLE IF NOT EXISTS departments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(100) NOT NULL UNIQUE,
     code VARCHAR(20) NOT NULL UNIQUE,
     dept_type VARCHAR(20) NOT NULL DEFAULT 'regular' CHECK (dept_type IN ('regular', 'vocational', 'pg')),
+    degree_type VARCHAR(20) NOT NULL DEFAULT 'ba' CHECK (degree_type IN ('ba', 'bsc', 'bcom', 'it', 'bba', 'mcom')),
     description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -46,23 +47,18 @@ CREATE TABLE IF NOT EXISTS students (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Subjects Table (direct link to department, not program)
+-- Subjects Table (linked to degree_type, not department)
+-- Departments are for Teachers/Students/HOD, Subjects are for Degree Programs
 CREATE TABLE IF NOT EXISTS subjects (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     code VARCHAR(20) NOT NULL,
     name VARCHAR(200) NOT NULL,
-    -- Regular dept types: major, minor, mdc, vac, aec
-    -- Vocational dept types: core1, core2, ge1, ge2, aecc, sec, dse1, dse2
-    subject_type VARCHAR(20) NOT NULL CHECK (subject_type IN (
-        'major', 'minor', 'mdc', 'vac', 'aec',  -- Regular
-        'core1', 'core2', 'core3', 'ge1', 'ge2', 'aecc', 'sec1', 'dse1', 'dse2'  -- Vocational
-    )),
-    department_id UUID REFERENCES departments(id),
+    degree_type VARCHAR(20) NOT NULL CHECK (degree_type IN ('ba', 'bsc', 'bcom', 'it', 'bba', 'mcom')),
     semester INTEGER NOT NULL,
     credits INTEGER NOT NULL DEFAULT 3,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(code, department_id, semester)
+    UNIQUE(code, degree_type, semester)
 );
 
 -- Teacher-Subject Assignment (One teacher per subject)

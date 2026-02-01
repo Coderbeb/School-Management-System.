@@ -55,6 +55,7 @@ export default function AttendancePage() {
     const [students, setStudents] = useState<Student[]>([]);
     const [subjects, setSubjects] = useState<Subject[]>([]);
     const [departments, setDepartments] = useState<Department[]>([]);
+    const [teacherDepartmentIds, setTeacherDepartmentIds] = useState<string[]>([]); // All teacher's dept IDs for filtering
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
     // Selection States
@@ -152,6 +153,9 @@ export default function AttendancePage() {
                 if (allDepts.length > 1) {
                     setDepartments(allDepts);
                 }
+
+                // Always store all department IDs for student filtering
+                setTeacherDepartmentIds(allDepts.map(d => d.id));
             }
         } catch (err) {
             console.error('Error fetching departments:', err);
@@ -263,12 +267,12 @@ export default function AttendancePage() {
     }, [selectedSemester, subjectsToUse.length, selectedDepartmentId]);
 
     // Fetch students when subject is selected (triggered by auto-select above)
-    // Refetch when date or subject changes
+    // Refetch when date, subject, or department changes
     useEffect(() => {
         if (selectedSubjectId) {
             fetchStudentsForSubject(selectedSubjectId);
         }
-    }, [selectedSubjectId, selectedDate]);
+    }, [selectedSubjectId, selectedDate, selectedDepartmentId]);
 
 
     const fetchStudentsForSubject = async (subjectId: string) => {
@@ -277,22 +281,53 @@ export default function AttendancePage() {
 
         setLoading(true);
         try {
-            const res = await fetch(`/api/student-subjects?subjectId=${subjectId}`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.status === 401) {
-                router.push('/login');
-                return;
-            }
-            const data = await res.json();
+            // Get all subjects for the selected semester (not just one)
+            const semesterSubjects = subjectsToUse.filter(s => s.subjectSemester === parseInt(selectedSemester));
 
-            const enrolledStudents = (data.enrollments || []).map((e: any) => ({
-                id: e.studentId,
-                roll_number: e.studentRollNumber || e.studentId.slice(-4),
-                first_name: e.studentName?.split(' ')[0] || 'Unknown',
-                last_name: e.studentName?.split(' ').slice(1).join(' ') || '',
-                attendance: undefined as 'present' | 'absent' | undefined
-            }));
+            // Fetch students from ALL subjects for this semester and merge them
+            const allStudentsMap = new Map<string, Student>();
+
+            for (const subject of semesterSubjects) {
+                const res = await fetch(`/api/student-subjects?subjectId=${subject.subjectId}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.status === 401) {
+                    router.push('/login');
+                    return;
+                }
+                const data = await res.json();
+
+                (data.enrollments || []).forEach((e: any) => {
+                    // Only add if student's department matches the selected/teacher's department
+                    // AND not already in the map (deduplicate by student ID)
+                    const studentDeptId = e.studentDepartmentId;
+
+                    // If specific department is selected, filter by that; otherwise filter by all teacher's departments
+                    let matchesDepartment = false;
+                    if (selectedDepartmentId) {
+                        // Specific department selected - filter by that department only
+                        matchesDepartment = studentDeptId === selectedDepartmentId;
+                    } else if (teacherDepartmentIds.length > 0) {
+                        // No specific selection - filter by all teacher's departments
+                        matchesDepartment = teacherDepartmentIds.includes(studentDeptId);
+                    } else {
+                        // No department info (shouldn't happen) - allow all
+                        matchesDepartment = true;
+                    }
+
+                    if (matchesDepartment && !allStudentsMap.has(e.studentId)) {
+                        allStudentsMap.set(e.studentId, {
+                            id: e.studentId,
+                            roll_number: e.studentRollNumber || e.studentId.slice(-4),
+                            first_name: e.studentName?.split(' ')[0] || 'Unknown',
+                            last_name: e.studentName?.split(' ').slice(1).join(' ') || '',
+                            attendance: undefined
+                        });
+                    }
+                });
+            }
+
+            const enrolledStudents = Array.from(allStudentsMap.values());
 
             // Fetch existing attendance for this date and subject
             const attRes = await fetch(`/api/attendance?subjectId=${subjectId}&date=${selectedDate}`, {
@@ -316,6 +351,9 @@ export default function AttendancePage() {
                     attendance: record ? (record.status as 'present' | 'absent') : undefined
                 };
             });
+
+            // Sort students by roll number
+            studentsWithAttendance.sort((a, b) => String(a.roll_number || '').localeCompare(String(b.roll_number || '')));
 
             setStudents(studentsWithAttendance);
         } catch (err) {

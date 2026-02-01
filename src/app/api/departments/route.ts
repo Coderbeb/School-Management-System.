@@ -7,6 +7,7 @@ interface DepartmentRow {
     name: string;
     code: string;
     dept_type: string;
+    degree_type: string;
     hod_name: string | null;
     created_at: Date;
 }
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
         }
 
         const departments = await query<DepartmentRow>(
-            `SELECT d.id, d.name, d.code, d.dept_type, d.created_at,
+            `SELECT d.id, d.name, d.code, d.dept_type, d.degree_type, d.created_at,
                     CONCAT(u.first_name, ' ', u.last_name) as hod_name
              FROM departments d
              LEFT JOIN users u ON u.department_id = d.id AND u.role = 'hod'

@@ -44,13 +44,21 @@ export async function GET(request: NextRequest) {
             )`);
             params.push(userDeptId);
         } else if (role === 'teacher') {
-            // Teacher: filter by students in their assigned subjects
-            filters.push(`ar.student_id IN (
-                SELECT ss.student_id FROM student_subjects ss
-                JOIN teacher_subjects ts ON ss.subject_id = ts.subject_id
-                WHERE ts.teacher_id = $${params.length + 1}
-            )`);
-            params.push(userId);
+            // Teacher: if departmentId param is provided, filter by it
+            // Otherwise, filter by students in their assigned subjects
+            if (departmentId) {
+                filters.push(`ar.student_id IN (
+                    SELECT id FROM students WHERE department_id = $${params.length + 1}
+                )`);
+                params.push(departmentId);
+            } else {
+                filters.push(`ar.student_id IN (
+                    SELECT ss.student_id FROM student_subjects ss
+                    JOIN teacher_subjects ts ON ss.subject_id = ts.subject_id
+                    WHERE ts.teacher_id = $${params.length + 1}
+                )`);
+                params.push(userId);
+            }
         } else if (role === 'super_admin' && departmentId) {
             // Super admin with department filter (students.department_id)
             filters.push(`ar.student_id IN (

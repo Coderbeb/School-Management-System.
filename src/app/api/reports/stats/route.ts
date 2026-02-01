@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
             stats: {
                 totalStudents,
                 totalSubjects,
-                totalLectures,
+                totalSessions: totalLectures,
                 averageAttendance,
             }
         });

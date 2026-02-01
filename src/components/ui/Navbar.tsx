@@ -44,11 +44,11 @@ export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: Navb
                         {!pathname.includes('/dashboard') && (
                             <div className="hidden md:flex items-center ml-2 pl-4 border-l border-gray-200 h-6">
                                 <button
-                                    onClick={() => router.push(backUrl || '/dashboard')}
+                                    onClick={() => router.back()}
                                     className="flex items-center gap-2 text-sm font-bold text-gray-900 hover:text-blue-600 transition-colors"
                                 >
                                     <ArrowLeft className="w-4 h-4" />
-                                    {backLabel || 'Dashboard'}
+                                    Back
                                 </button>
                             </div>
                         )}

@@ -51,21 +51,21 @@ interface Department {
     id: string;
     name: string;
     code: string;
+    degree_type: string;
 }
 
 interface Subject {
     id: string;
     code: string;
     name: string;
-    subjectType: string;
+    degreeType: string;
     semester: number;
-    departmentId: string;
 }
 
 interface GroupedSubject {
     code: string;
     name: string;
-    departmentId: string;
+    degreeType: string;
     semesters: number[];
 }
 
@@ -110,12 +110,12 @@ export default function TeachersPage() {
     // Default academic year
     const [academicYear] = useState('2025-2026');
 
-    // Group subjects by code + departmentId for dropdown
+    // Group subjects by code + degreeType for dropdown
     const groupedSubjects = useMemo(() => {
         const groups: Map<string, GroupedSubject> = new Map();
 
         subjects.forEach(subject => {
-            const key = `${subject.code}|${subject.departmentId}`;
+            const key = `${subject.code}|${subject.degreeType}`;
 
             if (groups.has(key)) {
                 const group = groups.get(key)!;
@@ -126,7 +126,7 @@ export default function TeachersPage() {
                 groups.set(key, {
                     code: subject.code,
                     name: subject.name,
-                    departmentId: subject.departmentId,
+                    degreeType: subject.degreeType,
                     semesters: [subject.semester]
                 });
             }
@@ -138,11 +138,15 @@ export default function TeachersPage() {
         return Array.from(groups.entries());
     }, [subjects]);
 
-    // Filter subjects based on selected departments
+    // Filter subjects based on selected departments' degree_types
     const filteredSubjects = useMemo(() => {
         if (selectedDepartmentIds.length === 0) return [];
-        return groupedSubjects.filter(([, g]) => selectedDepartmentIds.includes(g.departmentId));
-    }, [groupedSubjects, selectedDepartmentIds]);
+        // Get the degree_types of selected departments
+        const selectedDegreeTypes = departments
+            .filter(d => selectedDepartmentIds.includes(d.id))
+            .map(d => d.degree_type);
+        return groupedSubjects.filter(([, g]) => selectedDegreeTypes.includes(g.degreeType));
+    }, [groupedSubjects, selectedDepartmentIds, departments]);
 
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -221,12 +225,15 @@ export default function TeachersPage() {
     const handleDepartmentToggle = (deptId: string) => {
         setSelectedDepartmentIds(prev => {
             if (prev.includes(deptId)) {
-                // Remove department and also remove subjects from that department
+                // Remove department and also remove subjects from that department's degree_type
                 const newDepts = prev.filter(id => id !== deptId);
-                const deptSubjectKeys = groupedSubjects
-                    .filter(([, g]) => g.departmentId === deptId)
-                    .map(([key]) => key);
-                setSelectedSubjectKeys(prevSubs => prevSubs.filter(k => !deptSubjectKeys.includes(k)));
+                const dept = departments.find(d => d.id === deptId);
+                if (dept) {
+                    const deptSubjectKeys = groupedSubjects
+                        .filter(([, g]) => g.degreeType === dept.degree_type)
+                        .map(([key]) => key);
+                    setSelectedSubjectKeys(prevSubs => prevSubs.filter(k => !deptSubjectKeys.includes(k)));
+                }
                 return newDepts;
             } else {
                 return [...prev, deptId];
@@ -270,7 +277,7 @@ export default function TeachersPage() {
             teacher.subjects.forEach(sub => {
                 const matchingSubject = subjects.find(s => s.id === sub.subjectId);
                 if (matchingSubject) {
-                    subjectKeys.add(`${matchingSubject.code}|${matchingSubject.departmentId}`);
+                    subjectKeys.add(`${matchingSubject.code}|${matchingSubject.degreeType}`);
                 }
             });
             setSelectedSubjectKeys(Array.from(subjectKeys));
@@ -383,7 +390,7 @@ export default function TeachersPage() {
                 currentTeacher.subjects.forEach(sub => {
                     const matchingSubject = subjects.find(s => s.id === sub.subjectId);
                     if (matchingSubject) {
-                        currentSubjectKeys.add(`${matchingSubject.code}|${matchingSubject.departmentId}`);
+                        currentSubjectKeys.add(`${matchingSubject.code}|${matchingSubject.degreeType}`);
                     }
                 });
             }
@@ -396,7 +403,7 @@ export default function TeachersPage() {
                 for (const sub of currentTeacher.subjects) {
                     const matchingSubject = subjects.find(s => s.id === sub.subjectId);
                     if (matchingSubject) {
-                        const key = `${matchingSubject.code}|${matchingSubject.departmentId}`;
+                        const key = `${matchingSubject.code}|${matchingSubject.degreeType}`;
                         if (keysToRemove.includes(key)) {
                             await fetch(`/api/teacher-subjects?id=${sub.assignmentId}`, {
                                 method: 'DELETE',
@@ -411,7 +418,7 @@ export default function TeachersPage() {
             const keysToAdd = selectedSubjectKeys.filter(k => !currentSubjectKeys.has(k));
 
             for (const key of keysToAdd) {
-                const [subjectCode, departmentId] = key.split('|');
+                const [subjectCode, degreeType] = key.split('|');
                 await fetch('/api/teacher-subjects', {
                     method: 'POST',
                     headers: {
@@ -421,7 +428,7 @@ export default function TeachersPage() {
                     body: JSON.stringify({
                         teacherId,
                         subjectCode,
-                        departmentId,
+                        degreeType,
                         academicYear
                     }),
                 });
@@ -437,11 +444,13 @@ export default function TeachersPage() {
     // Import Helper Functions
     const normalizeData = (data: any[]) => {
         const keyMap: { [key: string]: string } = {
-            'email': 'email', 'email address': 'email', 'mail': 'email',
-            'first name': 'first_name', 'firstname': 'first_name', 'name': 'first_name', 'first_name': 'first_name',
-            'last name': 'last_name', 'lastname': 'last_name', 'surname': 'last_name', 'last_name': 'last_name',
-            'department': 'department_code', 'dept': 'department_code', 'department code': 'department_code', 'department_code': 'department_code',
-            'role': 'role', 'position': 'role', 'type': 'role'
+            'email': 'email', 'email address': 'email', 'mail': 'email', 'email*': 'email',
+            'first name': 'first_name', 'firstname': 'first_name', 'name': 'first_name', 'first_name': 'first_name', 'first_name*': 'first_name',
+            'last name': 'last_name', 'lastname': 'last_name', 'surname': 'last_name', 'last_name': 'last_name', 'last_name*': 'last_name',
+            'department': 'department_code', 'dept': 'department_code', 'department code': 'department_code', 'department_code': 'department_code', 'department_code*': 'department_code',
+            'role': 'role', 'position': 'role', 'type': 'role', 'role*': 'role',
+            'password': 'password', 'pass': 'password',
+            'subjects': 'subject_codes', 'subject codes': 'subject_codes', 'subject_codes': 'subject_codes', 'assigned subjects': 'subject_codes'
         };
 
         return data.map(row => {
@@ -507,13 +516,13 @@ export default function TeachersPage() {
     };
 
     const downloadTemplate = () => {
-        // Teachers template - all mandatory except password (defaults to Welcome@123)
-        const headers = ['email*', 'first_name*', 'last_name*', 'department_code*', 'role*', 'password'];
+        // Teachers template - all mandatory except password and subjects
+        const headers = ['email*', 'first_name*', 'last_name*', 'department_code*', 'role*', 'password', 'subject_codes'];
         const dummyData = [
-            ['teacher1@college.edu', 'Amit', 'Sharma', 'IT', 'teacher', ''],
-            ['teacher2@college.edu', 'Priya', 'Verma', 'HIS', 'teacher', ''],
-            ['hod.physics@college.edu', 'Dr. Rajesh', 'Kumar', 'PHY', 'hod', 'custom123'],
-            ['hod.bba@college.edu', 'Dr. Neha', 'Singh', 'BBA', 'hod', '']
+            ['teacher1@college.edu', 'Amit', 'Sharma', 'IT', 'teacher', '', 'Programming,DBMS'],
+            ['teacher2@college.edu', 'Priya', 'Verma', 'HIS', 'teacher', '', 'History,Political Science'],
+            ['hod.physics@college.edu', 'Dr. Rajesh', 'Kumar', 'PHY', 'hod', 'custom123', 'Physics,Mathematics'],
+            ['hod.bba@college.edu', 'Dr. Neha', 'Singh', 'BBA', 'hod', '', 'Management,Marketing,Accounts']
         ];
 
         const csvContent = [

@@ -37,11 +37,10 @@ export async function GET(request: NextRequest) {
             SELECT ts.*, 
                    u.first_name as teacher_first_name, u.last_name as teacher_last_name,
                    s.code as subject_code, s.name as subject_name, s.semester as subject_semester,
-                   s.department_id, d.name as department_name, d.code as department_code
+                   s.degree_type
             FROM teacher_subjects ts
             JOIN users u ON u.id = ts.teacher_id
             JOIN subjects s ON s.id = ts.subject_id
-            LEFT JOIN departments d ON d.id = s.department_id
             WHERE 1=1
         `;
         const params: string[] = [];
@@ -63,7 +62,7 @@ export async function GET(request: NextRequest) {
 
         queryStr += ' ORDER BY ts.created_at DESC';
 
-        const assignments = await query<TeacherSubjectRow & { subject_semester: number; department_id: string; department_name: string; department_code: string }>(queryStr, params);
+        const assignments = await query<TeacherSubjectRow & { subject_semester: number; degree_type: string }>(queryStr, params);
 
         return NextResponse.json({
             assignments: assignments.map(a => ({
@@ -75,9 +74,7 @@ export async function GET(request: NextRequest) {
                 subjectName: a.subject_name,
                 subjectSemester: a.subject_semester,
                 academicYear: a.academic_year,
-                departmentId: a.department_id,
-                departmentName: a.department_name,
-                departmentCode: a.department_code,
+                degreeType: a.degree_type,
                 createdAt: a.created_at
             }))
         });
@@ -107,7 +104,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
-        const { teacherId, subjectId, subjectCode, departmentId, academicYear } = await request.json();
+        const { teacherId, subjectId, subjectCode, degreeType, academicYear } = await request.json();
 
         if (!teacherId || !academicYear) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -116,16 +113,16 @@ export async function POST(request: NextRequest) {
         // If subjectCode + departmentId provided, get all subject IDs for that code
         let subjectIds: string[] = [];
 
-        if (subjectCode && departmentId) {
+        if (subjectCode && degreeType) {
             const subjects = await query<{ id: string }>(
-                'SELECT id FROM subjects WHERE code = $1 AND department_id = $2',
-                [subjectCode, departmentId]
+                'SELECT id FROM subjects WHERE code = $1 AND degree_type = $2',
+                [subjectCode, degreeType]
             );
             subjectIds = subjects.map(s => s.id);
         } else if (subjectId) {
             subjectIds = [subjectId];
         } else {
-            return NextResponse.json({ error: 'Subject ID or code+departmentId required' }, { status: 400 });
+            return NextResponse.json({ error: 'Subject ID or code+degreeType required' }, { status: 400 });
         }
 
         if (subjectIds.length === 0) {

@@ -52,9 +52,11 @@ export default function DailyReportPage() {
         const parsedUser = JSON.parse(userData);
         setUser(parsedUser);
 
-        // Fetch departments for super_admin
+        // Fetch departments for super_admin or teacher with multiple depts
         if (parsedUser.role === 'super_admin') {
             fetchDepartments(token);
+        } else if (parsedUser.role === 'teacher' || parsedUser.role === 'hod') {
+            fetchTeacherDepartments(token, parsedUser.id);
         }
     }, [router]);
 
@@ -80,6 +82,42 @@ export default function DailyReportPage() {
             setDepartments(data.departments || []);
         } catch (err) {
             console.error('Error fetching departments:', err);
+        }
+    };
+
+    // Fetch departments for teachers (based on their assignments)
+    const fetchTeacherDepartments = async (token: string, teacherId: string) => {
+        try {
+            const res = await fetch('/api/teachers', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            const teacher = data.teachers?.find((t: any) => t.id === teacherId);
+            if (teacher) {
+                const allDepts: Department[] = [];
+                // Add primary department
+                if (teacher.department_id && teacher.department_name) {
+                    allDepts.push({
+                        id: teacher.department_id,
+                        name: teacher.department_name,
+                        code: teacher.department_code || ''
+                    });
+                }
+                // Add additional departments
+                if (teacher.departments && Array.isArray(teacher.departments)) {
+                    teacher.departments.forEach((dept: any) => {
+                        if (!allDepts.find(d => d.id === dept.id)) {
+                            allDepts.push({ id: dept.id, name: dept.name, code: dept.code || '' });
+                        }
+                    });
+                }
+                // Only set if more than 1 department
+                if (allDepts.length > 1) {
+                    setDepartments(allDepts);
+                }
+            }
+        } catch (err) {
+            console.error('Error fetching teacher departments:', err);
         }
     };
 
@@ -184,8 +222,8 @@ export default function DailyReportPage() {
                                     />
                                 </div>
 
-                                {/* Department Filter - Only for super_admin */}
-                                {user?.role === 'super_admin' && (
+                                {/* Department Filter - For super_admin or teachers with multiple depts */}
+                                {(user?.role === 'super_admin' || departments.length > 1) && (
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
                                         <select
@@ -225,7 +263,7 @@ export default function DailyReportPage() {
 
                     {/* Mobile Filters */}
                     <div className="md:hidden flex gap-2 mb-4">
-                        {user?.role === 'super_admin' && (
+                        {(user?.role === 'super_admin' || departments.length > 1) && (
                             <select
                                 value={selectedDepartmentId}
                                 onChange={(e) => setSelectedDepartmentId(e.target.value)}
