@@ -435,22 +435,22 @@ export default function TeacherReportPage() {
                                     <div className="space-y-6">
                                         {/* Teacher Info */}
                                         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-xl shadow-md">
-                                            <h3 className="text-xl font-bold">{selectedTeacher.teacher.name}</h3>
-                                            <p className="text-blue-100 text-sm">{selectedTeacher.teacher.email}</p>
+                                            <h3 className="text-xl font-bold">{selectedTeacher.teacher?.name || 'Unknown Teacher'}</h3>
+                                            <p className="text-blue-100 text-sm">{selectedTeacher.teacher?.email || 'No Email'}</p>
                                             <div className="mt-2 inline-flex items-center px-2 py-1 bg-white/20 rounded text-xs backdrop-blur-sm">
-                                                {selectedTeacher.teacher.department}
+                                                {selectedTeacher.teacher?.department || 'No Department'}
                                             </div>
                                         </div>
 
                                         {/* Filter Section */}
-                                        {(selectedTeacher.filters.departments.length > 1 || selectedTeacher.filters.semesters.length > 1) && (
+                                        {selectedTeacher.filters && (selectedTeacher.filters.departments?.length > 1 || selectedTeacher.filters.semesters?.length > 1) && (
                                             <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
                                                 <div className="flex items-center gap-2 mb-3">
                                                     <Filter className="h-4 w-4 text-gray-500" />
                                                     <span className="font-semibold text-sm text-gray-700">Filter Data</span>
                                                 </div>
                                                 <div className="flex flex-col sm:flex-row gap-3">
-                                                    {selectedTeacher.filters.departments.length > 1 && (
+                                                    {selectedTeacher.filters.departments?.length > 1 && (
                                                         <div className="flex-1">
                                                             <label className="block text-xs text-gray-500 mb-1">Department</label>
                                                             <select
@@ -467,7 +467,7 @@ export default function TeacherReportPage() {
                                                             </select>
                                                         </div>
                                                     )}
-                                                    {selectedTeacher.filters.semesters.length > 1 && (
+                                                    {selectedTeacher.filters.semesters?.length > 1 && (
                                                         <div className="flex-1">
                                                             <label className="block text-xs text-gray-500 mb-1">Semester</label>
                                                             <select

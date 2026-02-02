@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Search, X, BookOpen, CheckCircle, TrendingUp, GraduationCap, ChevronRight, FileText, FileSpreadsheet, FileDown } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Input } from '@/components/ui/input';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
@@ -254,50 +255,10 @@ export default function StudentReportPage() {
             link.click();
             document.body.removeChild(link);
         } else if (format === 'excel') {
-            // Generate XML-based Excel file (compatible with Excel, LibreOffice, Google Sheets)
-            const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
- <Styles>
-  <Style ss:ID="Header">
-   <Font ss:Bold="1"/>
-   <Interior ss:Color="#4472C4" ss:Pattern="Solid"/>
-   <Font ss:Color="#FFFFFF"/>
-  </Style>
-  <Style ss:ID="Good">
-   <Interior ss:Color="#C6EFCE" ss:Pattern="Solid"/>
-  </Style>
-  <Style ss:ID="Warning">
-   <Interior ss:Color="#FFEB9C" ss:Pattern="Solid"/>
-  </Style>
-  <Style ss:ID="Critical">
-   <Interior ss:Color="#FFC7CE" ss:Pattern="Solid"/>
-  </Style>
- </Styles>
- <Worksheet ss:Name="Student Report">
-  <Table>
-   <Row>
-    ${headers.map(h => `<Cell ss:StyleID="Header"><Data ss:Type="String">${h}</Data></Cell>`).join('')}
-   </Row>
-   ${rows.map(row => {
-                const status = row[5];
-                const styleId = status === 'Good Standing' ? 'Good' : status === 'Warning' ? 'Warning' : 'Critical';
-                return `<Row>
-    ${row.map((cell, i) => `<Cell${i === 5 ? ` ss:StyleID="${styleId}"` : ''}><Data ss:Type="${i === 2 || i === 3 ? 'Number' : 'String'}">${cell.replace('%', '')}</Data></Cell>`).join('')}
-   </Row>`;
-            }).join('\n   ')}
-  </Table>
- </Worksheet>
-</Workbook>`;
-
-            const blob = new Blob([xmlContent], { type: 'application/vnd.ms-excel' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = `${filename}.xls`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Student Report");
+            XLSX.writeFile(workbook, `${filename}.xlsx`);
         } else if (format === 'pdf') {
             // Generate a printable HTML and trigger print dialog for PDF
             const printContent = `
