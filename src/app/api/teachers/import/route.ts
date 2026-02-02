@@ -70,18 +70,18 @@ export async function POST(req: Request) {
                 const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
                 // 4. Insert User and get ID
+                // FIXED: Removed non-existent column 'additional_departments'
                 const insertResult = await query<{ id: string }>(
                     `INSERT INTO users (
-                        first_name, last_name, email, password_hash, role, department_id, additional_departments
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+                        first_name, last_name, email, password_hash, role, department_id
+                    ) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
                     [
                         teacher.first_name,
                         teacher.last_name,
                         email,
                         hashedPassword,
                         role,
-                        deptId,
-                        JSON.stringify([]) // Initial empty additional departments
+                        deptId
                     ]
                 );
 
@@ -91,22 +91,32 @@ export async function POST(req: Request) {
                 if (newTeacherId && teacher.subject_codes) {
                     const subjectInputs = teacher.subject_codes.split(',').map((s: string) => s.trim()).filter(Boolean);
 
+                    // Helper to determine academic year
+                    const now = new Date();
+                    const currentYear = now.getFullYear();
+                    const academicYear = now.getMonth() >= 5 ? `${currentYear}-${currentYear + 1}` : `${currentYear - 1}-${currentYear}`;
+
                     for (const input of subjectInputs) {
                         const inputUpper = input.toUpperCase();
-                        // Search all subjects (teachers can teach any subject)
+
+                        // FIXED: Filter subjects by teacher's department degree type
+                        // This prevents assigning "Vocational" subjects to "Regular" teachers
                         const matchedSubject = allSubjects.find(s =>
-                            s.code.toUpperCase() === inputUpper ||
-                            s.name.toUpperCase() === inputUpper ||
-                            s.name.toUpperCase().includes(inputUpper) ||
-                            inputUpper.includes(s.name.toUpperCase())
+                            s.degree_type === deptInfo.degreeType && (
+                                s.code.toUpperCase() === inputUpper ||
+                                s.name.toUpperCase() === inputUpper ||
+                                s.name.toUpperCase().includes(inputUpper) ||
+                                inputUpper.includes(s.name.toUpperCase())
+                            )
                         );
 
                         if (matchedSubject) {
                             try {
+                                // FIXED: specific column names and added academic_year
                                 await query(
-                                    `INSERT INTO teacher_subjects (user_id, subject_id) VALUES ($1, $2) 
-                                     ON CONFLICT (user_id, subject_id) DO NOTHING`,
-                                    [newTeacherId, matchedSubject.id]
+                                    `INSERT INTO teacher_subjects (teacher_id, subject_id, academic_year) VALUES ($1, $2, $3) 
+                                     ON CONFLICT (teacher_id, subject_id, academic_year) DO NOTHING`,
+                                    [newTeacherId, matchedSubject.id, academicYear]
                                 );
                             } catch {
                                 // Ignore duplicate assignment errors

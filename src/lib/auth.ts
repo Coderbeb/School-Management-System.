@@ -3,6 +3,10 @@ import bcrypt from 'bcrypt';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
 
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+    throw new Error('FATAL: JWT_SECRET environment variable is not defined in production');
+}
+
 export interface JWTPayload {
     userId: string;
     email: string;

@@ -235,6 +235,12 @@ export async function DELETE(request: NextRequest) {
             }
         }
 
+        // Unlink teacher from attendance records (preserve history)
+        await query('UPDATE attendance_records SET teacher_id = NULL WHERE teacher_id = $1', [id]);
+
+        // Unlink from audit logs if any
+        await query('UPDATE audit_logs SET user_id = NULL WHERE user_id = $1', [id]);
+
         await query('DELETE FROM users WHERE id = $1', [id]);
 
         return NextResponse.json({ message: 'Teacher deleted successfully' });

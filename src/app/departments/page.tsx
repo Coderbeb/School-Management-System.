@@ -271,8 +271,8 @@ export default function DepartmentsPage() {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${dept.dept_type === 'regular' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                                                        dept.dept_type === 'pg' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
-                                                            'bg-green-50 text-green-700 border border-green-200'
+                                                    dept.dept_type === 'pg' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                                                        'bg-green-50 text-green-700 border border-green-200'
                                                     }`}>
                                                     {dept.dept_type === 'pg' ? 'PG' : dept.dept_type?.charAt(0).toUpperCase() + dept.dept_type?.slice(1)}
                                                 </span>

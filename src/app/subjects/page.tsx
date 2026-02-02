@@ -28,7 +28,7 @@ interface Subject {
 interface GroupedSubject {
     code: string;
     name: string;
-    degreeType: string;
+    degreeTypes: string[];
     credits: number;
     semesters: number[];
     ids: string[];
@@ -116,24 +116,27 @@ export default function SubjectsPage() {
         }
     };
 
-    // Group subjects by code + degreeType
+    // Group subjects by code
     const groupedSubjects = useMemo(() => {
         const groups: Map<string, GroupedSubject> = new Map();
 
         subjects.forEach(subject => {
-            const key = `${subject.code}-${subject.degreeType}`;
+            const key = subject.code; // Group by code only
 
             if (groups.has(key)) {
                 const group = groups.get(key)!;
+                if (!group.degreeTypes.includes(subject.degreeType)) {
+                    group.degreeTypes.push(subject.degreeType);
+                }
                 if (!group.semesters.includes(subject.semester)) {
                     group.semesters.push(subject.semester);
-                    group.ids.push(subject.id);
                 }
+                group.ids.push(subject.id);
             } else {
                 groups.set(key, {
                     code: subject.code,
                     name: subject.name,
-                    degreeType: subject.degreeType,
+                    degreeTypes: [subject.degreeType],
                     credits: subject.credits,
                     semesters: [subject.semester],
                     ids: [subject.id]
@@ -153,14 +156,15 @@ export default function SubjectsPage() {
             const matchesSearch =
                 group.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 group.code.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesDegreeType = !filterDegreeType || group.degreeType === filterDegreeType;
+            // Check if any of the group's degree types match the filter
+            const matchesDegreeType = !filterDegreeType || group.degreeTypes.includes(filterDegreeType);
             const matchesSem = !filterSemester || group.semesters.includes(parseInt(filterSemester));
             return matchesSearch && matchesDegreeType && matchesSem;
         });
     }, [groupedSubjects, searchTerm, filterDegreeType, filterSemester]);
 
     const handleEdit = (group: GroupedSubject) => {
-        // Determine course type from degree type
+        // Determine course type from degree type (use the first one found)
         const getDeptTypeFromDegreeType = (dt: string) => {
             if (['ba', 'bsc', 'bcom'].includes(dt)) return 'regular';
             if (['it', 'bba'].includes(dt)) return 'vocational';
@@ -168,14 +172,17 @@ export default function SubjectsPage() {
             return 'regular';
         };
 
+        const primaryDegreeType = group.degreeTypes[0] || 'ba';
+
         setFormData({
             code: group.code,
             name: group.name,
             credits: group.credits.toString(),
-            deptType: getDeptTypeFromDegreeType(group.degreeType),
-            degreeType: group.degreeType
+            deptType: getDeptTypeFromDegreeType(primaryDegreeType),
+            degreeType: primaryDegreeType
         });
         setSelectedSemesters([...group.semesters]);
+        setSelectedDegreeTypes([...group.degreeTypes]);
         setEditingGroup(group);
         setShowModal(true);
         setError('');
@@ -256,30 +263,65 @@ export default function SubjectsPage() {
 
         try {
             if (editingGroup) {
-                // UPDATE - sync semesters
-                const res = await fetch('/api/subjects', {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        id: editingGroup.ids[0],
-                        oldCode: editingGroup.code,
-                        oldDegreeType: editingGroup.degreeType,  // Original degree type
-                        newDegreeType: formData.degreeType,      // New degree type from form
-                        code: formData.code,
-                        name: formData.name,
-                        credits: formData.credits,
-                        semesters: selectedSemesters
-                    }),
-                });
+                // UPDATE
+                // We need to handle updates for degree types:
+                // 1. Kept types (Intersection): Update Details
+                // 2. Removed types (In editingGroup but not in selected): Delete
+                // 3. Added types (In selected but not in editingGroup): Create
 
-                const data = await res.json();
-                if (!res.ok) {
-                    setError(data.error || 'Failed to update subject');
-                    return;
+                const originalTypes = editingGroup.degreeTypes;
+                const newTypes = formData.deptType === 'vocational' ? selectedDegreeTypes : [formData.degreeType];
+
+                const keptTypes = originalTypes.filter(dt => newTypes.includes(dt));
+                const removedTypes = originalTypes.filter(dt => !newTypes.includes(dt));
+                const addedTypes = newTypes.filter(dt => !originalTypes.includes(dt));
+
+                // 1. Update Kept Types
+                for (const dt of keptTypes) {
+                    await fetch('/api/subjects', {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Authorization: `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({
+                            oldCode: editingGroup.code,
+                            oldDegreeType: dt,
+                            newDegreeType: dt,
+                            code: formData.code,
+                            name: formData.name,
+                            credits: formData.credits,
+                            semesters: selectedSemesters
+                        }),
+                    });
                 }
+
+                // 2. Delete Removed Types
+                for (const dt of removedTypes) {
+                    await fetch(`/api/subjects?code=${encodeURIComponent(editingGroup.code)}&degreeType=${dt}`, {
+                        method: 'DELETE',
+                        headers: { Authorization: `Bearer ${token}` },
+                    });
+                }
+
+                // 3. Create Added Types
+                if (addedTypes.length > 0) {
+                    await fetch('/api/subjects', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Authorization: `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({
+                            code: formData.code,
+                            name: formData.name,
+                            credits: formData.credits,
+                            degreeTypes: addedTypes,
+                            semesters: selectedSemesters
+                        }),
+                    });
+                }
+
                 setSuccess('Subject updated successfully!');
             } else {
                 // CREATE - with degreeTypes array for vocational, single degreeType for others
@@ -322,20 +364,25 @@ export default function SubjectsPage() {
     };
 
     const handleDelete = async (group: GroupedSubject) => {
-        if (!confirm(`Are you sure you want to delete "${group.name}" from all ${group.semesters.length} semester(s)?`)) return;
+        if (!confirm(`Are you sure you want to delete "${group.name}" from ALL associated degree types (${group.degreeTypes.join(', ')})?`)) return;
         const token = localStorage.getItem('token');
 
         try {
-            const res = await fetch(`/api/subjects?code=${encodeURIComponent(group.code)}&degreeType=${group.degreeType}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            // Delete for each degree type in the group
+            let successCount = 0;
+            for (const dt of group.degreeTypes) {
+                const res = await fetch(`/api/subjects?code=${encodeURIComponent(group.code)}&degreeType=${dt}`, {
+                    method: 'DELETE',
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.ok) successCount++;
+            }
 
-            if (res.ok) {
+            if (successCount === group.degreeTypes.length) {
                 fetchSubjects(token!);
             } else {
-                const data = await res.json();
-                alert(data.error || 'Failed to delete subject');
+                alert('Some subjects could not be deleted (possibly due to existing attendance records).');
+                fetchSubjects(token!); // Refresh anyway
             }
         } catch (err) {
             console.error('Error deleting:', err);
@@ -403,18 +450,6 @@ export default function SubjectsPage() {
 
                 {/* Search & Filter Controls */}
                 <div className="mb-6 flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                    <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-                        <div className="relative w-full md:w-auto">
-                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                            <input
-                                placeholder="Search subjects..."
-                                className="w-full md:w-80 bg-gray-50 border border-transparent hover:bg-white hover:border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl pl-10 pr-4 py-2 text-sm transition-all outline-none"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                        </div>
-                    </div>
-
                     <div className="flex gap-2 w-full md:w-auto">
                         {user?.role === 'super_admin' && (
                             <div className="relative w-full md:w-auto">
@@ -446,6 +481,18 @@ export default function SubjectsPage() {
                                 ))}
                             </select>
                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                        <div className="relative w-full md:w-auto">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <input
+                                placeholder="Search subjects..."
+                                className="w-full md:w-80 bg-gray-50 border border-transparent hover:bg-white hover:border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl pl-10 pr-4 py-2 text-sm transition-all outline-none"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
                         </div>
                     </div>
                 </div>
@@ -487,7 +534,7 @@ export default function SubjectsPage() {
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
                                     {filteredGroups.map((group) => (
-                                        <tr key={`${group.code}-${group.degreeType}`} className="hover:bg-gray-50/80 transition-colors">
+                                        <tr key={group.code} className="hover:bg-gray-50/80 transition-colors">
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold shadow-sm shadow-indigo-200">
@@ -500,9 +547,13 @@ export default function SubjectsPage() {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-100">
-                                                    {getDegreeTypeLabel(group.degreeType)}
-                                                </span>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {group.degreeTypes.map(dt => (
+                                                        <span key={dt} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-100">
+                                                            {getDegreeTypeLabel(dt)}
+                                                        </span>
+                                                    ))}
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-wrap gap-1">
@@ -559,7 +610,7 @@ export default function SubjectsPage() {
                         <div className="space-y-3">
                             {filteredGroups.map((group) => (
                                 <div
-                                    key={`${group.code}-${group.degreeType}`}
+                                    key={group.code}
                                     className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 relative"
                                 >
                                     <div className="flex justify-between items-start mb-3">
@@ -597,9 +648,11 @@ export default function SubjectsPage() {
                                     </div>
 
                                     <div className="flex flex-wrap gap-2 mt-3">
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-100">
-                                            {getDegreeTypeLabel(group.degreeType)}
-                                        </span>
+                                        {group.degreeTypes.map(dt => (
+                                            <span key={dt} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-100">
+                                                {getDegreeTypeLabel(dt)}
+                                            </span>
+                                        ))}
                                     </div>
 
                                     <div className="mt-3 pt-3 border-t border-gray-50 flex items-center gap-2 overflow-x-auto pb-1">

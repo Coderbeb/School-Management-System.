@@ -52,6 +52,34 @@ export async function POST(request: NextRequest) {
                     continue;
                 }
 
+                // 1. Prevent Future Dates
+                const recordDateObj = new Date(recordDate);
+                const today = new Date();
+                today.setHours(23, 59, 59, 999); // End of today
+
+                if (recordDateObj > today) {
+                    console.warn(`Attempted to mark attendance for future date: ${recordDate}`);
+                    continue; // Skip future dates
+                }
+
+                // 2. Verify Teacher Assignment (Security)
+                // Check if this teacher is actually assigned to this subject
+                // (Optimization: In a real app, cache this lookup or do it once per batch. 
+                // For safety/simplicity here, we check per record/subject)
+                const assignmentCheck = await query(
+                    'SELECT 1 FROM teacher_subjects WHERE teacher_id = $1 AND subject_id = $2',
+                    [payload.userId, recordSubjectId]
+                );
+
+                if (assignmentCheck.length === 0) {
+                    // Start of workaround for HODs: HODs might default to having access if it matches their dept?
+                    // User prompt implies strict "Fix". Assuming HODs should assign themselves subjects too.
+                    // But if this blocks legitimate HOD usage, we might need a fallback.
+                    // For now, strict 'teacher_subjects' check is the correct behavior for "fixing code".
+                    console.warn(`User ${payload.userId} not assigned to subject ${recordSubjectId}`);
+                    continue; // Skip unauthorized subjects
+                }
+
                 await query(
                     `INSERT INTO attendance_records (subject_id, student_id, teacher_id, date, lecture_number, status)
                      VALUES ($1, $2, $3, $4, $5, $6)
