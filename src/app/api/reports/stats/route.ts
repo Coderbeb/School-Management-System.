@@ -104,12 +104,12 @@ export async function GET(request: NextRequest) {
         // Get total lectures (distinct date + subject + lecture_number)
         let totalLectures = 0;
         try {
-            const lectureQuery = `SELECT COUNT(DISTINCT ar.date || ar.subject_id || ar.lecture_number) as count 
+            const lectureQuery = `SELECT COUNT(DISTINCT ar.date::text || ar.subject_id::text || ar.lecture_number::text) as count 
                 FROM attendance_records ar WHERE 1=1 ${attendanceFilter}`;
             const lectureCount = await queryOne<CountResult>(lectureQuery, attendanceParams);
             totalLectures = parseInt(lectureCount?.count || '0');
-        } catch {
-            // Table might not exist
+        } catch (err) {
+            console.error('Error counting lectures:', err);
         }
 
         // Calculate actual average attendance from attendance_records

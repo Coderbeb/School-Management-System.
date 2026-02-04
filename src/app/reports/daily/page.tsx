@@ -45,7 +45,13 @@ export default function DailyReportPage() {
     const [loading, setLoading] = useState(true);
     const [departments, setDepartments] = useState<Department[]>([]);
     const [subjects, setSubjects] = useState<Subject[]>([]);
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [selectedDate, setSelectedDate] = useState(() => {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    });
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
     const [selectedSemester, setSelectedSemester] = useState('');
     const [selectedSubjectId, setSelectedSubjectId] = useState('');

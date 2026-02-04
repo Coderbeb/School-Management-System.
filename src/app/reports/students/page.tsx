@@ -94,8 +94,20 @@ export default function StudentReportPage() {
     const [loadingDetail, setLoadingDetail] = useState(false);
     
     // Date range filter states for student detail
-    const [popupStartDate, setPopupStartDate] = useState('');
-    const [popupEndDate, setPopupEndDate] = useState('');
+    const [popupStartDate, setPopupStartDate] = useState(() => {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    });
+    const [popupEndDate, setPopupEndDate] = useState(() => {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    });
     const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -785,7 +797,7 @@ export default function StudentReportPage() {
                                 </Button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                            <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar">
                                 {loadingDetail ? (
                                     <div className="flex flex-col items-center justify-center py-12">
                                         <div className="animate-spin w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full mb-4"></div>
@@ -823,7 +835,7 @@ export default function StudentReportPage() {
                                                 </div>
                                             </div>
 
-                                            <div className="grid grid-cols-3 gap-4 mt-6">
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mt-6">
                                                 <div className="bg-white p-4 rounded-xl shadow-sm border border-purple-100 text-center">
                                                     <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Total Classes</div>
                                                     <div className="text-2xl font-bold text-gray-900">{selectedStudent.summary.totalClasses}</div>
