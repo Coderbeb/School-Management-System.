@@ -363,10 +363,13 @@ export default function AttendancePage() {
             });
 
             // Sort students by roll number
-            studentsWithAttendance.sort((a, b) => String(a.roll_number || '').localeCompare(String(b.roll_number || '')));
+            // Sort students by roll number (natural sort for correct numeric ordering)
+            studentsWithAttendance.sort((a, b) =>
+                String(a.roll_number || '').localeCompare(String(b.roll_number || ''), undefined, { numeric: true, sensitivity: 'base' })
+            );
 
             setStudents(studentsWithAttendance);
-            
+
             // Fetch history for these students
             fetchAttendanceHistory(studentsWithAttendance, subjectId);
         } catch (err) {
@@ -385,13 +388,13 @@ export default function AttendancePage() {
     const fetchAttendanceHistory = async (studentList: Student[], subjectId: string) => {
         const token = localStorage.getItem('token');
         if (!token || studentList.length === 0) return;
-        
+
         try {
             const studentIds = studentList.map(s => s.id).join(',');
             const res = await fetch(`/api/attendance/history?studentIds=${studentIds}&subjectId=${subjectId}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            
+
             if (res.ok) {
                 const data = await res.json();
                 setAttendanceHistory(data.history || {});
@@ -909,13 +912,12 @@ export default function AttendancePage() {
                                                         <td className="px-3 sm:px-6 py-3 text-center">
                                                             <div className="flex items-center justify-center gap-1">
                                                                 {[...(attendanceHistory[student.id] || [])].reverse().map((record, i) => (
-                                                                    <div 
-                                                                        key={i} 
+                                                                    <div
+                                                                        key={i}
                                                                         title={record.date}
-                                                                        className={`w-2 h-2 rounded-full ${
-                                                                            record.status === 'present' ? 'bg-green-500' : 
-                                                                            record.status === 'absent' ? 'bg-red-500' : 'bg-yellow-500'
-                                                                        }`}
+                                                                        className={`w-2 h-2 rounded-full ${record.status === 'present' ? 'bg-green-500' :
+                                                                                record.status === 'absent' ? 'bg-red-500' : 'bg-yellow-500'
+                                                                            }`}
                                                                     />
                                                                 ))}
                                                                 {!attendanceHistory[student.id]?.length && <span className="text-gray-300 text-xs">-</span>}

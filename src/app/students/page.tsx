@@ -866,7 +866,9 @@ export default function StudentsPage() {
         const matchesSem = !filterSemester || student.current_semester.toString() === filterSemester;
 
         return matchesSearch && matchesDept && matchesSem;
-    });
+    }).sort((a, b) =>
+        String(a.roll_number || '').localeCompare(String(b.roll_number || ''), undefined, { numeric: true, sensitivity: 'base' })
+    );
 
     const isSuperAdmin = user?.role === 'super_admin';
     const canManage = user?.role === 'super_admin' || user?.role === 'hod';
