@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, X, BookOpen, CheckCircle, TrendingUp, GraduationCap, ChevronRight, FileText, FileSpreadsheet, FileDown, Calendar, Filter, ChevronDown, User, AlertCircle, Eye } from 'lucide-react';
+import { Search, X, BookOpen, CheckCircle, TrendingUp, GraduationCap, ChevronRight, FileText, FileSpreadsheet, FileDown, Calendar, Filter, ChevronDown, User, AlertCircle, Eye, CalendarDays } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Input } from '@/components/ui/input';
 import { Navbar } from '@/components/ui/Navbar';
@@ -77,6 +77,8 @@ interface StudentDetail {
 
 export default function StudentReportPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const statusParam = searchParams.get('status');
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [departments, setDepartments] = useState<Department[]>([]);
@@ -368,10 +370,21 @@ export default function StudentReportPage() {
         }
     };
 
-    const filteredStudents = students.filter(student =>
-        student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.rollNumber.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredStudents = students.filter(student => {
+        const matchesSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (student.rollNumber && String(student.rollNumber).toLowerCase().includes(searchTerm.toLowerCase()));
+        
+        if (!matchesSearch) return false;
+
+        if (statusParam === 'critical') {
+            return student.percentage < 60;
+        }
+        if (statusParam === 'warning') {
+            return student.percentage >= 60 && student.percentage < 75;
+        }
+
+        return true;
+    });
 
     const getAttendanceColor = (percentage: number) => {
         if (percentage >= 85) return 'bg-emerald-500';
@@ -476,7 +489,7 @@ export default function StudentReportPage() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col pt-16 font-sans">
+        <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
             {/* Mobile Sidebar */}
             {user && (
                 <MobileSidebar
@@ -490,69 +503,60 @@ export default function StudentReportPage() {
             {/* Navbar */}
             <Navbar user={user} onMenuClick={() => setSidebarOpen(true)} />
 
-            {/* Consistent Purple Gradient Header */}
-            <div className="bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white relative overflow-hidden">
-                <div className="absolute inset-0 opacity-10">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full -translate-y-1/2 translate-x-1/2"></div>
-                    <div className="absolute bottom-0 left-0 w-48 h-48 bg-white rounded-full translate-y-1/2 -translate-x-1/2"></div>
-                </div>
-                
-                <div className="max-w-7xl mx-auto px-4 py-8 relative">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="flex items-center space-x-4">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => router.push('/reports')}
-                                className="text-white/90 hover:bg-white/20 hover:text-white"
-                            >
-                                <ChevronRight className="w-4 h-4 mr-1 rotate-180" />
-                                Back
-                            </Button>
-                            <div>
-                                <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-                                    <GraduationCap className="w-6 h-6 md:w-8 md:h-8 opacity-90" />
-                                    Student Reports
-                                </h1>
-                                <p className="text-purple-100 mt-1 opacity-90">Individual student attendance records</p>
-                            </div>
-                        </div>
+            <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
+                {/* Hero / Welcome Section */}
+                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-8 mb-8 shadow-xl">
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
+                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
 
-                        {/* Export Buttons */}
-                        <div className="flex gap-2 bg-white/10 p-1.5 rounded-xl backdrop-blur-sm border border-white/10">
-                            <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="text-white hover:bg-white/20 h-8 px-2"
-                                onClick={() => exportReport('pdf')}
-                                title="Export PDF"
-                            >
-                                <FileText className="w-4 h-4" />
-                            </Button>
-                            <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="text-white hover:bg-white/20 h-8 px-2"
-                                onClick={() => exportReport('excel')}
-                                title="Export Excel"
-                            >
-                                <FileSpreadsheet className="w-4 h-4" />
-                            </Button>
-                            <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="text-white hover:bg-white/20 h-8 px-2"
-                                onClick={() => exportReport('csv')}
-                                title="Export CSV"
-                            >
-                                <FileDown className="w-4 h-4" />
-                            </Button>
+                    <div className="relative z-10">
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+                            <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-blue-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
+                                </div>
+                                
+                                <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                                    Student Reports <span className="inline-block animate-wave">🎓</span>
+                                </h1>
+                                <p className="text-blue-100 text-lg max-w-xl">
+                                    View individual attendance records, track performance, and download detailed report cards.
+                                </p>
+                            </div>
+
+                             {/* Export Buttons */}
+                             <div className="flex gap-2 bg-white/10 p-1.5 rounded-xl backdrop-blur-sm border border-white/10 self-start">
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="text-white hover:bg-white/20 h-8 px-2"
+                                    onClick={() => exportReport('pdf')}
+                                    title="Export PDF"
+                                >
+                                    <FileText className="w-4 h-4" />
+                                </Button>
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="text-white hover:bg-white/20 h-8 px-2"
+                                    onClick={() => exportReport('excel')}
+                                    title="Export Excel"
+                                >
+                                    <FileSpreadsheet className="w-4 h-4" />
+                                </Button>
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="text-white hover:bg-white/20 h-8 px-2"
+                                    onClick={() => exportReport('csv')}
+                                    title="Export CSV"
+                                >
+                                    <FileDown className="w-4 h-4" />
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <main className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full -mt-8 relative z-10">
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                     {/* Filters Sidebar */}
                     <div className="lg:col-span-1 space-y-4">
@@ -617,11 +621,11 @@ export default function StudentReportPage() {
                                 </div>
 
                                 <Button 
-                                    className="w-full bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200"
                                     onClick={() => {
                                         setSelectedSemester('');
                                         setSelectedDepartmentId('');
                                         setSearchTerm('');
+                                        router.push('/reports/students');
                                     }}
                                 >
                                     Reset Filters

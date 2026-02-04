@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Calendar, TrendingUp, BookOpen, Clock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Users, Calendar, TrendingUp, BookOpen, Clock, ChevronRight } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 
@@ -137,15 +138,32 @@ export default function MyPerformancePage() {
             {/* Navbar */}
             <Navbar user={user} onMenuClick={() => setSidebarOpen(true)} />
 
-            <div className="flex-1 pt-20 px-4 max-w-7xl mx-auto w-full">
-                {/* Page Header */}
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">
-                        <TrendingUp className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900">My Performance</h1>
-                        <p className="text-sm text-gray-500">Your teaching statistics and attendance overview</p>
+            <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
+                {/* Hero / Welcome Section */}
+                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-8 mb-8 shadow-xl">
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
+                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
+
+                    <div className="relative z-10">
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+                            <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-blue-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
+                                </div>
+                                
+                                <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                                    My Performance <span className="inline-block animate-wave">📈</span>
+                                </h1>
+                                <p className="text-blue-100 text-lg max-w-xl">
+                                    Track your teaching statistics, attendance trends, and subject-wise performance.
+                                </p>
+                            </div>
+                            
+                             {/* Visual Icon */}
+                             <div className="hidden md:block p-3 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/20">
+                                <TrendingUp className="w-8 h-8 text-white" />
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -307,7 +325,7 @@ export default function MyPerformancePage() {
                         )}
                     </main>
                 )}
-            </div>
+            </main>
         </div>
     );
 }

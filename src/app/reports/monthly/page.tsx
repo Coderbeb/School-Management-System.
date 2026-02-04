@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, TrendingUp, TrendingDown, BarChart3, ArrowLeft, Filter, ChevronDown, Clock, Activity, AlertCircle } from 'lucide-react';
+import { Calendar, TrendingUp, TrendingDown, BarChart3, ArrowLeft, Filter, ChevronDown, Clock, Activity, AlertCircle, ChevronRight, CalendarDays } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 
@@ -160,7 +160,7 @@ export default function MonthlyReportPage() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50/50 flex flex-col pt-16 font-sans">
+        <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
             {/* Mobile Sidebar */}
             {user && (
                 <MobileSidebar
@@ -174,38 +174,33 @@ export default function MonthlyReportPage() {
             {/* Navbar */}
             <Navbar user={user} onMenuClick={() => setSidebarOpen(true)} />
 
-            {/* Consistent Purple Gradient Header */}
-            <div className="bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white relative overflow-hidden">
-                <div className="absolute inset-0 opacity-10">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full -translate-y-1/2 translate-x-1/2"></div>
-                    <div className="absolute bottom-0 left-0 w-48 h-48 bg-white rounded-full translate-y-1/2 -translate-x-1/2"></div>
-                </div>
-                
-                <div className="max-w-7xl mx-auto px-4 py-8 relative">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="flex items-center space-x-4">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => router.push('/reports')}
-                                className="text-white/90 hover:bg-white/20 hover:text-white"
-                            >
-                                <ArrowLeft className="w-4 h-4 mr-1" />
-                                Back
-                            </Button>
+            <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
+                {/* Hero / Welcome Section */}
+                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-8 mb-8 shadow-xl">
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
+                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
+
+                    <div className="relative z-10">
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
                             <div>
-                                <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-                                    <BarChart3 className="w-6 h-6 md:w-8 md:h-8 opacity-90" />
-                                    Monthly Summary
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-blue-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
+                                </div>
+                                
+                                <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                                    Monthly Summary <span className="inline-block animate-wave">📊</span>
                                 </h1>
-                                <p className="text-purple-100 mt-1 opacity-90">Attendance analytics for {formatMonth(selectedMonth)}</p>
+                                <p className="text-blue-100 text-lg max-w-xl">
+                                    Attendance analytics for <span className="font-semibold text-white">{formatMonth(selectedMonth)}</span>.
+                                </p>
+                            </div>
+                            {/* Visual Icon */}
+                            <div className="hidden md:block p-3 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/20">
+                                <BarChart3 className="w-8 h-8 text-white" />
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <main className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full -mt-8 relative z-10">
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                     {/* Filters Sidebar - Cleaner Look */}
                     <div className="lg:col-span-1 space-y-4">

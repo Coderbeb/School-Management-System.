@@ -182,7 +182,7 @@ export default function DepartmentOverviewPage() {
     if (!user) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-indigo-50 flex flex-col pt-16">
+        <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
             <MobileSidebar 
                 isOpen={sidebarOpen} 
                 onClose={() => setSidebarOpen(false)} 
@@ -196,68 +196,58 @@ export default function DepartmentOverviewPage() {
                 onLogout={handleLogout}
             />
 
-            {/* Enhanced Header */}
-            <div className="bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white relative overflow-hidden">
-                {/* Background decoration */}
-                <div className="absolute inset-0 opacity-10">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full -translate-y-1/2 translate-x-1/2"></div>
-                    <div className="absolute bottom-0 left-0 w-48 h-48 bg-white rounded-full translate-y-1/2 -translate-x-1/2"></div>
-                </div>
-                
-                <div className="max-w-7xl mx-auto px-4 py-8 relative">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                        <div className="flex items-center space-x-4">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => router.push('/reports')}
-                                className="text-white/90 hover:bg-white/20 hover:text-white"
-                            >
-                                <ArrowLeft className="w-4 h-4 mr-1" />
-                                Back
-                            </Button>
+            {/* Main Content */}
+            <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
+                {/* Hero / Welcome Section */}
+                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-8 mb-8 shadow-xl">
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
+                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
+
+                    <div className="relative z-10">
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
                             <div>
-                                <div className="flex items-center space-x-3">
-                                    <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
-                                        <Building2 className="w-6 h-6" />
-                                    </div>
-                                    <div>
-                                        <h1 className="text-2xl md:text-3xl font-bold">Department Overview</h1>
-                                        {data?.department && (
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className="px-2 py-0.5 bg-white/20 rounded-full text-sm backdrop-blur-sm">
-                                                    {data.department.name}
-                                                </span>
-                                                <span className="px-2 py-0.5 bg-white/10 rounded-full text-xs">
-                                                    {data.department.code}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-blue-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                                 </div>
+                                
+                                <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                                    Department Overview <span className="inline-block animate-wave">🏢</span>
+                                </h1>
+                                <p className="text-blue-100 text-lg max-w-xl">
+                                    View detailed performance metrics, subject-wise analysis, and student alerts.
+                                </p>
+                                
+                                {data?.department && (
+                                    <div className="flex items-center gap-3 mt-4">
+                                        <span className="px-3 py-1 bg-white/20 rounded-full text-sm font-medium backdrop-blur-sm border border-white/10">
+                                            {data.department.name}
+                                        </span>
+                                        <span className="px-3 py-1 bg-purple-500/30 rounded-full text-xs font-mono border border-purple-500/30">
+                                            {data.department.code}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
+                            
+                            {/* Department selector */}
+                            {user.role === 'super_admin' && departments.length > 0 && (
+                                <div className="bg-white/10 p-1.5 rounded-xl backdrop-blur-sm border border-white/20 self-start">
+                                    <select
+                                        value={selectedDepartmentId}
+                                        onChange={(e) => setSelectedDepartmentId(e.target.value)}
+                                        className="bg-transparent text-white border-0 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:bg-gray-800 transition-colors cursor-pointer"
+                                    >
+                                        {departments.map(dept => (
+                                            <option key={dept.id} value={dept.id} className="text-gray-900 bg-white">
+                                                {dept.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                         </div>
-                        
-                        {/* Department selector */}
-                        {user.role === 'super_admin' && departments.length > 0 && (
-                            <select
-                                value={selectedDepartmentId}
-                                onChange={(e) => setSelectedDepartmentId(e.target.value)}
-                                className="bg-white/20 text-white border border-white/30 rounded-xl px-4 py-2.5 text-sm backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-white/50"
-                            >
-                                {departments.map(dept => (
-                                    <option key={dept.id} value={dept.id} className="text-gray-900">
-                                        {dept.name}
-                                    </option>
-                                ))}
-                            </select>
-                        )}
                     </div>
                 </div>
-            </div>
-
-            {/* Main Content */}
-            <main className="flex-1 max-w-7xl mx-auto px-4 py-8 w-full">
                 {loading ? (
                     <div className="flex flex-col items-center justify-center h-64 gap-4">
                         <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>

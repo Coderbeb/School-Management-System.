@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, BarChart3, Users, UserCheck, TrendingUp, ChevronRight, AlertTriangle, CheckCircle, Clock, BookOpen, Building2, GraduationCap, LayoutDashboard } from 'lucide-react';
+import { Calendar, BarChart3, Users, UserCheck, TrendingUp, ChevronRight, AlertTriangle, CheckCircle, Clock, BookOpen, Building2, GraduationCap, LayoutDashboard, UsersRound, CalendarDays } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 
@@ -194,7 +194,7 @@ export default function ReportsPage() {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-indigo-50 flex flex-col pt-16 font-sans">
+        <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
             {/* Mobile Sidebar */}
             {user && (
                 <MobileSidebar
@@ -208,37 +208,37 @@ export default function ReportsPage() {
             {/* Navbar */}
             <Navbar user={user} onMenuClick={() => setSidebarOpen(true)} />
 
-            {/* Page Header with Greeting */}
-            <div className="bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white relative overflow-hidden">
-                {/* Background decoration */}
-                <div className="absolute inset-0 opacity-10">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full -translate-y-1/2 translate-x-1/2"></div>
-                    <div className="absolute bottom-0 left-0 w-48 h-48 bg-white rounded-full translate-y-1/2 -translate-x-1/2"></div>
-                </div>
+            <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
+                {/* Hero / Welcome Section */}
+                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-8 mb-8 shadow-xl">
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
+                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
 
-                <div className="max-w-7xl mx-auto px-4 py-8 relative">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <div className="flex items-center gap-2 mb-1">
-                                <span className="text-purple-200 text-sm font-medium tracking-wide uppercase">
-                                    {user?.role === 'super_admin' ? 'Super Admin Portal' : user?.role === 'hod' ? 'Head of Department' : 'Faculty Dashboard'}
-                                </span>
+                    <div className="relative z-10">
+                        <div className="flex items-start justify-between">
+                            <div>
+                                <h1 className="text-3xl font-bold mb-2">
+                                    Attendance Analytics <span className="inline-block animate-wave">📊</span>
+                                </h1>
+                                <p className="text-blue-100 text-lg max-w-xl">
+                                    Welcome to your reports dashboard. View detailed statistics, track attendance trends, and <span className="font-semibold text-white">generate insights</span>.
+                                </p>
                             </div>
-                            <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-                                {getRoleGreeting()}
-                            </h1>
-                            <p className="text-purple-100 mt-1 opacity-90">Welcome to your attendance analytics dashboard.</p>
+                            <BarChart3 className="hidden sm:block w-12 h-12 text-blue-200 opacity-80" />
                         </div>
-                        <div className="hidden md:block">
-                            <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/20">
-                                <LayoutDashboard className="w-8 h-8 text-white" />
-                            </div>
+
+                        <div className="mt-8 flex gap-3">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm font-medium backdrop-blur-md">
+                                <UsersRound className="w-4 h-4" />
+                                {user?.role ? user.role.replace('_', ' ').toUpperCase() : 'USER'}
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm font-medium backdrop-blur-md">
+                                <CalendarDays className="w-4 h-4" />
+                                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                            </span>
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <main className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full -mt-4 relative z-10">
                 {/* Quick Stats Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                     {getQuickStats().map((stat, index) => (
@@ -263,7 +263,7 @@ export default function ReportsPage() {
                 {(user?.role === 'hod' || user?.role === 'super_admin') && (stats.lowAttendanceCount || stats.warningAttendanceCount) ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                         {/* Low Attendance Alert */}
-                        {stats.lowAttendanceCount && stats.lowAttendanceCount > 0 && (
+                        {(stats.lowAttendanceCount || 0) > 0 && (
                             <Card className="border-0 shadow-md bg-white hover:shadow-lg transition-shadow">
                                 <CardContent className="p-5">
                                     <div className="flex items-center gap-4">
@@ -287,7 +287,7 @@ export default function ReportsPage() {
                         )}
 
                         {/* Warning Alert */}
-                        {stats.warningAttendanceCount && stats.warningAttendanceCount > 0 && (
+                        {(stats.warningAttendanceCount || 0) > 0 && (
                             <Card className="border-0 shadow-md bg-white hover:shadow-lg transition-shadow">
                                 <CardContent className="p-5">
                                     <div className="flex items-center gap-4">
