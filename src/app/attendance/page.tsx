@@ -76,6 +76,9 @@ export default function AttendancePage() {
     const [isHoliday, setIsHoliday] = useState(false);
     const [holidayName, setHolidayName] = useState('');
 
+    // Attendance history state (last 5 records per student)
+    const [attendanceHistory, setAttendanceHistory] = useState<Record<string, { status: string; date: string }[]>>({});
+
     // Auto-save timer ref
     const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
     const pendingChangesRef = useRef(false);
@@ -356,6 +359,9 @@ export default function AttendancePage() {
             studentsWithAttendance.sort((a, b) => String(a.roll_number || '').localeCompare(String(b.roll_number || '')));
 
             setStudents(studentsWithAttendance);
+            
+            // Fetch history for these students
+            fetchAttendanceHistory(studentsWithAttendance, subjectId);
         } catch (err) {
             console.error('Error fetching students:', err);
         }
@@ -367,6 +373,26 @@ export default function AttendancePage() {
     useEffect(() => {
         studentsRef.current = students;
     }, [students]);
+
+    // Fetch attendance history for a list of students
+    const fetchAttendanceHistory = async (studentList: Student[], subjectId: string) => {
+        const token = localStorage.getItem('token');
+        if (!token || studentList.length === 0) return;
+        
+        try {
+            const studentIds = studentList.map(s => s.id).join(',');
+            const res = await fetch(`/api/attendance/history?studentIds=${studentIds}&subjectId=${subjectId}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                setAttendanceHistory(data.history || {});
+            }
+        } catch (err) {
+            console.error('Error fetching history:', err);
+        }
+    };
 
     // Debounced auto-save function
     const triggerAutoSave = useCallback(() => {
@@ -864,6 +890,7 @@ export default function AttendancePage() {
                                                 <tr>
                                                     <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold bg-gray-50 w-20 sm:w-32">Roll No</th>
                                                     <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold bg-gray-50">Name</th>
+                                                    <th className="px-3 sm:px-6 py-3 text-center text-xs sm:text-sm font-semibold bg-gray-50">Last 5</th>
                                                     <th className="px-3 sm:px-6 py-3 text-center text-xs sm:text-sm font-semibold bg-gray-50 w-32 sm:w-48">Attendance</th>
                                                 </tr>
                                             </thead>
@@ -872,6 +899,21 @@ export default function AttendancePage() {
                                                     <tr key={student.id} className="hover:bg-gray-50">
                                                         <td className="px-3 sm:px-6 py-3 text-xs sm:text-sm font-mono font-bold">{student.roll_number}</td>
                                                         <td className="px-3 sm:px-6 py-3 text-xs sm:text-sm font-medium">{student.first_name} <span className="hidden sm:inline">{student.last_name}</span></td>
+                                                        <td className="px-3 sm:px-6 py-3 text-center">
+                                                            <div className="flex items-center justify-center gap-1">
+                                                                {attendanceHistory[student.id]?.map((record, i) => (
+                                                                    <div 
+                                                                        key={i} 
+                                                                        title={record.date}
+                                                                        className={`w-2 h-2 rounded-full ${
+                                                                            record.status === 'present' ? 'bg-green-500' : 
+                                                                            record.status === 'absent' ? 'bg-red-500' : 'bg-yellow-500'
+                                                                        }`}
+                                                                    />
+                                                                ))}
+                                                                {!attendanceHistory[student.id]?.length && <span className="text-gray-300 text-xs">-</span>}
+                                                            </div>
+                                                        </td>
                                                         <td className="px-3 sm:px-6 py-3">
                                                             <div className="flex justify-center gap-2">
                                                                 <button

@@ -10,6 +10,17 @@ interface AttendanceRecord {
     late: string;
 }
 
+interface DetailedRecord {
+    student_id: string;
+    roll_number: string;
+    first_name: string;
+    last_name: string;
+    subject_code: string;
+    subject_name: string;
+    lecture_number: number;
+    status: string;
+}
+
 // GET - Daily attendance report
 export async function GET(request: NextRequest) {
     try {
@@ -31,6 +42,7 @@ export async function GET(request: NextRequest) {
         const subjectId = searchParams.get('subjectId');
         const departmentId = searchParams.get('departmentId');
         const semester = searchParams.get('semester');
+        const detailed = searchParams.get('detailed') === 'true';
 
         // Build role-based filter
         const filters: string[] = [];
@@ -44,21 +56,11 @@ export async function GET(request: NextRequest) {
             )`);
             params.push(userDeptId);
         } else if (role === 'teacher') {
-            // Teacher: if departmentId param is provided, filter by it
-            // Otherwise, filter by students in their assigned subjects
-            if (departmentId) {
-                filters.push(`ar.student_id IN (
-                    SELECT id FROM students WHERE department_id = $${params.length + 1}
-                )`);
-                params.push(departmentId);
-            } else {
-                filters.push(`ar.student_id IN (
-                    SELECT ss.student_id FROM student_subjects ss
-                    JOIN teacher_subjects ts ON ss.subject_id = ts.subject_id
-                    WHERE ts.teacher_id = $${params.length + 1}
-                )`);
-                params.push(userId);
-            }
+            // Teacher: filter by students in their assigned subjects ONLY
+            filters.push(`ar.subject_id IN (
+                SELECT subject_id FROM teacher_subjects WHERE teacher_id = $${params.length + 1}
+            )`);
+            params.push(userId);
         } else if (role === 'super_admin' && departmentId) {
             // Super admin with department filter (students.department_id)
             filters.push(`ar.student_id IN (
@@ -83,7 +85,8 @@ export async function GET(request: NextRequest) {
 
         const filterClause = filters.length > 0 ? 'AND ' + filters.join(' AND ') : '';
 
-        const queryStr = `
+        // Summary query
+        const summaryQueryStr = `
             SELECT 
                 ar.date::text as date,
                 COUNT(DISTINCT ar.student_id) as total_students,
@@ -97,7 +100,7 @@ export async function GET(request: NextRequest) {
             ORDER BY ar.date DESC
         `;
 
-        const records = await query<AttendanceRecord>(queryStr, params);
+        const records = await query<AttendanceRecord>(summaryQueryStr, params);
 
         const formattedRecords = records.map(r => ({
             date: r.date,
@@ -110,9 +113,47 @@ export async function GET(request: NextRequest) {
                 : 0
         }));
 
-        return NextResponse.json({ records: formattedRecords });
+        // If detailed flag is set, also return individual student records
+        let detailedRecords: any[] = [];
+        if (detailed) {
+            const detailQueryStr = `
+                SELECT 
+                    s.id as student_id,
+                    s.roll_number,
+                    s.first_name,
+                    s.last_name,
+                    sub.code as subject_code,
+                    sub.name as subject_name,
+                    ar.lecture_number,
+                    ar.status
+                FROM attendance_records ar
+                JOIN students s ON s.id = ar.student_id
+                JOIN subjects sub ON sub.id = ar.subject_id
+                WHERE ar.date = $1
+                ${filterClause}
+                ORDER BY s.roll_number, sub.code, ar.lecture_number
+            `;
+
+            const details = await query<DetailedRecord>(detailQueryStr, params);
+            
+            detailedRecords = details.map(d => ({
+                studentId: d.student_id,
+                rollNumber: d.roll_number,
+                studentName: `${d.first_name} ${d.last_name}`,
+                subjectCode: d.subject_code,
+                subjectName: d.subject_name,
+                lectureNumber: d.lecture_number,
+                status: d.status
+            }));
+        }
+
+        return NextResponse.json({ 
+            records: formattedRecords,
+            ...(detailed && { detailedRecords })
+        });
     } catch (error) {
         console.error('Daily report error:', error);
         return NextResponse.json({ error: 'Server error' }, { status: 500 });
     }
 }
+

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, BarChart3, Users, UserCheck, ChevronRight } from 'lucide-react';
+import { Calendar, BarChart3, Users, UserCheck, TrendingUp, ChevronRight, AlertTriangle, CheckCircle, Clock, BookOpen, Building2, GraduationCap, LayoutDashboard } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 
@@ -14,12 +14,22 @@ interface User {
     firstName: string;
     lastName: string;
     email: string;
+    departmentId?: string;
 }
 
 interface AttendanceStats {
     totalStudents: number;
     totalSessions: number;
     averageAttendance: number;
+    todayClasses?: number;
+    lowAttendanceCount?: number;
+    warningAttendanceCount?: number;
+    departmentStats?: {
+        departmentId: string;
+        departmentName: string;
+        totalStudents: number;
+        avgAttendance: number;
+    }[];
 }
 
 export default function ReportsPage() {
@@ -69,6 +79,15 @@ export default function ReportsPage() {
         router.push('/login');
     };
 
+    // Get role-specific greeting message
+    const getRoleGreeting = () => {
+        if (!user) return '';
+        const hour = new Date().getHours();
+        const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+        const roleLabel = user.role === 'super_admin' ? 'Admin' : user.role === 'hod' ? 'HOD' : 'Teacher';
+        return `${greeting}, ${user.firstName}!`;
+    };
+
     if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
     const reportCards = [
@@ -78,6 +97,7 @@ export default function ReportsPage() {
             description: 'View attendance by date',
             icon: Calendar,
             color: 'bg-blue-500',
+            gradient: 'from-blue-500 to-blue-600',
             bgLight: 'bg-blue-50',
             href: '/reports/daily'
         },
@@ -86,8 +106,9 @@ export default function ReportsPage() {
             title: 'Monthly Summary',
             description: 'Monthly attendance statistics',
             icon: BarChart3,
-            color: 'bg-green-500',
-            bgLight: 'bg-green-50',
+            color: 'bg-emerald-500',
+            gradient: 'from-emerald-500 to-emerald-600',
+            bgLight: 'bg-emerald-50',
             href: '/reports/monthly'
         },
         {
@@ -96,8 +117,20 @@ export default function ReportsPage() {
             description: 'Individual student attendance',
             icon: Users,
             color: 'bg-purple-500',
+            gradient: 'from-purple-500 to-purple-600',
             bgLight: 'bg-purple-50',
             href: '/reports/students'
+        },
+        // My Performance - for teachers and HODs to see their own stats
+        {
+            id: 'my-performance',
+            title: 'My Performance',
+            description: 'Your teaching statistics',
+            icon: TrendingUp,
+            color: 'bg-indigo-500',
+            gradient: 'from-indigo-500 to-indigo-600',
+            bgLight: 'bg-indigo-50',
+            href: '/reports/my-performance'
         },
         ...(user && user.role !== 'teacher' ? [{
             id: 'teachers',
@@ -105,13 +138,63 @@ export default function ReportsPage() {
             description: 'Attendance by teacher',
             icon: UserCheck,
             color: 'bg-orange-500',
+            gradient: 'from-orange-500 to-orange-600',
             bgLight: 'bg-orange-50',
             href: '/reports/teachers'
+        }] : []),
+        // Department Overview - for HOD and Super Admin only
+        ...(user && user.role !== 'teacher' ? [{
+            id: 'department',
+            title: 'Department Overview',
+            description: 'Semester & subject analytics',
+            icon: Building2,
+            color: 'bg-teal-500',
+            gradient: 'from-teal-500 to-teal-600',
+            bgLight: 'bg-teal-50',
+            href: '/reports/department'
         }] : [])
     ];
 
+    // Quick stats for the role
+    const getQuickStats = () => {
+        const baseStats = [
+            { 
+                label: 'Total Students', 
+                value: stats.totalStudents, 
+                gradient: 'from-blue-500 to-blue-600',
+                icon: Users
+            },
+            { 
+                label: 'Total Sessions', 
+                value: stats.totalSessions, 
+                gradient: 'from-purple-500 to-purple-600',
+                icon: BookOpen
+            },
+            { 
+                label: 'Avg. Attendance', 
+                value: `${stats.averageAttendance}%`, 
+                gradient: stats.averageAttendance >= 75 ? 'from-emerald-500 to-emerald-600' : 'from-orange-500 to-orange-600',
+                icon: TrendingUp
+            },
+        ];
+
+        // Add role-specific stats
+        if (user?.role === 'super_admin' || user?.role === 'hod') {
+            if (stats.lowAttendanceCount !== undefined) {
+                baseStats.push({
+                    label: 'Critical (<60%)',
+                    value: stats.lowAttendanceCount,
+                    gradient: 'from-red-500 to-rose-600',
+                    icon: AlertTriangle
+                });
+            }
+        }
+
+        return baseStats;
+    };
+
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-indigo-50 flex flex-col pt-16 font-sans">
             {/* Mobile Sidebar */}
             {user && (
                 <MobileSidebar
@@ -125,86 +208,200 @@ export default function ReportsPage() {
             {/* Navbar */}
             <Navbar user={user} onMenuClick={() => setSidebarOpen(true)} />
 
-            {/* Page Header */}
-            <div className="bg-white shadow-sm border-b border-gray-200 mt-16">
-                <div className="max-w-7xl mx-auto px-4 py-4">
-                    <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                        <span className="p-2 bg-violet-100 text-violet-700 rounded-lg">
-                            <BarChart3 className="w-6 h-6" />
-                        </span>
-                        Reports
-                    </h1>
+            {/* Page Header with Greeting */}
+            <div className="bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white relative overflow-hidden">
+                {/* Background decoration */}
+                <div className="absolute inset-0 opacity-10">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full -translate-y-1/2 translate-x-1/2"></div>
+                    <div className="absolute bottom-0 left-0 w-48 h-48 bg-white rounded-full translate-y-1/2 -translate-x-1/2"></div>
+                </div>
+
+                <div className="max-w-7xl mx-auto px-4 py-8 relative">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className="text-purple-200 text-sm font-medium tracking-wide uppercase">
+                                    {user?.role === 'super_admin' ? 'Super Admin Portal' : user?.role === 'hod' ? 'Head of Department' : 'Faculty Dashboard'}
+                                </span>
+                            </div>
+                            <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+                                {getRoleGreeting()}
+                            </h1>
+                            <p className="text-purple-100 mt-1 opacity-90">Welcome to your attendance analytics dashboard.</p>
+                        </div>
+                        <div className="hidden md:block">
+                            <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/20">
+                                <LayoutDashboard className="w-8 h-8 text-white" />
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <main className="max-w-7xl mx-auto px-4 py-4 flex-1 w-full">
-                {/* Stats Cards - Mobile optimized */}
-                <div className="grid grid-cols-3 gap-3 mb-6">
-                    <div className="bg-white rounded-2xl p-4 shadow-sm text-center">
-                        <p className="text-2xl sm:text-3xl font-bold text-blue-600">{stats.totalStudents}</p>
-                        <p className="text-xs sm:text-sm text-gray-500 mt-1">Students</p>
-                    </div>
-                    <div className="bg-white rounded-2xl p-4 shadow-sm text-center">
-                        <p className="text-2xl sm:text-3xl font-bold text-green-600">{stats.totalSessions}</p>
-                        <p className="text-xs sm:text-sm text-gray-500 mt-1">Sessions</p>
-                    </div>
-                    <div className="bg-white rounded-2xl p-4 shadow-sm text-center">
-                        <p className="text-2xl sm:text-3xl font-bold text-purple-600">{stats.averageAttendance}%</p>
-                        <p className="text-xs sm:text-sm text-gray-500 mt-1">Avg. Att.</p>
-                    </div>
-                </div>
-
-                {/* Report Types - Mobile Cards */}
-                <div className="md:hidden space-y-3 mb-6">
-                    <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide px-1">Attendance Reports</h2>
-                    {reportCards.map((report) => (
-                        <button
-                            key={report.id}
-                            onClick={() => router.push(report.href)}
-                            className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow"
-                        >
-                            <div className={`w-12 h-12 ${report.color} rounded-xl flex items-center justify-center`}>
-                                <report.icon className="w-6 h-6 text-white" />
-                            </div>
-                            <div className="flex-1 text-left">
-                                <p className="font-semibold text-gray-900">{report.title}</p>
-                                <p className="text-sm text-gray-500">{report.description}</p>
-                            </div>
-                            <ChevronRight className="w-5 h-5 text-gray-400" />
-                        </button>
+            <main className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full -mt-4 relative z-10">
+                {/* Quick Stats Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                    {getQuickStats().map((stat, index) => (
+                        <Card key={index} className={`border-0 shadow-lg text-white bg-gradient-to-br ${stat.gradient} overflow-hidden group hover:-translate-y-1 transition-transform duration-300`}>
+                            <CardContent className="p-5 relative">
+                                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-110 transition-transform duration-500"></div>
+                                <div className="flex items-start justify-between relative z-10">
+                                    <div>
+                                        <p className="text-white/80 text-xs font-bold uppercase tracking-wider mb-1">{stat.label}</p>
+                                        <p className="text-3xl font-bold">{stat.value}</p>
+                                    </div>
+                                    <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                                        <stat.icon className="w-5 h-5" />
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
                     ))}
                 </div>
 
-                {/* Report Types - Desktop Grid */}
-                <Card className="hidden md:block mb-6">
-                    <CardHeader className="py-4 px-4 border-b">
-                        <CardTitle className="text-lg">Attendance Reports</CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {reportCards.map((report) => (
-                                <Button
-                                    key={report.id}
-                                    variant="outline"
-                                    className="h-auto py-4 px-4 text-left justify-start whitespace-normal"
-                                    onClick={() => router.push(report.href)}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 ${report.color} rounded-lg flex items-center justify-center`}>
-                                            <report.icon className="w-5 h-5 text-white" />
+                {/* HOD/Admin - Alerts Section */}
+                {(user?.role === 'hod' || user?.role === 'super_admin') && (stats.lowAttendanceCount || stats.warningAttendanceCount) ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                        {/* Low Attendance Alert */}
+                        {stats.lowAttendanceCount && stats.lowAttendanceCount > 0 && (
+                            <Card className="border-0 shadow-md bg-white hover:shadow-lg transition-shadow">
+                                <CardContent className="p-5">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-3 bg-red-100 rounded-full">
+                                            <AlertTriangle className="w-6 h-6 text-red-600" />
                                         </div>
-                                        <div>
-                                            <p className="font-semibold text-base mb-0.5">{report.title}</p>
-                                            <p className="text-sm text-gray-500 font-normal">{report.description}</p>
+                                        <div className="flex-1">
+                                            <h3 className="font-bold text-gray-900 text-lg">Critical Attendance</h3>
+                                            <p className="text-sm text-gray-500">Students with less than 60% attendance</p>
                                         </div>
+                                        <Button 
+                                            variant="outline" 
+                                            className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                                            onClick={() => router.push('/reports/students?status=critical')}
+                                        >
+                                            View List
+                                        </Button>
                                     </div>
-                                </Button>
-                            ))}
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {/* Warning Alert */}
+                        {stats.warningAttendanceCount && stats.warningAttendanceCount > 0 && (
+                            <Card className="border-0 shadow-md bg-white hover:shadow-lg transition-shadow">
+                                <CardContent className="p-5">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-3 bg-amber-100 rounded-full">
+                                            <Clock className="w-6 h-6 text-amber-600" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <h3 className="font-bold text-gray-900 text-lg">Warning Zone</h3>
+                                            <p className="text-sm text-gray-500">Students between 60% and 75% attendance</p>
+                                        </div>
+                                        <Button 
+                                            variant="outline" 
+                                            className="border-amber-200 text-amber-600 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-300"
+                                            onClick={() => router.push('/reports/students?status=warning')}
+                                        >
+                                            View List
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
+                    </div>
+                ) : null}
+
+                {/* Report Navigation Grid */}
+                <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-purple-600" />
+                    Available Reports
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                    {reportCards.map((report) => (
+                        <div
+                            key={report.id}
+                            onClick={() => router.push(report.href)}
+                            className="group bg-white rounded-2xl p-5 shadow-sm hover:shadow-xl border border-transparent hover:border-purple-100 transition-all duration-300 cursor-pointer flex items-start gap-4 relative overflow-hidden"
+                        >
+                            <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${report.gradient} opacity-5 rounded-bl-full transform translate-x-8 -translate-y-8 group-hover:scale-150 transition-transform duration-500`}></div>
+                            
+                            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${report.gradient} flex items-center justify-center shrink-0 shadow-md group-hover:scale-110 transition-transform duration-300`}>
+                                <report.icon className="w-6 h-6 text-white" />
+                            </div>
+                            
+                            <div className="flex-1 z-10">
+                                <h3 className="font-bold text-gray-900 group-hover:text-purple-700 transition-colors text-lg mb-1">{report.title}</h3>
+                                <p className="text-sm text-gray-500 leading-relaxed">{report.description}</p>
+                            </div>
+                            
+                            <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-purple-500 transform group-hover:translate-x-1 transition-all" />
                         </div>
-                    </CardContent>
-                </Card>
+                    ))}
+                </div>
 
-
+                {/* Super Admin - Department Overview Table */}
+                {user?.role === 'super_admin' && stats.departmentStats && stats.departmentStats.length > 0 && (
+                    <Card className="border-0 shadow-lg bg-white overflow-hidden rounded-2xl">
+                        <CardHeader className="bg-gray-50 border-b border-gray-100 py-4">
+                            <CardTitle className="text-lg flex items-center gap-2 text-gray-800">
+                                <Building2 className="w-5 h-5 text-gray-500" />
+                                Department Performance
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead className="bg-gray-50/50">
+                                        <tr>
+                                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Department</th>
+                                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Students</th>
+                                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Attendance</th>
+                                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {stats.departmentStats.map((dept) => (
+                                            <tr key={dept.departmentId} className="hover:bg-gray-50/80 transition-colors">
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <div className="font-medium text-gray-900">{dept.departmentName}</div>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                    {dept.totalStudents}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-24 bg-gray-100 rounded-full h-2 overflow-hidden">
+                                                            <div 
+                                                                className={`h-full rounded-full ${
+                                                                    dept.avgAttendance >= 75 ? 'bg-emerald-500' : 
+                                                                    dept.avgAttendance >= 60 ? 'bg-amber-500' : 'bg-red-500'
+                                                                }`}
+                                                                style={{ width: `${dept.avgAttendance}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-sm font-bold text-gray-700">{dept.avgAttendance}%</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
+                                                        dept.avgAttendance >= 75 
+                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                                                            : dept.avgAttendance >= 60 
+                                                                ? 'bg-amber-50 text-amber-700 border-amber-100' 
+                                                                : 'bg-red-50 text-red-700 border-red-100'
+                                                    }`}>
+                                                        {dept.avgAttendance >= 75 ? 'Good' : dept.avgAttendance >= 60 ? 'Average' : 'Critical'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
             </main>
         </div>
     );

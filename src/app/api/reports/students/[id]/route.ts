@@ -28,6 +28,14 @@ interface MonthlyStats {
     attendance_pct: string;
 }
 
+interface DailyRecord {
+    date: string;
+    subject_code: string;
+    subject_name: string;
+    lecture_number: number;
+    status: string;
+}
+
 // GET - Get detailed stats for a specific student
 export async function GET(
     request: NextRequest,
@@ -46,6 +54,9 @@ export async function GET(
         }
 
         const { id: studentId } = await params;
+        const { searchParams } = new URL(request.url);
+        const startDate = searchParams.get('startDate');
+        const endDate = searchParams.get('endDate');
 
         // Get student basic info
         const studentInfo = await query<StudentDetail>(
@@ -61,7 +72,21 @@ export async function GET(
             return NextResponse.json({ error: 'Student not found' }, { status: 404 });
         }
 
-        // Get subject-wise stats
+        // Build date filter clause
+        let dateFilter = '';
+        const dateParams: string[] = [];
+        if (startDate && endDate) {
+            dateFilter = ` AND ar.date >= $2 AND ar.date <= $3`;
+            dateParams.push(startDate, endDate);
+        } else if (startDate) {
+            dateFilter = ` AND ar.date >= $2`;
+            dateParams.push(startDate);
+        } else if (endDate) {
+            dateFilter = ` AND ar.date <= $2`;
+            dateParams.push(endDate);
+        }
+
+        // Get subject-wise stats with date filter
         const subjectStats = await query<SubjectStats>(
             `SELECT 
                 s.id as subject_id,
@@ -79,16 +104,15 @@ export async function GET(
                 ) as attendance_pct
              FROM student_subjects ss
              JOIN subjects s ON s.id = ss.subject_id
-             LEFT JOIN attendance_records ar ON ar.subject_id = s.id AND ar.student_id = $1
+             LEFT JOIN attendance_records ar ON ar.subject_id = s.id AND ar.student_id = $1 ${dateFilter}
              WHERE ss.student_id = $1
              GROUP BY s.id, s.name, s.code
              ORDER BY s.name`,
-            [studentId]
+            [studentId, ...dateParams]
         );
 
-        // Get monthly stats (last 6 months)
-        const monthlyStats = await query<MonthlyStats>(
-            `SELECT 
+        // Get monthly stats with date filter
+        let monthlyQuery = `SELECT 
                 TO_CHAR(ar.date, 'YYYY-MM') as month,
                 COUNT(ar.id) as total_classes,
                 COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as attended,
@@ -101,14 +125,22 @@ export async function GET(
                     0
                 ) as attendance_pct
              FROM attendance_records ar
-             WHERE ar.student_id = $1
-               AND ar.date >= CURRENT_DATE - INTERVAL '6 months'
-             GROUP BY TO_CHAR(ar.date, 'YYYY-MM')
-             ORDER BY month DESC`,
-            [studentId]
-        );
+             WHERE ar.student_id = $1`;
+        
+        if (startDate && endDate) {
+            monthlyQuery += ` AND ar.date >= $2 AND ar.date <= $3`;
+        } else if (startDate) {
+            monthlyQuery += ` AND ar.date >= $2`;
+        } else if (endDate) {
+            monthlyQuery += ` AND ar.date <= $2`;
+        } else {
+            monthlyQuery += ` AND ar.date >= CURRENT_DATE - INTERVAL '6 months'`;
+        }
+        monthlyQuery += ` GROUP BY TO_CHAR(ar.date, 'YYYY-MM') ORDER BY month DESC`;
 
-        // Overall summary
+        const monthlyStats = await query<MonthlyStats>(monthlyQuery, [studentId, ...dateParams]);
+
+        // Overall summary with date filter
         const overallStats = await query<{ total_classes: string; attended: string; attendance_pct: string }>(
             `SELECT 
                 COUNT(ar.id) as total_classes,
@@ -122,9 +154,27 @@ export async function GET(
                     0
                 ) as attendance_pct
              FROM attendance_records ar
-             WHERE ar.student_id = $1`,
-            [studentId]
+             WHERE ar.student_id = $1 ${dateFilter}`,
+            [studentId, ...dateParams]
         );
+
+        // Get daily breakdown if date range is specified (for specific day view)
+        let dailyBreakdown: DailyRecord[] = [];
+        if (startDate && endDate) {
+            dailyBreakdown = await query<DailyRecord>(
+                `SELECT 
+                    ar.date::text as date,
+                    s.code as subject_code,
+                    s.name as subject_name,
+                    ar.lecture_number,
+                    ar.status
+                 FROM attendance_records ar
+                 JOIN subjects s ON s.id = ar.subject_id
+                 WHERE ar.student_id = $1 AND ar.date >= $2 AND ar.date <= $3
+                 ORDER BY ar.date DESC, ar.lecture_number ASC`,
+                [studentId, startDate, endDate]
+            );
+        }
 
         const student = studentInfo[0];
         const overall = overallStats[0] || { total_classes: '0', attended: '0', attendance_pct: '0' };
@@ -156,7 +206,17 @@ export async function GET(
                 totalClasses: parseInt(m.total_classes) || 0,
                 attended: parseInt(m.attended) || 0,
                 attendance: Math.round(parseFloat(m.attendance_pct) || 0)
-            }))
+            })),
+            // New: Daily breakdown for specific day/range view
+            dailyBreakdown: dailyBreakdown.map(d => ({
+                date: d.date,
+                subjectCode: d.subject_code,
+                subjectName: d.subject_name,
+                lectureNumber: d.lecture_number,
+                status: d.status
+            })),
+            // Include the date range in response for reference
+            dateRange: startDate && endDate ? { startDate, endDate } : null
         });
     } catch (error) {
         console.error('Student detail error:', error);

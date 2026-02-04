@@ -5,23 +5,28 @@ const path = require('path');
 // Basic .env parser since we don't want to rely on dotenv package if not installed
 function loadEnv() {
     try {
-        const envPath = path.resolve(process.cwd(), '.env.local');
+        let envPath = path.resolve(process.cwd(), '.env.local');
         if (fs.existsSync(envPath)) {
-            const envConfig = fs.readFileSync(envPath, 'utf8');
-            envConfig.split('\n').forEach(line => {
-                const [key, ...value] = line.split('=');
-                if (key && value) {
-                    process.env[key.trim()] = value.join('=').trim().replace(/^["']|["']$/g, '');
-                }
-            });
-            console.log('Loaded environment from .env.local');
+            console.log('Loading environment from .env.local');
         } else {
-            console.log('No .env.local found, checking .env');
-            const envPath2 = path.resolve(process.cwd(), '.env');
-            if (fs.existsSync(envPath2)) {
-                // ... similiar logic or just rely on process.env
+            envPath = path.resolve(process.cwd(), '.env');
+            if (fs.existsSync(envPath)) {
+                console.log('Loading environment from .env');
+            } else {
+                console.log('No .env.local or .env found');
+                return;
             }
         }
+        
+        const envConfig = fs.readFileSync(envPath, 'utf8');
+        envConfig.split('\n').forEach(line => {
+            // Skip comments and empty lines
+            if (line.trim().startsWith('#') || !line.trim()) return;
+            const [key, ...value] = line.split('=');
+            if (key && value.length) {
+                process.env[key.trim()] = value.join('=').trim().replace(/^["']|["']$/g, '');
+            }
+        });
     } catch (e) {
         console.error('Error loading .env file:', e);
     }
@@ -30,15 +35,16 @@ function loadEnv() {
 loadEnv();
 
 if (!process.env.DATABASE_URL) {
-    console.error('Error: DATABASE_URL is not defined in .env.local');
+    console.error('Error: DATABASE_URL is not defined in .env or .env.local');
     process.exit(1);
 }
 
+// For local connections (localhost), SSL is not needed
+const isLocalhost = process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1');
+
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: {
-        rejectUnauthorized: false
-    }
+    ...(isLocalhost ? {} : { ssl: { rejectUnauthorized: false } })
 });
 
 async function setup() {

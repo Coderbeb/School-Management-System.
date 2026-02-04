@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { queryOne } from '@/lib/db';
+import { queryOne, query } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 
 interface CountResult {
@@ -9,6 +9,18 @@ interface CountResult {
 interface AttendanceStats {
     total: string;
     present: string;
+}
+
+interface StudentAttendanceStatus {
+    id: string;
+    attendance_pct: string;
+}
+
+interface DepartmentStats {
+    department_id: string;
+    department_name: string;
+    total_students: string;
+    avg_attendance: string;
 }
 
 export async function GET(request: NextRequest) {
@@ -115,12 +127,97 @@ export async function GET(request: NextRequest) {
             // Table might not exist
         }
 
+        // For HOD and Super Admin: Get low attendance and warning counts
+        let lowAttendanceCount = 0;
+        let warningAttendanceCount = 0;
+
+        if (role === 'hod' || role === 'super_admin') {
+            try {
+                // Get student-wise attendance percentages
+                let studentAttendanceQuery = `
+                    SELECT 
+                        s.id,
+                        COALESCE(
+                            ROUND(
+                                COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
+                                NULLIF(COUNT(ar.id), 0),
+                                1
+                            ),
+                            0
+                        ) as attendance_pct
+                    FROM students s
+                    LEFT JOIN attendance_records ar ON ar.student_id = s.id
+                    WHERE 1=1 ${studentFilter}
+                    GROUP BY s.id
+                    HAVING COUNT(ar.id) > 0
+                `;
+                
+                const studentStats = await query<StudentAttendanceStatus>(studentAttendanceQuery, studentParams);
+                
+                for (const student of studentStats) {
+                    const pct = parseFloat(student.attendance_pct);
+                    if (pct < 60) {
+                        lowAttendanceCount++;
+                    } else if (pct < 75) {
+                        warningAttendanceCount++;
+                    }
+                }
+            } catch (err) {
+                console.error('Error getting attendance counts:', err);
+            }
+        }
+
+        // For Super Admin: Get department-wise stats
+        let departmentStats: { departmentId: string; departmentName: string; totalStudents: number; avgAttendance: number }[] = [];
+
+        if (role === 'super_admin') {
+            try {
+                const deptQuery = `
+                    SELECT 
+                        d.id as department_id,
+                        d.name as department_name,
+                        COUNT(DISTINCT s.id) as total_students,
+                        COALESCE(
+                            ROUND(
+                                COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
+                                NULLIF(COUNT(ar.id), 0),
+                                1
+                            ),
+                            0
+                        ) as avg_attendance
+                    FROM departments d
+                    LEFT JOIN students s ON s.department_id = d.id
+                    LEFT JOIN attendance_records ar ON ar.student_id = s.id
+                    GROUP BY d.id, d.name
+                    ORDER BY d.name
+                `;
+                
+                const deptStats = await query<DepartmentStats>(deptQuery, []);
+                departmentStats = deptStats.map(d => ({
+                    departmentId: d.department_id,
+                    departmentName: d.department_name,
+                    totalStudents: parseInt(d.total_students) || 0,
+                    avgAttendance: Math.round(parseFloat(d.avg_attendance) || 0)
+                }));
+            } catch (err) {
+                console.error('Error getting department stats:', err);
+            }
+        }
+
         return NextResponse.json({
             stats: {
                 totalStudents,
                 totalSubjects,
                 totalSessions: totalLectures,
                 averageAttendance,
+                // Role-specific data
+                ...(role === 'hod' || role === 'super_admin' ? {
+                    lowAttendanceCount,
+                    warningAttendanceCount,
+                } : {}),
+                ...(role === 'super_admin' && departmentStats.length > 0 ? {
+                    departmentStats,
+                } : {}),
             }
         });
     } catch (error) {
