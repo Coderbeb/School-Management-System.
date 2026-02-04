@@ -140,13 +140,28 @@ export async function POST(req: Request) {
                 }
 
                 // Check for individual subject columns
-                // ALL subjects filter by department degree type (no cross-degree)
+                const crossDegreeFields = ['minor', 'mdc', 'vac', 'aec', 'ge1', 'ge2', 'generic1', 'generic2'];
+
                 ['core1', 'core2', 'major_subject', 'major', 'minor', 'mdc', 'vac', 'aec', 'aecc',
                     'ge1', 'ge2', 'generic1', 'generic2'].forEach(col => {
                         if (student[col] && typeof student[col] === 'string' && student[col].trim()) {
-                            subjectInputs.push({ value: student[col].trim(), isCrossDegree: false });
+                            const isCrossDegree = crossDegreeFields.includes(col);
+                            subjectInputs.push({ value: student[col].trim(), isCrossDegree });
                         }
                     });
+
+                // Special Case: Auto-Assign GE for Vocational if not provided in CSV
+                if (parsed.courseType === 'vocational' && parsed.geSubjects) {
+                    const hasGeneric1 = student.generic1 || student.ge1;
+                    const hasGeneric2 = student.generic2 || student.ge2;
+
+                    if (!hasGeneric1 && parsed.geSubjects.ge1) {
+                        subjectInputs.push({ value: parsed.geSubjects.ge1, isCrossDegree: true });
+                    }
+                    if (!hasGeneric2 && parsed.geSubjects.ge2) {
+                        subjectInputs.push({ value: parsed.geSubjects.ge2, isCrossDegree: true });
+                    }
+                }
 
                 // If we have subject inputs, try to find and enroll
                 if (subjectInputs.length > 0) {

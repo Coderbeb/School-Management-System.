@@ -1158,8 +1158,8 @@ export default function TeachersPage() {
             {/* Import Modal */}
             {showImportModal && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-                    <Card className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border-0">
-                        <CardHeader className="bg-gray-50/50 border-b border-gray-100 pb-4">
+                    <Card className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border-0 max-h-[90vh] flex flex-col">
+                        <CardHeader className="bg-gray-50/50 border-b border-gray-100 pb-4 shrink-0">
                             <div className="flex justify-between items-center">
                                 <CardTitle className="text-xl">Import Teachers</CardTitle>
                                 <button onClick={() => setShowImportModal(false)} className="text-gray-400 hover:text-gray-600">
@@ -1167,7 +1167,7 @@ export default function TeachersPage() {
                                 </button>
                             </div>
                         </CardHeader>
-                        <CardContent className="pt-6 space-y-6">
+                        <CardContent className="pt-6 space-y-6 overflow-y-auto">
                             <div className="p-4 bg-blue-50 text-blue-800 rounded-xl text-sm border border-blue-100 flex items-start gap-3">
                                 <div className="mt-0.5"><FileSpreadsheet className="w-5 h-5" /></div>
                                 <div>
@@ -1223,7 +1223,28 @@ export default function TeachersPage() {
                                 </div>
                             )}
 
-                            <div className="flex justify-end pt-2">
+                            {importResults?.errors && importResults.errors.length > 0 && (
+                                <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg">
+                                    <h4 className="text-red-800 font-semibold text-sm mb-2">Import Errors ({importResults.errors.length})</h4>
+                                    <div className="max-h-40 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                                        {importResults.errors.map((err: any, idx: number) => (
+                                            <div key={idx} className="text-xs text-red-600 bg-white p-2 rounded border border-red-100 shadow-sm">
+                                                <span className="font-bold">Row {err.row} ({err.name}):</span> {err.error}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-3 pt-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setShowImportModal(false)}
+                                    className="rounded-xl"
+                                >
+                                    Close
+                                </Button>
                                 <Button
                                     onClick={handleImport}
                                     disabled={!importFile || isImporting}

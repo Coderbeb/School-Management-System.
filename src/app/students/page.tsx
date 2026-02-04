@@ -734,7 +734,7 @@ export default function StudentsPage() {
 
     // Template for Vocational students (BCA/BSCIT/BBA)
     const downloadVocationalTemplate = () => {
-        const headers = ['student_id*', 'first_name*', 'last_name', 'email', 'core1*', 'core2*', 'generic1*', 'generic2*', 'aecc'];
+        const headers = ['student_id*', 'first_name*', 'last_name', 'email', 'core1*', 'core2*', 'generic1', 'generic2', 'aecc'];
         const dummyData = [
             ['BCA2025SC001', 'Rahul', 'Kumar', 'rahul@example.com', 'Programming', 'DBMS', 'Physics', 'Maths', 'English'],
             ['BSCIT2025IT002', 'Priya', 'Sharma', 'priya@example.com', 'Web Dev', 'Networking', 'Physics', 'Maths', ''],
