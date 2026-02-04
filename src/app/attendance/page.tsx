@@ -66,7 +66,14 @@ export default function AttendancePage() {
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
 
     const [loading, setLoading] = useState(true);
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    // Initialize with local date (IST) to prevent previous day issue in early morning
+    const [selectedDate, setSelectedDate] = useState(() => {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    });
     const [saving, setSaving] = useState(false);
     const [autoSaving, setAutoSaving] = useState(false);
     const [message, setMessage] = useState('');
@@ -901,7 +908,7 @@ export default function AttendancePage() {
                                                         <td className="px-3 sm:px-6 py-3 text-xs sm:text-sm font-medium">{student.first_name} <span className="hidden sm:inline">{student.last_name}</span></td>
                                                         <td className="px-3 sm:px-6 py-3 text-center">
                                                             <div className="flex items-center justify-center gap-1">
-                                                                {attendanceHistory[student.id]?.map((record, i) => (
+                                                                {[...(attendanceHistory[student.id] || [])].reverse().map((record, i) => (
                                                                     <div 
                                                                         key={i} 
                                                                         title={record.date}

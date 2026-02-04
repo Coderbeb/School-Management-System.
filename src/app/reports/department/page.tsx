@@ -339,7 +339,7 @@ export default function DepartmentOverviewPage() {
                                 <button
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                                    className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                                    className={`flex items-center gap-2 px-3 py-2 md:px-5 md:py-3 rounded-xl text-xs md:text-sm font-medium whitespace-nowrap transition-all ${
                                         activeTab === tab.id
                                             ? 'bg-purple-600 text-white shadow-lg shadow-purple-200'
                                             : 'bg-white text-gray-600 hover:bg-gray-50 shadow-md'
