@@ -859,7 +859,7 @@ export default function StudentsPage() {
     const filteredStudents = students.filter(student => {
         const matchesSearch =
             (student.first_name + ' ' + student.last_name).toLowerCase().includes(searchTerm.toLowerCase()) ||
-            student.roll_number.includes(searchTerm) ||
+            String(student.roll_number).includes(searchTerm) ||
             (student.student_id?.includes(searchTerm));
 
         const matchesDept = !filterDepartmentId || student.department_id === filterDepartmentId;
