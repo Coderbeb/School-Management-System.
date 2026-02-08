@@ -56,10 +56,8 @@ export async function GET(request: NextRequest) {
             )`);
             params.push(userDeptId);
         } else if (role === 'teacher') {
-            // Teacher: filter by students in their assigned subjects ONLY
-            filters.push(`ar.subject_id IN (
-                SELECT subject_id FROM teacher_subjects WHERE teacher_id = $${params.length + 1}
-            )`);
+            // Teacher: only show records marked by THEM
+            filters.push(`ar.teacher_id = $${params.length + 1}`);
             params.push(userId);
         } else if (role === 'super_admin' && departmentId) {
             // Super admin with department filter (students.department_id)

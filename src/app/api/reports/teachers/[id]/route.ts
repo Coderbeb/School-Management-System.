@@ -128,7 +128,7 @@ export async function GET(
              FROM teacher_subjects ts
              JOIN subjects s ON s.id = ts.subject_id
              LEFT JOIN departments d ON d.degree_type = s.degree_type
-             LEFT JOIN attendance_records ar ON ar.subject_id = s.id
+             LEFT JOIN attendance_records ar ON ar.subject_id = s.id AND ar.teacher_id = ts.teacher_id
              WHERE ${subjectFilters.join(' AND ')}
              GROUP BY s.id, s.name, s.code, s.semester, d.id, d.name
              ORDER BY s.semester, s.name`,
@@ -162,29 +162,16 @@ export async function GET(
                     0
                 ) as avg_attendance
              FROM attendance_records ar
-             JOIN teacher_subjects ts ON ts.subject_id = ar.subject_id
+             JOIN teacher_subjects ts ON ts.subject_id = ar.subject_id AND ar.teacher_id = ts.teacher_id
              WHERE ${monthlyFilters.join(' AND ')}
              GROUP BY TO_CHAR(ar.date, 'YYYY-MM')
              ORDER BY month DESC`,
             monthlyParams
         );
 
-        // Build filters for overall stats
-        const overallFilters: string[] = ['ts.teacher_id = $1'];
-        const overallParams: (string | number)[] = [teacherId];
-
-        if (filterDeptId) {
-            overallParams.push(filterDeptId);
-            overallFilters.push(`ar.subject_id IN (SELECT id FROM subjects WHERE degree_type IN (SELECT degree_type FROM departments WHERE id = $${overallParams.length}))`);
-        }
-        if (filterSemester) {
-            overallParams.push(parseInt(filterSemester));
-            overallFilters.push(`ar.subject_id IN (SELECT id FROM subjects WHERE semester = $${overallParams.length})`);
-        }
-
-        // Overall summary with filters
-        const overallStats = await query<{ total_sessions: string; total_students: string; present_count: string; absent_count: string; avg_attendance: string }>(
-            `SELECT 
+        // Overall summary with filters - SIMPLIFIED to directly filter by teacher_id
+        const overallStatsQuery = `
+            SELECT 
                 COUNT(DISTINCT ar.date || '-' || ar.subject_id || '-' || ar.lecture_number) as total_sessions,
                 COUNT(DISTINCT ar.student_id) as total_students,
                 COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as present_count,
@@ -198,9 +185,13 @@ export async function GET(
                     0
                 ) as avg_attendance
              FROM attendance_records ar
-             JOIN teacher_subjects ts ON ts.subject_id = ar.subject_id
-             WHERE ${overallFilters.join(' AND ')}`,
-            overallParams
+             WHERE ar.teacher_id = $1
+        `;
+        
+        const overallStatsParams = [teacherId];
+        const overallStats = await query<{ total_sessions: string; total_students: string; present_count: string; absent_count: string; avg_attendance: string }>(
+            overallStatsQuery,
+            overallStatsParams
         );
 
         const teacher = teacherInfo[0];

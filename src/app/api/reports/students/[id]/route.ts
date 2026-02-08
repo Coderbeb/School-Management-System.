@@ -86,7 +86,35 @@ export async function GET(
             dateParams.push(endDate);
         }
 
+        // Role-based filtering (Teachers only see their subjects)
+        let teacherSubjectFilter = '1=1';
+        let subjectJoinClause = '';
+        
+        const { role, userId } = payload;
+        if (role === 'teacher') {
+            // Find or add userId to params for the filter query
+            // Note: We need a reliable index. Since param order matters for $1, $2 etc,
+            // we must append userId if not present, but be careful with existing dateParams logic.
+            // The queries below use specific param indices. We will inject userId into the params array used by query.
+            
+            // To be safe, we'll append userId to the existing arrays and use dynamic index
+            // For subjectStats query: params are [studentId, ...dateParams]
+            // We adding userId to the end => index is 1 + dateParams.length + 1
+            const uIdIndex = 1 + dateParams.length + 1;
+            
+            // STRICT ISOLATION: Filter by who marked the attendance
+            teacherSubjectFilter = `ar.teacher_id = $${uIdIndex}`;
+            
+            // Keep subject join to ensure they only see subjects they are assigned to
+            subjectJoinClause = `JOIN teacher_subjects ts ON ts.subject_id = s.id AND ts.teacher_id = $${uIdIndex}`;
+        }
+
         // Get subject-wise stats with date filter
+        const subjectStatsParams = [studentId, ...dateParams];
+        if (role === 'teacher') {
+            subjectStatsParams.push(userId);
+        }
+
         const subjectStats = await query<SubjectStats>(
             `SELECT 
                 s.id as subject_id,
@@ -104,11 +132,12 @@ export async function GET(
                 ) as attendance_pct
              FROM student_subjects ss
              JOIN subjects s ON s.id = ss.subject_id
+             ${subjectJoinClause}
              LEFT JOIN attendance_records ar ON ar.subject_id = s.id AND ar.student_id = $1 ${dateFilter}
              WHERE ss.student_id = $1
              GROUP BY s.id, s.name, s.code
              ORDER BY s.name`,
-            [studentId, ...dateParams]
+            subjectStatsParams
         );
 
         // Get monthly stats with date filter
@@ -127,6 +156,10 @@ export async function GET(
              FROM attendance_records ar
              WHERE ar.student_id = $1`;
         
+        if (role === 'teacher') {
+            monthlyQuery += ` AND ${teacherSubjectFilter}`;
+        }
+
         if (startDate && endDate) {
             monthlyQuery += ` AND ar.date >= $2 AND ar.date <= $3`;
         } else if (startDate) {
@@ -138,11 +171,15 @@ export async function GET(
         }
         monthlyQuery += ` GROUP BY TO_CHAR(ar.date, 'YYYY-MM') ORDER BY month DESC`;
 
-        const monthlyStats = await query<MonthlyStats>(monthlyQuery, [studentId, ...dateParams]);
+        const otherStatsParams = [studentId, ...dateParams];
+        if (role === 'teacher') {
+            otherStatsParams.push(userId);
+        }
+
+        const monthlyStats = await query<MonthlyStats>(monthlyQuery, otherStatsParams);
 
         // Overall summary with date filter
-        const overallStats = await query<{ total_classes: string; attended: string; attendance_pct: string }>(
-            `SELECT 
+        let overallQuery = `SELECT 
                 COUNT(ar.id) as total_classes,
                 COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as attended,
                 COALESCE(
@@ -154,8 +191,15 @@ export async function GET(
                     0
                 ) as attendance_pct
              FROM attendance_records ar
-             WHERE ar.student_id = $1 ${dateFilter}`,
-            [studentId, ...dateParams]
+             WHERE ar.student_id = $1 ${dateFilter}`;
+
+        if (role === 'teacher') {
+            overallQuery += ` AND ${teacherSubjectFilter}`;
+        }
+
+        const overallStats = await query<{ total_classes: string; attended: string; attendance_pct: string }>(
+            overallQuery,
+            otherStatsParams
         );
 
         // Get daily breakdown if date range is specified (for specific day view)

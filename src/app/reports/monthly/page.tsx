@@ -201,78 +201,74 @@ export default function MonthlyReportPage() {
                         </div>
                     </div>
                 </div>
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                    {/* Filters Sidebar - Cleaner Look */}
-                    <div className="lg:col-span-1 space-y-4">
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sticky top-24">
-                            <div className="flex items-center gap-2 mb-4 text-gray-800 font-semibold border-b pb-2">
-                                <Filter className="w-4 h-4 text-purple-600" />
-                                Filters
+
+                {/* Filters Section - Top Bar */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
+                    <div className="flex flex-col md:flex-row gap-4 items-end">
+                        {/* Month Filter */}
+                        <div className="w-full md:w-48">
+                            <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Month</label>
+                            <input
+                                type="month"
+                                value={selectedMonth}
+                                onChange={(e) => setSelectedMonth(e.target.value)}
+                                className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all"
+                            />
+                        </div>
+
+                        {/* Department Filter */}
+                        {(user?.role === 'super_admin' || departments.length > 1) && (
+                            <div className="w-full md:w-64">
+                                <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Department</label>
+                                <div className="relative">
+                                    <select
+                                        value={selectedDepartmentId}
+                                        onChange={(e) => setSelectedDepartmentId(e.target.value)}
+                                        className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
+                                    >
+                                        <option value="">All Departments</option>
+                                        {departments.map((dept) => (
+                                            <option key={dept.id} value={dept.id}>{dept.name}</option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
+                                </div>
                             </div>
-                            
-                            <div className="space-y-4">
-                                {/* Month Filter */}
-                                <div>
-                                    <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Month</label>
-                                    <input
-                                        type="month"
-                                        value={selectedMonth}
-                                        onChange={(e) => setSelectedMonth(e.target.value)}
-                                        className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all"
-                                    />
-                                </div>
+                        )}
 
-                                {/* Department Filter */}
-                                {(user?.role === 'super_admin' || departments.length > 1) && (
-                                    <div>
-                                        <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Department</label>
-                                        <div className="relative">
-                                            <select
-                                                value={selectedDepartmentId}
-                                                onChange={(e) => setSelectedDepartmentId(e.target.value)}
-                                                className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
-                                            >
-                                                <option value="">All Departments</option>
-                                                {departments.map((dept) => (
-                                                    <option key={dept.id} value={dept.id}>{dept.name}</option>
-                                                ))}
-                                            </select>
-                                            <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Semester Filter */}
-                                <div>
-                                    <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Semester</label>
-                                    <div className="relative">
-                                        <select
-                                            value={selectedSemester}
-                                            onChange={(e) => setSelectedSemester(e.target.value)}
-                                            className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
-                                        >
-                                            <option value="">All Semesters</option>
-                                            {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
-                                                <option key={sem} value={sem}>Semester {sem}</option>
-                                            ))}
-                                        </select>
-                                        <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
-                                    </div>
-                                </div>
-
-                                <Button 
-                                    className="w-full bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200"
-                                    onClick={() => {
-                                        setSelectedSemester('');
-                                        setSelectedDepartmentId('');
-                                    }}
+                        {/* Semester Filter */}
+                        <div className="w-full md:w-48">
+                            <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Semester</label>
+                            <div className="relative">
+                                <select
+                                    value={selectedSemester}
+                                    onChange={(e) => setSelectedSemester(e.target.value)}
+                                    className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
                                 >
-                                    Reset Filters
-                                </Button>
+                                    <option value="">All Semesters</option>
+                                    {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
+                                        <option key={sem} value={sem}>Semester {sem}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
                             </div>
                         </div>
-                    </div>
 
+                        <Button 
+                            className="bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200"
+                            onClick={() => {
+                                setSelectedSemester('');
+                                setSelectedDepartmentId('');
+                                setSelectedMonth(new Date().toISOString().slice(0, 7));
+                            }}
+                        >
+                            <Filter className="w-4 h-4 mr-2" />
+                            Reset
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="w-full">
                     {/* Report Data */}
                     <div className="lg:col-span-3">
                         {loading ? (

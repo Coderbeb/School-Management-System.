@@ -40,13 +40,45 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'No attendance records provided' }, { status: 400 });
         }
 
-        // Insert or update attendance records
+        // AUTO-ASSIGN LECTURE NUMBER
+        // Determine lecture number for this teacher on this subject/date
+        const firstRecord = records[0];
+        const batchSubjectId = firstRecord.subjectId || subjectId;
+        const batchDate = firstRecord.date || date;
+
+        if (!batchSubjectId || !batchDate) {
+            return NextResponse.json({ error: 'Subject ID and date are required' }, { status: 400 });
+        }
+
+        // Check if this teacher already marked attendance for this subject/date
+        const existingLecture = await query<{ lecture_number: number }>(
+            `SELECT lecture_number FROM attendance_records 
+             WHERE teacher_id = $1 AND subject_id = $2 AND date = $3
+             LIMIT 1`,
+            [payload.userId, batchSubjectId, batchDate]
+        );
+
+        let assignedLectureNumber: number;
+        if (existingLecture.length > 0) {
+            // Teacher already marked - reuse their lecture number
+            assignedLectureNumber = existingLecture[0].lecture_number;
+        } else {
+            // Find the next available lecture number for this subject/date
+            const maxLecture = await query<{ max_lecture: string | null }>(
+                `SELECT COALESCE(MAX(lecture_number), 0) as max_lecture
+                 FROM attendance_records
+                 WHERE subject_id = $1 AND date = $2`,
+                [batchSubjectId, batchDate]
+            );
+            assignedLectureNumber = (parseInt(maxLecture[0]?.max_lecture || '0')) + 1;
+        }
+
+        // Insert or update attendance records with assigned lecture number
         let savedCount = 0;
         for (const record of records) {
             try {
-                const recordSubjectId = record.subjectId || subjectId;
-                const recordDate = record.date || date;
-                const recordLecture = record.lectureNumber || lectureNumber;
+                const recordSubjectId = record.subjectId || batchSubjectId;
+                const recordDate = record.date || batchDate;
 
                 if (!recordSubjectId || !recordDate) {
                     continue;
@@ -83,9 +115,9 @@ export async function POST(request: NextRequest) {
                 await query(
                     `INSERT INTO attendance_records (subject_id, student_id, teacher_id, date, lecture_number, status)
                      VALUES ($1, $2, $3, $4, $5, $6)
-                     ON CONFLICT (subject_id, student_id, date, lecture_number) 
-                     DO UPDATE SET status = EXCLUDED.status, teacher_id = EXCLUDED.teacher_id`,
-                    [recordSubjectId, record.studentId, payload.userId, recordDate, recordLecture, record.status]
+                     ON CONFLICT (subject_id, student_id, teacher_id, date, lecture_number) 
+                     DO UPDATE SET status = EXCLUDED.status`,
+                    [recordSubjectId, record.studentId, payload.userId, recordDate, assignedLectureNumber, record.status]
                 );
                 savedCount++;
             } catch (err) {
@@ -96,6 +128,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
             message: `Saved ${savedCount} attendance records`,
             savedCount,
+            lectureNumber: assignedLectureNumber,
         });
     } catch (error) {
         console.error('Save attendance error:', error);

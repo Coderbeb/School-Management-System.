@@ -212,6 +212,7 @@ export default function TeacherReportPage() {
         const summary = selectedTeacher.summary;
         const subjects = selectedTeacher.subjects;
         const monthlyTrend = selectedTeacher.monthlyTrend;
+        const logoUrl = typeof window !== 'undefined' ? `${window.location.origin}/college-logo.png` : '/college-logo.png';
 
         const getStatus = (pct: number) => {
             if (pct >= 75) return { text: 'EXCELLENT PERFORMANCE', color: '#16a34a' };
@@ -226,114 +227,394 @@ export default function TeacherReportPage() {
 <head>
     <title>Teacher Report - ${teacher.name}</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600;700&display=swap');
+        
+        :root {
+            --primary: #1e3a8a; /* Royal Navy */
+            --accent: #b45309;  /* Gold/Amber */
+            --light: #f8fafc;
+            --border: #e2e8f0;
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; background: #fff; color: #1f2937; }
-        .container { max-width: 800px; margin: 0 auto; }
-        .header { text-align: center; border-bottom: 3px solid #6366f1; padding-bottom: 20px; margin-bottom: 30px; }
-        .college-name { font-size: 28px; font-weight: bold; color: #4f46e5; margin-bottom: 5px; }
-        .report-title { font-size: 20px; color: #6b7280; margin-top: 10px; }
-        .teacher-info { background: #f9fafb; border: 1px solid #e5e7eb; padding: 25px; border-radius: 12px; margin-bottom: 25px; }
-        .teacher-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; color: #111827; }
-        .teacher-email { font-size: 14px; color: #6b7280; margin-bottom: 15px; display: block; }
-        .teacher-details { display: flex; gap: 20px; flex-wrap: wrap; font-size: 14px; }
-        .teacher-details span { background: #fff; border: 1px solid #e5e7eb; padding: 6px 14px; border-radius: 6px; font-weight: 500; color: #374151; }
-        .summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
-        .summary-card { background: #fff; padding: 20px; border: 1px solid #e5e7eb; border-radius: 10px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .summary-value { font-size: 28px; font-weight: bold; color: #4f46e5; }
-        .summary-label { font-size: 11px; color: #6b7280; margin-top: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .section-title { font-size: 16px; font-weight: 600; color: #374151; margin-bottom: 15px; padding-bottom: 8px; border-bottom: 2px solid #e5e7eb; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
-        th { background: #f9fafb; color: #6b7280; padding: 12px 15px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; }
-        td { padding: 12px 15px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
-        td:last-child { text-align: center; font-weight: 600; }
-        .status-box { padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 25px; background: #fff; }
-        .status-text { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
-        .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; font-size: 12px; color: #9ca3af; }
-        .trend-container { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 25px; }
-        .trend-item { background: #fff; border: 1px solid #e5e7eb; padding: 10px 15px; border-radius: 8px; text-align: center; min-width: 80px; }
-        .trend-month { font-size: 11px; color: #6b7280; margin-bottom: 4px; }
-        .trend-value { font-size: 16px; font-weight: bold; }
-        @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: #fff; 
+            color: var(--text-main); 
+            padding: 20px; /* Reduced from 40px */
+            -webkit-print-color-adjust: exact; 
+            print-color-adjust: exact; 
+        }
+
+        @page { size: A4; margin: 0; }
+        @media print { body { padding: 15mm; } }
+
+        .container { 
+            max-width: 100%; 
+            margin: 0 auto; 
+            border: 1px solid var(--border); 
+            min-height: 900px; /* Reduced min-height */
+            position: relative; 
+            background: white;
+            box-shadow: none; /* Removed shadow for print */
+        }
+
+        /* Decorative Top Bar */
+        .top-bar {
+            height: 6px; /* Reduced height */
+            background: linear-gradient(90deg, var(--primary) 0%, var(--primary) 85%, var(--accent) 85%, var(--accent) 100%);
+            width: 100%;
+        }
+        
+        .content-padding { padding: 30px; } /* Reduced from 40px */
+
+        /* Header */
+        .header { 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            border-bottom: 2px solid var(--border); 
+            padding-bottom: 20px; /* Reduced from 30px */
+            margin-bottom: 25px; /* Reduced from 30px */
+            position: relative;
+        }
+
+        .logo-section { display: flex; align-items: center; gap: 15px; }
+        .logo-img { height: 60px; width: auto; object-fit: contain; } /* Reduced height */
+        
+        .college-info h1 { 
+            font-family: 'Playfair Display', serif; 
+            font-size: 20px; /* Reduced from 24px */
+            color: var(--primary); 
+            text-transform: uppercase; 
+            margin-bottom: 2px; 
+            letter-spacing: 0.5px;
+        }
+        
+        .college-info p { 
+            font-size: 10px; /* Reduced from 11px */
+            color: var(--text-sub); 
+            margin-bottom: 1px; 
+            font-weight: 500; 
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Ribbon Badge */
+        .badge-container {
+            position: absolute;
+            top: -30px; /* Adjusted */
+            right: 0;
+        }
+        .ribbon {
+            background: var(--accent);
+            color: white;
+            padding: 8px 16px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border-bottom-left-radius: 4px;
+            border-bottom-right-radius: 4px;
+        }
+        
+        /* Watermark */
+        .watermark { 
+            position: absolute; 
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%); 
+            width: 300px; 
+            opacity: 0.04; 
+            pointer-events: none; 
+            z-index: 0; 
+            filter: grayscale(100%);
+        }
+        
+        /* Teacher Details Card */
+        .info-card { 
+            background: #eff6ff;
+            border-left: 4px solid var(--primary);
+            padding: 16px; /* Reduced from 24px */
+            border-radius: 4px;
+            margin-bottom: 20px; /* Reduced from 30px */
+            position: relative; 
+            z-index: 1; 
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .teacher-name {
+            font-family: 'Playfair Display', serif;
+            font-size: 18px; /* Reduced from 22px */
+            color: var(--primary);
+            margin-bottom: 2px;
+        }
+        
+        .teacher-email {
+            color: var(--text-sub);
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .meta-values {
+            text-align: right;
+            font-size: 11px; /* Reduced from 12px */
+            color: var(--text-sub);
+        }
+        .meta-values strong { color: var(--text-main); font-weight: 600; margin-right: 4px; }
+        .meta-row { margin-bottom: 2px; }
+
+        /* Stats Grid */
+        .stats-grid { 
+            display: grid; 
+            grid-template-columns: repeat(4, 1fr); 
+            gap: 12px; /* Reduced gap */
+            margin-bottom: 25px; /* Reduced from 35px */
+            position: relative; 
+            z-index: 1; 
+        }
+        
+        .stat-item { 
+            border: 1px solid var(--border); 
+            padding: 10px; /* Reduced padding */
+            text-align: center; 
+            border-radius: 4px;
+        }
+        
+        .stat-val { 
+            font-family: 'Playfair Display', serif;
+            font-size: 22px; /* Reduced from 28px */
+            color: var(--primary); 
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        
+        .stat-lbl { 
+            font-size: 9px; /* Reduced from 10px */
+            text-transform: uppercase; 
+            color: var(--accent); 
+            font-weight: 700; 
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+        
+        /* Section Header */
+        .section-header { 
+            display: flex; 
+            align-items: center; 
+            margin-bottom: 12px; /* Reduced from 15px */
+            color: var(--primary);
+            font-weight: 700;
+            font-size: 11px; /* Reduced from 13px */
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 6px;
+        }
+        
+        /* Table */
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-bottom: 25px; /* Reduced from 35px */
+            font-size: 11px; /* Reduced from 13px */
+            position: relative; 
+            z-index: 1; 
+        }
+        
+        th { 
+            text-align: left; 
+            padding: 8px 10px; /* Reduced padding */
+            background: var(--primary); 
+            color: white; 
+            font-weight: 600; 
+            text-transform: uppercase; 
+            font-size: 10px; 
+            letter-spacing: 0.5px; 
+        }
+        
+        td { 
+            padding: 8px 10px; /* Reduced padding */
+            border-bottom: 1px solid var(--border); 
+            color: var(--text-main); 
+        }
+        
+        tr:nth-child(even) { background-color: #f8fafc; }
+        
+        .badge-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 50px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .bg-green { background: #dcfce7; color: #166534; }
+        .bg-amber { background: #fef3c7; color: #b45309; }
+        .bg-red { background: #fee2e2; color: #991b1b; }
+
+        /* Monthly Trend */
+        .month-grid { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
+        .month-box { 
+            border: 1px solid var(--border); 
+            padding: 6px 10px; 
+            border-radius: 4px; 
+            text-align: center;
+            min-width: 60px;
+        }
+        .month-name { font-size: 9px; color: var(--text-sub); text-transform: uppercase; margin-bottom: 2px; }
+        .month-val { font-weight: 700; font-size: 11px; color: var(--primary); }
+
+        /* Status Box */
+        .conclusion {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-top: 3px solid var(--accent);
+            padding: 15px; /* Reduced padding */
+            border-radius: 4px;
+            margin-top: auto;
+        }
+        .conclusion h3 { font-size: 11px; color: var(--accent); text-transform: uppercase; margin-bottom: 4px; }
+        .conclusion p { font-size: 11px; line-height: 1.5; color: var(--text-sub); }
+
+        /* Footer */
+        .footer { 
+            margin-top: 25px; /* Reduced from 40px */
+            padding-top: 15px; 
+            border-top: 1px solid var(--border); 
+            display: flex; 
+            justify-content: space-between; 
+            font-size: 9px; 
+            color: var(--text-sub);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div class="college-name">YSM College of Engineering</div>
-            <div class="report-title">TEACHER PERFORMANCE REPORT</div>
-        </div>
-        <div class="teacher-info">
-            <div class="teacher-name">${teacher.name}</div>
-            <span class="teacher-email">${teacher.email}</span>
-            <div class="teacher-details">
-                <span>Department: ${teacher.department}</span>
-                <span>Subjects: ${subjects.length}</span>
-                <span>Total Sessions: ${summary.totalSessions}</span>
+        <div class="top-bar"></div>
+        <div class="content-padding">
+            <img src="${logoUrl}" class="watermark" />
+            
+            <div class="badge-container">
+                <div class="ribbon">Faculty Report</div>
             </div>
-        </div>
-        <div class="summary-cards">
-            <div class="summary-card">
-                <div class="summary-value" style="color: #4f46e5;">${summary.totalSessions}</div>
-                <div class="summary-label">Sessions</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-value" style="color: #7c3aed;">${summary.totalStudents}</div>
-                <div class="summary-label">Students</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-value" style="color: #059669;">${summary.presentCount}</div>
-                <div class="summary-label">Present</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-value" style="color: #dc2626;">${summary.absentCount}</div>
-                <div class="summary-label">Absent</div>
-            </div>
-        </div>
-        <div class="section-title">Subject-wise Performance</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Subject</th>
-                    <th>Code</th>
-                    <th>Semester</th>
-                    <th style="text-align: center;">Sessions</th>
-                    <th style="text-align: center;">Attendance %</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${subjects.map(sub => `
-                    <tr>
-                        <td>${sub.name}</td>
-                        <td>${sub.code}</td>
-                        <td>Sem ${sub.semester}</td>
-                        <td style="text-align: center;">${sub.sessions}</td>
-                        <td style="color: ${sub.attendance >= 75 ? '#059669' : sub.attendance >= 60 ? '#d97706' : '#dc2626'}">${sub.attendance}%</td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        </table>
-        ${monthlyTrend.length > 0 ? `
-            <div class="section-title">Monthly Trend</div>
-            <div class="trend-container">
-                ${monthlyTrend.map(m => `
-                    <div class="trend-item">
-                        <div class="trend-month">${m.month}</div>
-                        <div class="trend-value" style="color: ${m.attendance >= 75 ? '#059669' : '#dc2626'};">${m.attendance}%</div>
+
+            <header class="header">
+                <div class="logo-section">
+                    <img src="${logoUrl}" class="logo-img" alt="YSM Logo">
+                    <div class="college-info">
+                        <h1>Yogoda Satsanga Mahavidyalaya</h1>
+                        <p>Established 1967 | NAAC Accredited Grade 'B'++</p>
+                        <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
                     </div>
-                `).join('')}
+                </div>
+            </header>
+
+            <div class="info-card">
+                <div>
+                    <h2 class="teacher-name">${teacher.name}</h2>
+                    <div class="teacher-email">${teacher.email}</div>
+                </div>
+                <div class="meta-values">
+                    <div class="meta-row"><strong>Department:</strong> ${teacher.department}</div>
+                    <div class="meta-row"><strong>Faculty ID:</strong> ${teacher.id.toString().padStart(6, '0')}</div>
+                    <div class="meta-row"><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
+                </div>
             </div>
-        ` : ''}
-        <div class="status-box" style="border: 1px solid ${status.color}; background: ${status.color}05;">
-            <div class="status-text" style="color: ${status.color};">${status.text}</div>
-            <div style="color: #6b7280; font-size: 14px;">
-                Overall Attendance Rate: ${summary.averageAttendance}%
+
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-val">${summary.totalSessions}</div>
+                    <div class="stat-lbl">Sessions</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-val">${summary.totalStudents}</div>
+                    <div class="stat-lbl">Students</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-val" style="color: #166534">${summary.presentCount}</div>
+                    <div class="stat-lbl">Present</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-val" style="color: #991b1b">${summary.absentCount}</div>
+                    <div class="stat-lbl">Absent</div>
+                </div>
             </div>
-        </div>
-        <div class="footer">
-            <div>Generated on ${new Date().toLocaleDateString()}</div>
-            <div>Approved by: ${user.firstName} ${user.lastName}</div>
+
+            <div class="section-header">Subject Performance Analysis</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="border-radius: 4px 0 0 0;">Subject</th>
+                        <th>Code</th>
+                        <th style="text-align: center;">Sessions</th>
+                        <th style="text-align: center;">Attendance</th>
+                        <th style="border-radius: 0 4px 0 0; text-align: center;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${subjects.map(sub => `
+                        <tr>
+                            <td style="font-weight: 600;">${sub.name}</td>
+                            <td style="color: var(--text-sub); font-size: 11px;">${sub.code}</td>
+                            <td style="text-align: center;">${sub.sessions}</td>
+                            <td style="text-align: center; font-weight: 700; color: var(--primary);">${sub.attendance}%</td>
+                            <td style="text-align: center;">
+                                <span class="badge-status ${sub.attendance >= 75 ? 'bg-green' : sub.attendance >= 60 ? 'bg-amber' : 'bg-red'}">
+                                    ${sub.attendance >= 75 ? 'Excellent' : sub.attendance >= 60 ? 'Average' : 'Low'}
+                                </span>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+
+             ${monthlyTrend && monthlyTrend.length > 0 ? `
+                <div class="section-header">Monthly Trend</div>
+                <div class="month-grid">
+                    ${monthlyTrend.map(m => `
+                        <div class="month-box">
+                            <div class="month-name">${m.month}</div>
+                            <div class="month-val">${m.attendance}%</div>
+                        </div>
+                    `).join('')}
+                </div>
+            ` : ''}
+
+            <div class="conclusion">
+                <h3>${status.text}</h3>
+                <p>
+                    ${summary.attendancePercentage >= 75 
+                        ? `Dr. ${teacher.name} maintains excellent attendance records across their classes. The average attendance of ${summary.averageAttendance}% indicates strong student engagement.` 
+                        : summary.attendancePercentage >= 60 
+                        ? `Performance is within acceptable limits (${summary.averageAttendance}%). Focus on improving student attendance in lower-performing subjects is recommended.` 
+                        : `Average attendance of ${summary.averageAttendance}% falls below standards. A review of engagement strategies is advised.`}
+                </p>
+            </div>
+
+            <footer class="footer">
+                <div>Report Generated by: ${user.firstName} ${user.lastName}</div>
+                <div>Authorized Signature: _______________________</div>
+            </footer>
         </div>
     </div>
+    
+    <script>
+        window.onload = function() {
+            setTimeout(function() {
+                window.print();
+            }, 500);
+        }
+    </script>
 </body>
 </html>`;
 
@@ -341,7 +622,6 @@ export default function TeacherReportPage() {
         if (printWindow) {
             printWindow.document.write(reportHTML);
             printWindow.document.close();
-            printWindow.onload = () => { printWindow.print(); };
         }
     };
 
@@ -408,64 +688,58 @@ export default function TeacherReportPage() {
                         </div>
                     </div>
                 </div>
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                    {/* Filters Sidebar */}
-                    <div className="lg:col-span-1 space-y-4">
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sticky top-24">
-                            <div className="flex items-center gap-2 mb-4 text-gray-800 font-semibold border-b pb-2">
-                                <Filter className="w-4 h-4 text-purple-600" />
-                                Filters
-                            </div>
-                            
-                            <div className="space-y-4">
-                                {/* Search */}
-                                <div>
-                                    <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Search Teacher</label>
-                                    <div className="relative">
-                                        <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-                                        <input
-                                            type="text"
-                                            placeholder="Name, Email or Dept..."
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Department Filter */}
-                                {user?.role === 'super_admin' && (
-                                    <div>
-                                        <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Department</label>
-                                        <div className="relative">
-                                            <select
-                                                value={selectedDepartmentId}
-                                                onChange={(e) => setSelectedDepartmentId(e.target.value)}
-                                                className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
-                                            >
-                                                <option value="">All Departments</option>
-                                                {departments.map((dept) => (
-                                                    <option key={dept.id} value={dept.id}>{dept.name}</option>
-                                                ))}
-                                            </select>
-                                            <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
-                                        </div>
-                                    </div>
-                                )}
-
-                                <Button 
-                                    className="w-full bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200"
-                                    onClick={() => {
-                                        setSelectedDepartmentId('');
-                                        setSearchTerm('');
-                                    }}
-                                >
-                                    Reset Filters
-                                </Button>
+                {/* Filters Section - Top Bar */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
+                    <div className="flex flex-col md:flex-row gap-4 items-end">
+                        {/* Search */}
+                        <div className="flex-1 w-full md:w-auto">
+                            <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Search Teacher</label>
+                            <div className="relative">
+                                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                                <input
+                                    type="text"
+                                    placeholder="Name, Email or Dept..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all"
+                                />
                             </div>
                         </div>
-                    </div>
 
+                        {/* Department Filter */}
+                        {user?.role === 'super_admin' && (
+                            <div className="w-full md:w-64">
+                                <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Department</label>
+                                <div className="relative">
+                                    <select
+                                        value={selectedDepartmentId}
+                                        onChange={(e) => setSelectedDepartmentId(e.target.value)}
+                                        className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
+                                    >
+                                        <option value="">All Departments</option>
+                                        {departments.map((dept) => (
+                                            <option key={dept.id} value={dept.id}>{dept.name}</option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
+                                </div>
+                            </div>
+                        )}
+
+                        <Button 
+                            className="bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200"
+                            onClick={() => {
+                                setSelectedDepartmentId('');
+                                setSearchTerm('');
+                            }}
+                        >
+                            <Filter className="w-4 h-4 mr-2" />
+                            Reset
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="w-full">
                     {/* Report Data */}
                     <div className="lg:col-span-3">
                         <Card className="border-0 shadow-sm border-gray-100 bg-white overflow-hidden">

@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
                 SELECT ss.student_id FROM student_subjects ss
                 JOIN teacher_subjects ts ON ss.subject_id = ts.subject_id
                 WHERE ts.teacher_id = $1
-            )`;
+            ) AND ar.teacher_id = $1`;
             attendanceParams.push(userId);
         }
         // super_admin: no filter, sees everything

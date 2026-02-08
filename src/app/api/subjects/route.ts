@@ -58,6 +58,29 @@ export async function GET(request: NextRequest) {
             queryStr += ` AND s.degree_type = $${params.length}`;
         }
 
+        // Teacher: only show assigned subjects
+        if (role === 'teacher') {
+            const teacherId = payload.userId;
+            const subParams: (string | number)[] = [teacherId];
+            
+            // Get teacher's assigned subjects
+            const teacherSubjects = await query<{ subject_id: string }>(
+                'SELECT subject_id FROM teacher_subjects WHERE teacher_id = $1',
+                [teacherId]
+            );
+            
+            if (teacherSubjects.length === 0) {
+                // Return empty if no subjects assigned
+                return NextResponse.json({ subjects: [] });
+            }
+
+            const subjectIds = teacherSubjects.map(ts => ts.subject_id);
+            // Construct IN clause dynamically
+            const placeholders = subjectIds.map((_, i) => `$${params.length + i + 1}`).join(',');
+            queryStr += ` AND s.id IN (${placeholders})`;
+            params.push(...subjectIds);
+        }
+
         if (semester) {
             params.push(parseInt(semester));
             queryStr += ` AND s.semester = $${params.length}`;

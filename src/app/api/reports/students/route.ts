@@ -48,8 +48,10 @@ export async function GET(request: NextRequest) {
             if (departmentId) {
                 params.push(departmentId);
                 filters.push(`s.department_id = $${params.length}`);
+                filters.push(`s.department_id = $${params.length}`);
             } else {
                 params.push(userId);
+                // Only show students who have enrolled in subjects taught by this teacher
                 filters.push(`s.id IN (
                     SELECT ss.student_id FROM student_subjects ss
                     JOIN teacher_subjects ts ON ss.subject_id = ts.subject_id
@@ -76,6 +78,23 @@ export async function GET(request: NextRequest) {
 
         const filterClause = filters.length > 0 ? 'AND ' + filters.join(' AND ') : '';
 
+        // For teachers, we also need to filter the COUNTs to only their subjects/records
+        // Strict Isolation: Only count records marked by THIS teacher
+        let teacherSubjectFilter = '1=1';
+        if (role === 'teacher' && !subjectId) {
+             // finding the param index for userId
+             let uIdIndex = params.indexOf(userId);
+             if (uIdIndex === -1) {
+                 params.push(userId);
+                 uIdIndex = params.length - 1;
+             }
+             // OLD: Filter by subject assignment
+             // teacherSubjectFilter = `ar.subject_id IN (SELECT subject_id FROM teacher_subjects WHERE teacher_id = $${uIdIndex + 1})`;
+             
+             // NEW: Filter by who marked the attendance
+             teacherSubjectFilter = `ar.teacher_id = $${uIdIndex + 1}`;
+        }
+
         const queryStr = `
             SELECT 
                 s.id,
@@ -88,7 +107,7 @@ export async function GET(request: NextRequest) {
                 COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as attended
             FROM students s
             LEFT JOIN departments d ON d.id = s.department_id
-            LEFT JOIN attendance_records ar ON ar.student_id = s.id
+            LEFT JOIN attendance_records ar ON ar.student_id = s.id AND (${teacherSubjectFilter})
             WHERE 1=1
             ${filterClause}
             GROUP BY s.id, s.roll_number, s.first_name, s.last_name, d.name, s.current_semester

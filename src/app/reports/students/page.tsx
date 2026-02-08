@@ -269,7 +269,8 @@ export default function StudentReportPage() {
         const summary = selectedStudent.summary;
         const subjects = selectedStudent.subjects;
         const dateRange = selectedStudent.dateRange;
-        
+        const logoUrl = typeof window !== 'undefined' ? `${window.location.origin}/college-logo.png` : '/college-logo.png';
+
         const getStatus = (pct: number) => {
             if (pct >= 75) return { text: 'GOOD STANDING', color: '#16a34a' };
             if (pct >= 60) return { text: 'WARNING', color: '#ca8a04' };
@@ -283,94 +284,366 @@ export default function StudentReportPage() {
 <head>
     <title>Report Card - ${student.name}</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600;700&display=swap');
+        
+        :root {
+            --primary: #1e3a8a; /* Royal Navy */
+            --accent: #b45309;  /* Gold/Amber */
+            --light: #f8fafc;
+            --border: #e2e8f0;
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; background: #fff; color: #1f2937; }
-        .container { max-width: 800px; margin: 0 auto; }
-        .header { text-align: center; border-bottom: 3px solid #6366f1; padding-bottom: 20px; margin-bottom: 30px; }
-        .college-name { font-size: 28px; font-weight: bold; color: #4f46e5; margin-bottom: 5px; }
-        .report-title { font-size: 20px; color: #6b7280; margin-top: 10px; }
-        .student-info { background: #f9fafb; border: 1px solid #e5e7eb; padding: 25px; border-radius: 12px; margin-bottom: 25px; }
-        .student-name { font-size: 24px; font-weight: bold; margin-bottom: 15px; color: #111827; }
-        .student-details { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; font-size: 14px; }
-        .detail-item strong { color: #6b7280; display: block; font-size: 12px; text-transform: uppercase; margin-bottom: 2px; }
-        .summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 25px; }
-        .summary-card { background: #fff; padding: 20px; border: 1px solid #e5e7eb; border-radius: 10px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .summary-value { font-size: 32px; font-weight: bold; color: #4f46e5; }
-        .summary-label { font-size: 12px; color: #6b7280; margin-top: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .section-title { font-size: 16px; font-weight: 600; color: #374151; margin-bottom: 15px; padding-bottom: 8px; border-bottom: 2px solid #e5e7eb; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
-        th { background: #f9fafb; color: #6b7280; padding: 12px 15px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; }
-        td { padding: 12px 15px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
-        td:last-child { text-align: center; font-weight: 600; }
-        .status-box { padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 25px; background: #fff; }
-        .status-text { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
-        .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; font-size: 12px; color: #9ca3af; }
-        @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: #fff; 
+            color: var(--text-main); 
+            padding: 20px; /* Compact padding */
+            -webkit-print-color-adjust: exact; 
+            print-color-adjust: exact; 
+        }
+
+        @page { size: A4; margin: 0; }
+        @media print { body { padding: 15mm; } }
+
+        .container { 
+            max-width: 100%; 
+            margin: 0 auto; 
+            border: 1px solid var(--border); 
+            min-height: 900px; 
+            position: relative; 
+            background: white;
+            box-shadow: none;
+        }
+
+        /* Decorative Top Bar */
+        .top-bar {
+            height: 6px;
+            background: linear-gradient(90deg, var(--primary) 0%, var(--primary) 85%, var(--accent) 85%, var(--accent) 100%);
+            width: 100%;
+        }
+        
+        .content-padding { padding: 30px; }
+
+        /* Header */
+        .header { 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            border-bottom: 2px solid var(--border); 
+            padding-bottom: 20px; 
+            margin-bottom: 25px; 
+            position: relative;
+        }
+
+        .logo-section { display: flex; align-items: center; gap: 15px; }
+        .logo-img { height: 60px; width: auto; object-fit: contain; }
+        
+        .college-info h1 { 
+            font-family: 'Playfair Display', serif; 
+            font-size: 20px; 
+            color: var(--primary); 
+            text-transform: uppercase; 
+            margin-bottom: 2px; 
+            letter-spacing: 0.5px;
+        }
+        
+        .college-info p { 
+            font-size: 10px; 
+            color: var(--text-sub); 
+            margin-bottom: 1px; 
+            font-weight: 500; 
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Ribbon Badge */
+        .badge-container {
+            position: absolute;
+            top: -30px;
+            right: 0;
+        }
+        .ribbon {
+            background: var(--accent);
+            color: white;
+            padding: 8px 16px; 
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border-bottom-left-radius: 4px;
+            border-bottom-right-radius: 4px;
+        }
+        
+        /* Watermark */
+        .watermark { 
+            position: absolute; 
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%); 
+            width: 300px; 
+            opacity: 0.04; 
+            pointer-events: none; 
+            z-index: 0; 
+            filter: grayscale(100%);
+        }
+        
+        /* Student Details Card */
+        .info-card { 
+            background: #eff6ff;
+            border-left: 4px solid var(--primary);
+            padding: 16px; 
+            border-radius: 4px;
+            margin-bottom: 20px; 
+            position: relative; 
+            z-index: 1; 
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .student-name {
+            font-family: 'Playfair Display', serif;
+            font-size: 18px; 
+            color: var(--primary);
+            margin-bottom: 2px;
+        }
+        
+        .student-roll {
+            color: var(--text-sub);
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .meta-values {
+            text-align: right;
+            font-size: 11px; 
+            color: var(--text-sub);
+        }
+        .meta-values strong { color: var(--text-main); font-weight: 600; margin-right: 4px; }
+        .meta-row { margin-bottom: 2px; }
+
+        /* Stats Grid */
+        .stats-grid { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 12px; 
+            margin-bottom: 25px; 
+            position: relative; 
+            z-index: 1; 
+        }
+        
+        .stat-item { 
+            border: 1px solid var(--border); 
+            padding: 10px; 
+            text-align: center; 
+            border-radius: 4px;
+        }
+        
+        .stat-val { 
+            font-family: 'Playfair Display', serif;
+            font-size: 22px; 
+            color: var(--primary); 
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        
+        .stat-lbl { 
+            font-size: 9px; 
+            text-transform: uppercase; 
+            color: var(--accent); 
+            font-weight: 700; 
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+        
+        /* Section Header */
+        .section-header { 
+            display: flex; 
+            align-items: center; 
+            margin-bottom: 12px; 
+            color: var(--primary);
+            font-weight: 700;
+            font-size: 11px; 
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 6px;
+        }
+        
+        /* Table */
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-bottom: 25px; 
+            font-size: 11px; 
+            position: relative; 
+            z-index: 1; 
+        }
+        
+        th { 
+            text-align: left; 
+            padding: 8px 10px; 
+            background: var(--primary); 
+            color: white; 
+            font-weight: 600; 
+            text-transform: uppercase; 
+            font-size: 10px; 
+            letter-spacing: 0.5px; 
+        }
+        
+        td { 
+            padding: 8px 10px; 
+            border-bottom: 1px solid var(--border); 
+            color: var(--text-main); 
+        }
+        
+        tr:nth-child(even) { background-color: #f8fafc; }
+        
+        .badge-status {
+            display: inline-block;
+            padding: 2px 8px; 
+            border-radius: 50px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .bg-green { background: #dcfce7; color: #166534; }
+        .bg-amber { background: #fef3c7; color: #b45309; }
+        .bg-red { background: #fee2e2; color: #991b1b; }
+
+        /* Status Box */
+        .conclusion {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-top: 3px solid var(--accent);
+            padding: 15px; 
+            border-radius: 4px;
+            margin-top: auto;
+        }
+        .conclusion h3 { font-size: 11px; color: var(--accent); text-transform: uppercase; margin-bottom: 4px; }
+        .conclusion p { font-size: 11px; line-height: 1.5; color: var(--text-sub); }
+
+        /* Footer */
+        .footer { 
+            margin-top: 25px; 
+            padding-top: 15px; 
+            border-top: 1px solid var(--border); 
+            display: flex; 
+            justify-content: space-between; 
+            font-size: 9px; 
+            color: var(--text-sub);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div class="college-name">YSM College of Engineering</div>
-            <div class="report-title">ATTENDANCE REPORT CARD</div>
-        </div>
-        <div class="student-info">
-            <div class="student-name">${student.name}</div>
-            <div class="student-details">
-                <div class="detail-item"><strong>Roll Number</strong> ${student.rollNumber}</div>
-                <div class="detail-item"><strong>Department</strong> ${student.department}</div>
-                <div class="detail-item"><strong>Semester</strong> Semester ${student.semester}</div>
-                <div class="detail-item"><strong>Report Period</strong> ${dateRange ? `${dateRange.startDate} to ${dateRange.endDate}` : 'All Time'}</div>
+        <div class="top-bar"></div>
+        <div class="content-padding">
+            <img src="${logoUrl}" class="watermark" />
+            
+            <div class="badge-container">
+                <div class="ribbon">Student Report</div>
             </div>
-        </div>
-        <div class="summary-cards">
-            <div class="summary-card">
-                <div class="summary-value" style="color: #1f2937;">${summary.totalClasses}</div>
-                <div class="summary-label">Total Classes</div>
+
+            <header class="header">
+                <div class="logo-section">
+                    <img src="${logoUrl}" class="logo-img" alt="YSM Logo">
+                    <div class="college-info">
+                        <h1>Yogoda Satsanga Mahavidyalaya</h1>
+                        <p>Established 1967 | NAAC Accredited Grade 'B'++</p>
+                        <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
+                    </div>
+                </div>
+            </header>
+
+            <div class="info-card">
+                <div>
+                    <h2 class="student-name">${student.name}</h2>
+                    <div class="student-roll">Roll No: ${student.rollNumber}</div>
+                </div>
+                <div class="meta-values">
+                    <div class="meta-row"><strong>Department:</strong> ${student.department}</div>
+                    <div class="meta-row"><strong>Semester:</strong> ${student.semester}</div>
+                    <div class="meta-row"><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
+                </div>
             </div>
-            <div class="summary-card">
-                <div class="summary-value" style="color: #059669;">${summary.attended}</div>
-                <div class="summary-label">Classes Attended</div>
+
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-val">${summary.totalClasses}</div>
+                    <div class="stat-lbl">Total Classes</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-val" style="color: #059669">${summary.attended}</div>
+                    <div class="stat-lbl">Attended</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-val" style="color: ${status.color}">${summary.attendancePercentage}%</div>
+                    <div class="stat-lbl">Attendance Rate</div>
+                </div>
             </div>
-            <div class="summary-card">
-                <div class="summary-value" style="color: ${status.color};">${summary.attendancePercentage}%</div>
-                <div class="summary-label">Attendance Rate</div>
-            </div>
-        </div>
-        <div class="section-title">Subject-wise Breakdown</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Subject Name</th>
-                    <th>Code</th>
-                    <th style="text-align: center;">Total</th>
-                    <th style="text-align: center;">Attended</th>
-                    <th style="text-align: center;">%</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${subjects.map(sub => `
+
+            <div class="section-title">Subject-wise Breakdown</div>
+            <table>
+                <thead>
                     <tr>
-                        <td>${sub.name}</td>
-                        <td><span style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-size: 12px;">${sub.code}</span></td>
-                        <td style="text-align: center;">${sub.totalClasses}</td>
-                        <td style="text-align: center;">${sub.attended}</td>
-                        <td style="color: ${sub.attendance >= 75 ? '#16a34a' : sub.attendance >= 60 ? '#ca8a04' : '#dc2626'}">${sub.attendance}%</td>
+                        <th style="border-radius: 4px 0 0 0;">Subject</th>
+                        <th>Code</th>
+                        <th class="cell-center">Total</th>
+                        <th class="cell-center">Attended</th>
+                        <th style="border-radius: 0 4px 0 0; text-align: center;">Status</th>
                     </tr>
-                `).join('')}
-            </tbody>
-        </table>
-        <div class="status-box" style="border: 1px solid ${status.color}; background: ${status.color}05;">
-            <div class="status-text" style="color: ${status.color};">${status.text}</div>
-            <div style="color: #6b7280; font-size: 14px;">
-                ${summary.attendancePercentage >= 75 ? 'Student maintains good attendance.' : summary.attendancePercentage >= 60 ? 'Attendance needs improvement.' : 'Critical attendance shortage.'}
+                </thead>
+                <tbody>
+                    ${subjects.map(sub => `
+                        <tr>
+                            <td style="font-weight: 600;">${sub.name}</td>
+                            <td style="color: var(--text-sub); font-size: 11px;">${sub.code}</td>
+                            <td class="cell-center">${sub.totalClasses}</td>
+                            <td class="cell-center">${sub.attended}</td>
+                            <td class="cell-center">
+                                <span class="badge-status ${sub.attendance >= 75 ? 'bg-green' : sub.attendance >= 60 ? 'bg-amber' : 'bg-red'}">
+                                    ${sub.attendance >= 75 ? 'Good' : sub.attendance >= 60 ? 'Avg' : 'Low'}
+                                </span>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+
+            <div class="conclusion">
+                <h3>${status.text}</h3>
+                <p>
+                    ${summary.attendancePercentage >= 75 
+                        ? `Student maintains good attendance record. Keep up the consistent engagement in classes.` 
+                        : summary.attendancePercentage >= 60 
+                        ? `Attendance is within acceptable limits but implies scope for improvement. Regularity is advised.` 
+                        : `Critical attendance shortage detected. Immediate improvement is required to meet college standards.`}
+                </p>
             </div>
-        </div>
-        <div class="footer">
-            <div>Generated on ${new Date().toLocaleDateString()}</div>
-            <div>Approved by: ${user.firstName} ${user.lastName}</div>
+
+            <footer class="footer">
+                <div>Report Generated by: ${user.firstName} ${user.lastName}</div>
+                <div>Authorized Signature: _______________________</div>
+            </footer>
         </div>
     </div>
+    
+    <script>
+        window.onload = function() {
+            setTimeout(function() {
+                window.print();
+            }, 500);
+        }
+    </script>
 </body>
 </html>`;
 
@@ -378,7 +651,6 @@ export default function StudentReportPage() {
         if (printWindow) {
             printWindow.document.write(reportHTML);
             printWindow.document.close();
-            printWindow.onload = () => { printWindow.print(); };
         }
     };
 
@@ -569,83 +841,78 @@ export default function StudentReportPage() {
                         </div>
                     </div>
                 </div>
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                    {/* Filters Sidebar */}
-                    <div className="lg:col-span-1 space-y-4">
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sticky top-24">
-                            <div className="flex items-center gap-2 mb-4 text-gray-800 font-semibold border-b pb-2">
-                                <Filter className="w-4 h-4 text-purple-600" />
-                                Filters
-                            </div>
-                            
-                            <div className="space-y-4">
-                                {/* Search */}
-                                <div>
-                                    <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Search Student</label>
-                                    <div className="relative">
-                                        <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-                                        <input
-                                            type="text"
-                                            placeholder="Name or Roll No."
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Department Filter */}
-                                {(user?.role === 'super_admin' || departments.length > 1) && (
-                                    <div>
-                                        <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Department</label>
-                                        <div className="relative">
-                                            <select
-                                                value={selectedDepartmentId}
-                                                onChange={(e) => setSelectedDepartmentId(e.target.value)}
-                                                className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
-                                            >
-                                                <option value="">All Departments</option>
-                                                {departments.map((dept) => (
-                                                    <option key={dept.id} value={dept.id}>{dept.name}</option>
-                                                ))}
-                                            </select>
-                                            <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Semester Filter */}
-                                <div>
-                                    <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Semester</label>
-                                    <div className="relative">
-                                        <select
-                                            value={selectedSemester}
-                                            onChange={(e) => setSelectedSemester(e.target.value)}
-                                            className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
-                                        >
-                                            <option value="">All Semesters</option>
-                                            {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
-                                                <option key={sem} value={sem}>Semester {sem}</option>
-                                            ))}
-                                        </select>
-                                        <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
-                                    </div>
-                                </div>
-
-                                <Button 
-                                    onClick={() => {
-                                        setSelectedSemester('');
-                                        setSelectedDepartmentId('');
-                                        setSearchTerm('');
-                                        router.push('/reports/students');
-                                    }}
-                                >
-                                    Reset Filters
-                                </Button>
+                {/* Filters Section - Top Bar */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
+                    <div className="flex flex-col md:flex-row gap-4 items-end">
+                        {/* Search */}
+                        <div className="flex-1 w-full md:w-auto">
+                            <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Search Student</label>
+                            <div className="relative">
+                                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                                <input
+                                    type="text"
+                                    placeholder="Name or Roll No."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all"
+                                />
                             </div>
                         </div>
-                    </div>
 
+                        {/* Department Filter */}
+                        {(user?.role === 'super_admin' || departments.length > 1) && (
+                            <div className="w-full md:w-48 lg:w-64">
+                                <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Department</label>
+                                <div className="relative">
+                                    <select
+                                        value={selectedDepartmentId}
+                                        onChange={(e) => setSelectedDepartmentId(e.target.value)}
+                                        className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
+                                    >
+                                        <option value="">All Departments</option>
+                                        {departments.map((dept) => (
+                                            <option key={dept.id} value={dept.id}>{dept.name}</option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Semester Filter */}
+                        <div className="w-full md:w-40 lg:w-48">
+                            <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Semester</label>
+                            <div className="relative">
+                                <select
+                                    value={selectedSemester}
+                                    onChange={(e) => setSelectedSemester(e.target.value)}
+                                    className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
+                                >
+                                    <option value="">All Semesters</option>
+                                    {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
+                                        <option key={sem} value={sem}>Semester {sem}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
+                            </div>
+                        </div>
+
+                        <Button 
+                            className="bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200"
+                            onClick={() => {
+                                setSelectedSemester('');
+                                setSelectedDepartmentId('');
+                                setSearchTerm('');
+                                router.push('/reports/students');
+                            }}
+                        >
+                            <Filter className="w-4 h-4 mr-2" />
+                            Reset
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="w-full">
                     {/* Report Data */}
                     <div className="lg:col-span-3">
                         <Card className="border-0 shadow-sm border-gray-100 bg-white overflow-hidden">

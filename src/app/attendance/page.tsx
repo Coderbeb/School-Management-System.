@@ -86,6 +86,10 @@ export default function AttendancePage() {
     // Attendance history state (last 5 records per student)
     const [attendanceHistory, setAttendanceHistory] = useState<Record<string, { status: string; date: string }[]>>({});
 
+    // Lecture number states
+    const [currentLectureNumber, setCurrentLectureNumber] = useState<number | null>(null);
+    const [totalLecturesToday, setTotalLecturesToday] = useState<number>(0);
+
     // Auto-save timer ref
     const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
     const pendingChangesRef = useRef(false);
@@ -350,10 +354,44 @@ export default function AttendancePage() {
             const attData = await attRes.json();
             const existingAttendance = attData.records || [];
 
+            // NEW: Fetch current teacher's lecture number and total lectures for today
+            if (user) {
+                try {
+                    const lectureInfoRes = await fetch(
+                        `/api/attendance?subjectId=${subjectId}&date=${selectedDate}&detailed=true`,
+                        { headers: { Authorization: `Bearer ${token}` } }
+                    );
+                    if (lectureInfoRes.ok) {
+                        const lectureData = await lectureInfoRes.json();
+                        const records = lectureData.detailedRecords || [];
+                        
+                        // Find teacher's lecture number
+                        const teacherRecord = records.find((r: any) => r.teacher_id === user.id);
+                        if (teacherRecord) {
+                            setCurrentLectureNumber(teacherRecord.lecture_number);
+                        } else {
+                            setCurrentLectureNumber(null); // Not yet marked
+                        }
+                        
+                        // Count total unique lectures for today
+                        const uniqueLectures = new Set(records.map((r: any) => r.lecture_number));
+                        setTotalLecturesToday(uniqueLectures.size);
+                    }
+                } catch (err) {
+                    console.error('Error fetching lecture info:', err);
+                }
+            }
+
+            // FILTER: Only show attendance marked by THIS teacher (not other teachers)
+            // Filter existingAttendance to only include records from current teacher
+            const teacherAttendance = user ? existingAttendance.filter((r: any) => 
+                r.teacher_id === user.id
+            ) : existingAttendance;
+
             // Merge existing attendance into students
             const studentsWithAttendance = enrolledStudents.map((student: Student) => {
                 // API returns snake_case (student_id, status) from database
-                const record = existingAttendance.find((r: any) =>
+                const record = teacherAttendance.find((r: any) =>
                     (r.student_id === student.id) || (r.studentId === student.id)
                 );
                 return {
@@ -462,6 +500,18 @@ export default function AttendancePage() {
         triggerAutoSave();
     };
 
+    // Toggle attendance: undefined/absent -> present, present -> absent
+    const toggleAttendance = (studentId: string) => {
+        setStudents(prev => prev.map(s => {
+            if (s.id !== studentId) return s;
+            // If not marked or absent, toggle to present; if present, toggle to absent
+            const newStatus = s.attendance === 'present' ? 'absent' : 'present';
+            return { ...s, attendance: newStatus };
+        }));
+        setMessage('');
+        triggerAutoSave();
+    };
+
     const markAllPresent = () => {
         setStudents(prev => prev.map(s => ({ ...s, attendance: 'present' as const })));
         setMessage('');
@@ -509,7 +559,12 @@ export default function AttendancePage() {
 
             if (res.ok) {
                 pendingChangesRef.current = false;
-                setMessage('Attendance saved successfully!');
+                const data = await res.json();
+                // Update lecture number from response
+                if (data.lectureNumber) {
+                    setCurrentLectureNumber(data.lectureNumber);
+                }
+                setMessage('✅ Attendance saved successfully!');
             } else {
                 const data = await res.json();
                 setMessage(`Error: ${data.error}`);
@@ -634,12 +689,38 @@ export default function AttendancePage() {
                                 <p className="text-sm text-amber-500 mt-2">Attendance cannot be marked on holidays</p>
                             </div>
                         </div>
-                    ) : !selectedSemester ? (
+                    ) : selectedSemester ? null : (
                         <div className="text-center py-16 text-gray-500">
                             <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                             <p>Select a semester to view students</p>
                         </div>
-                    ) : (
+                    )}
+
+                    {/* Lecture Number Indicator */}
+                    {selectedSemester && !isHoliday && (
+                        <div className="px-4 mb-3">
+                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 rounded-lg p-3 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <BookOpen className="w-5 h-5 text-blue-600" />
+                                        <span className="font-semibold text-blue-900">
+                                            {currentLectureNumber 
+                                                ? `You are marking: Lecture ${currentLectureNumber}`
+                                                : 'Ready to mark new lecture'
+                                            }
+                                        </span>
+                                    </div>
+                                    {totalLecturesToday > 0 && (
+                                        <span className="text-sm text-blue-600 font-medium">
+                                            {totalLecturesToday} lecture{totalLecturesToday !== 1 ? 's' : ''} today
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {selectedSemester && !isHoliday ? (
                         <>
                             {/* Stats Bar */}
                             <div className="px-4 mb-3">
@@ -712,25 +793,18 @@ export default function AttendancePage() {
                                                             <td className="px-3 py-2 text-sm font-medium text-gray-900 truncate max-w-[150px]">
                                                                 {student.first_name} {student.last_name}
                                                             </td>
-                                                            <td className="px-3 py-2 w-28">
-                                                                <div className="flex justify-center gap-3">
+                                                            <td className="px-3 py-2 w-20">
+                                                                <div className="flex justify-center">
                                                                     <button
-                                                                        onClick={() => markAttendance(student.id, 'present')}
-                                                                        className={`relative group overflow-hidden w-12 h-10 rounded-xl flex items-center justify-center font-bold transition-all duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${student.attendance === 'present'
-                                                                            ? 'bg-green-500 text-white border-green-700 shadow-lg shadow-green-200'
-                                                                            : 'bg-green-50 text-green-600 border-green-200 hover:border-green-400 hover:text-green-700 hover:bg-green-100'
-                                                                            }`}
+                                                                        onClick={() => toggleAttendance(student.id)}
+                                                                        onDoubleClick={() => markAttendance(student.id, 'absent')}
+                                                                        className={`relative group overflow-hidden w-24 h-12 rounded-xl flex items-center justify-center font-bold text-2xl transition-all duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${
+                                                                            student.attendance === 'present'
+                                                                                ? 'bg-green-500 text-white border-green-700 shadow-lg shadow-green-200'
+                                                                                : 'bg-red-500 text-white border-red-700 shadow-lg shadow-red-200'
+                                                                        }`}
                                                                     >
-                                                                        <Check className={`w-6 h-6 transition-transform ${student.attendance === 'present' ? 'scale-110' : 'group-hover:scale-110'}`} />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => markAttendance(student.id, 'absent')}
-                                                                        className={`relative group overflow-hidden w-12 h-10 rounded-xl flex items-center justify-center font-bold transition-all duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${student.attendance === 'absent'
-                                                                            ? 'bg-red-500 text-white border-red-700 shadow-lg shadow-red-200'
-                                                                            : 'bg-red-50 text-red-600 border-red-200 hover:border-red-400 hover:text-red-700 hover:bg-red-100'
-                                                                            }`}
-                                                                    >
-                                                                        <X className={`w-6 h-6 transition-transform ${student.attendance === 'absent' ? 'scale-110' : 'group-hover:scale-110'}`} />
+                                                                        {student.attendance === 'present' ? 'P' : 'A'}
                                                                     </button>
                                                                 </div>
                                                             </td>
@@ -743,7 +817,7 @@ export default function AttendancePage() {
                                 )}
                             </div>
                         </>
-                    )}
+                    ) : null}
                 </main>
 
                 {/* Desktop Content */}
@@ -924,26 +998,18 @@ export default function AttendancePage() {
                                                             </div>
                                                         </td>
                                                         <td className="px-3 sm:px-6 py-3">
-                                                            <div className="flex justify-center gap-2">
+                                                            <div className="flex justify-center">
                                                                 <button
-                                                                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${student.attendance === 'present'
-                                                                        ? 'bg-green-500 text-white border-green-700 shadow-lg shadow-green-100'
-                                                                        : 'bg-green-50 text-green-300 border-green-200 hover:border-green-300 hover:text-green-500 hover:bg-green-100'
-                                                                        }`}
-                                                                    onClick={() => markAttendance(student.id, 'present')}
-                                                                    title="Mark Present"
+                                                                    className={`w-20 h-12 rounded-xl flex items-center justify-center font-bold text-2xl transition-all duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${
+                                                                        student.attendance === 'present'
+                                                                            ? 'bg-green-500 text-white border-green-700 shadow-lg shadow-green-100'
+                                                                            : 'bg-red-500 text-white border-red-700 shadow-lg shadow-red-100'
+                                                                    }`}
+                                                                    onClick={() => toggleAttendance(student.id)}
+                                                                    onDoubleClick={() => markAttendance(student.id, 'absent')}
+                                                                    title={student.attendance === 'present' ? 'Present - Double-click for Absent' : 'Absent - Click for Present'}
                                                                 >
-                                                                    <Check className="w-5 h-5 stroke-[3]" />
-                                                                </button>
-                                                                <button
-                                                                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${student.attendance === 'absent'
-                                                                        ? 'bg-red-500 text-white border-red-700 shadow-lg shadow-red-100'
-                                                                        : 'bg-red-50 text-red-300 border-red-200 hover:border-red-300 hover:text-red-500 hover:bg-red-100'
-                                                                        }`}
-                                                                    onClick={() => markAttendance(student.id, 'absent')}
-                                                                    title="Mark Absent"
-                                                                >
-                                                                    <X className="w-5 h-5 stroke-[3]" />
+                                                                    {student.attendance === 'present' ? 'P' : 'A'}
                                                                 </button>
                                                             </div>
                                                         </td>

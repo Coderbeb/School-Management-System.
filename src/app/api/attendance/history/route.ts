@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ history: {} });
         }
 
-        // Get last 5 attendance records for each student
+        // Get last 5 attendance records for each student (filtered by teacher for teachers)
         const queryStr = `
             SELECT student_id, status, date
             FROM (
@@ -42,12 +42,13 @@ export async function GET(request: NextRequest) {
                 FROM attendance_records
                 WHERE student_id = ANY($1)
                 ${subjectId ? 'AND subject_id = $2' : ''}
+                AND teacher_id = $${subjectId ? '3' : '2'}
             ) sub
             WHERE rn <= 5
             ORDER BY student_id, date DESC
         `;
 
-        const params = subjectId ? [studentIdArray, subjectId] : [studentIdArray];
+        const params = subjectId ? [studentIdArray, subjectId, payload.userId] : [studentIdArray, payload.userId];
         const records = await query(queryStr, params);
 
         // Group by student_id

@@ -82,6 +82,8 @@ CREATE TABLE IF NOT EXISTS student_subjects (
 );
 
 -- Attendance Records (Per-lecture attendance)
+-- UPDATED: Unique constraint now includes teacher_id to support multiple teachers
+-- marking attendance independently for the same subject/date/lecture
 CREATE TABLE IF NOT EXISTS attendance_records (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     subject_id UUID REFERENCES subjects(id) ON DELETE CASCADE,
@@ -92,7 +94,7 @@ CREATE TABLE IF NOT EXISTS attendance_records (
     status VARCHAR(20) NOT NULL CHECK (status IN ('present', 'absent', 'late', 'excused')),
     remarks VARCHAR(255),
     recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(subject_id, student_id, date, lecture_number)
+    UNIQUE(subject_id, student_id, teacher_id, date, lecture_number)
 );
 
 -- Holidays Table

@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
              LEFT JOIN departments d ON d.id = u.department_id
              LEFT JOIN teacher_subjects ts ON ts.teacher_id = u.id
              LEFT JOIN subjects s ON s.id = ts.subject_id
-             LEFT JOIN attendance_records ar ON ar.subject_id = ts.subject_id
+             LEFT JOIN attendance_records ar ON ar.subject_id = ts.subject_id AND ar.teacher_id = u.id
              WHERE u.role IN ('teacher', 'hod') ${filterClause}
              GROUP BY u.id, u.first_name, u.last_name, u.email, d.name
              ORDER BY u.first_name ASC, u.last_name ASC`,

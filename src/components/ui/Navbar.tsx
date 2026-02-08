@@ -34,11 +34,11 @@ export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: Navb
                             <Menu className="w-6 h-6 text-gray-600" />
                         </button>
                         <div className="flex items-center gap-2 cursor-pointer" onClick={() => router.push('/dashboard')}>
-                            <div className="bg-gradient-to-tr from-blue-600 to-purple-600 p-1.5 rounded-lg">
-                                <GraduationCap className="w-5 h-5 text-white" />
+                            <div className="bg-white p-1 rounded-full h-9 w-9 flex items-center justify-center overflow-hidden border border-blue-100 shadow-sm">
+                                <img src="/college-logo.png" alt="YSM Logo" className="w-full h-full object-contain" />
                             </div>
-                            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-purple-700 hidden sm:block">
-                                CollegeAttend
+                            <span className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-orange-600 to-blue-700 hidden sm:block">
+                                YSM Ranchi
                             </span>
                         </div>
                         {!pathname.includes('/dashboard') && (
