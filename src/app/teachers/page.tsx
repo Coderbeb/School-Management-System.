@@ -44,7 +44,7 @@ interface Teacher {
     department_name?: string;
     department_code?: string;
     departments?: DepartmentInfo[];
-    subjects?: { assignmentId: string; subjectId: string; code: string; name: string; semester: number; }[];
+    subjects?: { assignmentId: string; subjectId: string; code: string; name: string; semesters: number[]; }[];
 }
 
 interface Department {
@@ -59,7 +59,7 @@ interface Subject {
     code: string;
     name: string;
     degreeType: string;
-    semester: number;
+    semesters: number[];
 }
 
 interface GroupedSubject {
@@ -119,15 +119,17 @@ export default function TeachersPage() {
 
             if (groups.has(key)) {
                 const group = groups.get(key)!;
-                if (!group.semesters.includes(subject.semester)) {
-                    group.semesters.push(subject.semester);
+                for (const sem of subject.semesters) {
+                    if (!group.semesters.includes(sem)) {
+                        group.semesters.push(sem);
+                    }
                 }
             } else {
                 groups.set(key, {
                     code: subject.code,
                     name: subject.name,
                     degreeType: subject.degreeType,
-                    semesters: [subject.semester]
+                    semesters: [...subject.semesters]
                 });
             }
         });
@@ -754,14 +756,16 @@ export default function TeachersPage() {
                             <table className="w-full">
                                 <thead className="bg-gray-50/50 border-b border-gray-100">
                                     <tr>
+                                        <th className="px-4 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">S.No.</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Teacher Profile</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Subjects</th>
                                         {canManage && <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
-                                    {filteredTeachers.map((teacher) => (
+                                    {filteredTeachers.map((teacher, index) => (
                                         <tr key={teacher.id} className="hover:bg-gray-50/80 transition-colors">
+                                            <td className="px-4 py-4 text-center text-sm font-medium text-gray-500">{index + 1}</td>
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className="h-10 w-10 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold">

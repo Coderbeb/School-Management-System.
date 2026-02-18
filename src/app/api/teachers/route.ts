@@ -37,16 +37,17 @@ export async function GET(request: NextRequest) {
         // Query teachers with their primary department and subjects
         let queryText = `
             SELECT 
-                u.*, 
+                u.id, u.email, u.first_name, u.last_name, u.role, u.department_id, u.created_at, u.updated_at,
                 d.name as department_name, 
                 d.code as department_code,
+                d.dept_type as department_dept_type,
                 (
                     SELECT COALESCE(json_agg(json_build_object(
                         'assignmentId', ts.id,
                         'subjectId', s.id,
                         'code', s.code, 
                         'name', s.name, 
-                        'semester', s.semester
+                        'semesters', (SELECT COALESCE(array_agg(ss.semester ORDER BY ss.semester), ARRAY[]::integer[]) FROM subject_semesters ss WHERE ss.subject_id = s.id)
                     )), '[]'::json)
                     FROM teacher_subjects ts
                     JOIN subjects s ON ts.subject_id = s.id
@@ -57,6 +58,7 @@ export async function GET(request: NextRequest) {
                         'id', dept.id,
                         'name', dept.name,
                         'code', dept.code,
+                        'dept_type', dept.dept_type,
                         'is_primary', false
                     )), '[]'::json)
                     FROM user_departments ud
@@ -234,6 +236,10 @@ export async function DELETE(request: NextRequest) {
                 return NextResponse.json({ error: 'Access denied' }, { status: 403 });
             }
         }
+
+        // Clean up related records
+        await query('DELETE FROM teacher_subjects WHERE teacher_id = $1', [id]);
+        await query('DELETE FROM user_departments WHERE user_id = $1', [id]);
 
         // Unlink teacher from attendance records (preserve history)
         await query('UPDATE attendance_records SET teacher_id = NULL WHERE teacher_id = $1', [id]);

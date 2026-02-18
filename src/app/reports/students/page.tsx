@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -75,7 +75,7 @@ interface StudentDetail {
     } | null;
 }
 
-export default function StudentReportPage() {
+function StudentReportContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const statusParam = searchParams.get('status');
@@ -92,7 +92,7 @@ export default function StudentReportPage() {
     // Detail popup state
     const [selectedStudent, setSelectedStudent] = useState<StudentDetail | null>(null);
     const [loadingDetail, setLoadingDetail] = useState(false);
-    
+
     // Date range filter states for student detail
     const [popupStartDate, setPopupStartDate] = useState(() => {
         const today = new Date();
@@ -221,7 +221,7 @@ export default function StudentReportPage() {
             if (startDate) params.append('startDate', startDate);
             if (endDate) params.append('endDate', endDate);
             if (params.toString()) url += '?' + params.toString();
-            
+
             const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -622,11 +622,11 @@ export default function StudentReportPage() {
             <div class="conclusion">
                 <h3>${status.text}</h3>
                 <p>
-                    ${summary.attendancePercentage >= 75 
-                        ? `Student maintains good attendance record. Keep up the consistent engagement in classes.` 
-                        : summary.attendancePercentage >= 60 
-                        ? `Attendance is within acceptable limits but implies scope for improvement. Regularity is advised.` 
-                        : `Critical attendance shortage detected. Immediate improvement is required to meet college standards.`}
+                    ${summary.attendancePercentage >= 75
+                ? `Student maintains good attendance record. Keep up the consistent engagement in classes.`
+                : summary.attendancePercentage >= 60
+                    ? `Attendance is within acceptable limits but implies scope for improvement. Regularity is advised.`
+                    : `Critical attendance shortage detected. Immediate improvement is required to meet college standards.`}
                 </p>
             </div>
 
@@ -657,7 +657,7 @@ export default function StudentReportPage() {
     const filteredStudents = students.filter(student => {
         const matchesSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (student.rollNumber && String(student.rollNumber).toLowerCase().includes(searchTerm.toLowerCase()));
-        
+
         if (!matchesSearch) return false;
 
         if (statusParam === 'critical') {
@@ -799,7 +799,7 @@ export default function StudentReportPage() {
                                 <div className="flex items-center gap-2 mb-2">
                                     <span className="text-blue-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                                 </div>
-                                
+
                                 <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
                                     Student Reports <span className="inline-block animate-wave">🎓</span>
                                 </h1>
@@ -808,29 +808,29 @@ export default function StudentReportPage() {
                                 </p>
                             </div>
 
-                             {/* Export Buttons */}
-                             <div className="flex gap-2 bg-white/10 p-1.5 rounded-xl backdrop-blur-sm border border-white/10 self-start">
-                                <Button 
-                                    variant="ghost" 
-                                    size="sm" 
+                            {/* Export Buttons */}
+                            <div className="flex gap-2 bg-white/10 p-1.5 rounded-xl backdrop-blur-sm border border-white/10 self-start">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
                                     className="text-white hover:bg-white/20 h-8 px-2"
                                     onClick={() => exportReport('pdf')}
                                     title="Export PDF"
                                 >
                                     <FileText className="w-4 h-4" />
                                 </Button>
-                                <Button 
-                                    variant="ghost" 
-                                    size="sm" 
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
                                     className="text-white hover:bg-white/20 h-8 px-2"
                                     onClick={() => exportReport('excel')}
                                     title="Export Excel"
                                 >
                                     <FileSpreadsheet className="w-4 h-4" />
                                 </Button>
-                                <Button 
-                                    variant="ghost" 
-                                    size="sm" 
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
                                     className="text-white hover:bg-white/20 h-8 px-2"
                                     onClick={() => exportReport('csv')}
                                     title="Export CSV"
@@ -897,7 +897,7 @@ export default function StudentReportPage() {
                             </div>
                         </div>
 
-                        <Button 
+                        <Button
                             className="bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200"
                             onClick={() => {
                                 setSelectedSemester('');
@@ -971,7 +971,7 @@ export default function StudentReportPage() {
                                                             <td className="px-6 py-4 whitespace-nowrap align-middle">
                                                                 <div className="flex items-center gap-3">
                                                                     <div className="flex-1 w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
-                                                                        <div 
+                                                                        <div
                                                                             className={`h-full rounded-full ${getAttendanceColor(student.percentage)}`}
                                                                             style={{ width: `${Math.min(student.percentage, 100)}%` }}
                                                                         ></div>
@@ -982,8 +982,8 @@ export default function StudentReportPage() {
                                                                 </div>
                                                             </td>
                                                             <td className="px-6 py-4 whitespace-nowrap text-right">
-                                                                <Button 
-                                                                    variant="ghost" 
+                                                                <Button
+                                                                    variant="ghost"
                                                                     size="sm"
                                                                     onClick={() => fetchStudentDetail(student.id)}
                                                                     className="text-gray-400 hover:text-purple-600 hover:bg-purple-50"
@@ -1000,8 +1000,8 @@ export default function StudentReportPage() {
                                         {/* Mobile View */}
                                         <div className="md:hidden p-4 space-y-4">
                                             {filteredStudents.map((student) => (
-                                                <div 
-                                                    key={student.id} 
+                                                <div
+                                                    key={student.id}
                                                     onClick={() => fetchStudentDetail(student.id)}
                                                     className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm active:scale-[0.99] transition-transform"
                                                 >
@@ -1021,7 +1021,7 @@ export default function StudentReportPage() {
                                                             {student.percentage}%
                                                         </span>
                                                     </div>
-                                                    
+
                                                     <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
                                                         <span className="flex items-center gap-1">
                                                             <BookOpen className="w-3 h-3" /> {student.totalClasses} Classes
@@ -1033,7 +1033,7 @@ export default function StudentReportPage() {
                                                     </div>
 
                                                     <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                                        <div 
+                                                        <div
                                                             className={`h-full rounded-full ${getAttendanceColor(student.percentage)}`}
                                                             style={{ width: `${Math.min(student.percentage, 100)}%` }}
                                                         ></div>
@@ -1094,7 +1094,7 @@ export default function StudentReportPage() {
                                                         </div>
                                                     </div>
                                                 </div>
-                                                
+
                                                 <div className="flex gap-2">
                                                     <Button size="sm" onClick={downloadReportCard} className="bg-indigo-600 hover:bg-indigo-700 text-white">
                                                         <FileText className="w-4 h-4 mr-2" /> Download Report
@@ -1111,14 +1111,12 @@ export default function StudentReportPage() {
                                                     <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Attended</div>
                                                     <div className="text-2xl font-bold text-emerald-600">{selectedStudent.summary.attended}</div>
                                                 </div>
-                                                <div className={`bg-white p-4 rounded-xl shadow-sm border text-center ${
-                                                    selectedStudent.summary.attendancePercentage >= 75 ? 'border-emerald-100' : 'border-amber-100'
-                                                }`}>
-                                                    <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Attendance</div>
-                                                    <div className={`text-2xl font-bold ${
-                                                        selectedStudent.summary.attendancePercentage >= 75 ? 'text-emerald-600' : 
-                                                        selectedStudent.summary.attendancePercentage >= 60 ? 'text-amber-600' : 'text-red-600'
+                                                <div className={`bg-white p-4 rounded-xl shadow-sm border text-center ${selectedStudent.summary.attendancePercentage >= 75 ? 'border-emerald-100' : 'border-amber-100'
                                                     }`}>
+                                                    <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Attendance</div>
+                                                    <div className={`text-2xl font-bold ${selectedStudent.summary.attendancePercentage >= 75 ? 'text-emerald-600' :
+                                                            selectedStudent.summary.attendancePercentage >= 60 ? 'text-amber-600' : 'text-red-600'
+                                                        }`}>
                                                         {selectedStudent.summary.attendancePercentage}%
                                                     </div>
                                                 </div>
@@ -1128,16 +1126,16 @@ export default function StudentReportPage() {
                                         {/* Filters for Detail */}
                                         <div className="bg-gray-50 p-4 rounded-xl flex flex-wrap items-center gap-3 border border-gray-100">
                                             <span className="text-sm font-medium text-gray-700">Filter Range:</span>
-                                            <Input 
-                                                type="date" 
-                                                value={popupStartDate} 
+                                            <Input
+                                                type="date"
+                                                value={popupStartDate}
                                                 onChange={(e) => setPopupStartDate(e.target.value)}
                                                 className="w-auto h-9 bg-white"
                                             />
                                             <span className="text-gray-400">-</span>
-                                            <Input 
-                                                type="date" 
-                                                value={popupEndDate} 
+                                            <Input
+                                                type="date"
+                                                value={popupEndDate}
                                                 onChange={(e) => setPopupEndDate(e.target.value)}
                                                 className="w-auto h-9 bg-white"
                                             />
@@ -1187,7 +1185,7 @@ export default function StudentReportPage() {
                                         {/* Monthly Trend (Simplified Bar) */}
                                         {selectedStudent.monthlyTrend.length > 0 && (
                                             <div>
-                                                 <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3 flex items-center gap-2">
+                                                <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3 flex items-center gap-2">
                                                     <TrendingUp className="w-4 h-4 text-purple-600" />
                                                     Monthly Trend
                                                 </h4>
@@ -1195,9 +1193,8 @@ export default function StudentReportPage() {
                                                     {selectedStudent.monthlyTrend.map((trend) => (
                                                         <div key={trend.month} className="bg-white border rounded-lg p-3 text-center shadow-sm">
                                                             <div className="text-xs text-gray-500 mb-1">{trend.month}</div>
-                                                            <div className={`text-lg font-bold ${
-                                                                trend.attendance >= 75 ? 'text-emerald-600' : 'text-red-500'
-                                                            }`}>
+                                                            <div className={`text-lg font-bold ${trend.attendance >= 75 ? 'text-emerald-600' : 'text-red-500'
+                                                                }`}>
                                                                 {trend.attendance}%
                                                             </div>
                                                             <div className="text-xs text-gray-400 mt-1">
@@ -1216,5 +1213,13 @@ export default function StudentReportPage() {
                 )}
             </main>
         </div>
+    );
+}
+
+export default function StudentReportPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full"></div></div>}>
+            <StudentReportContent />
+        </Suspense>
     );
 }

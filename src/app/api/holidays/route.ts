@@ -22,14 +22,13 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
         }
 
-        // Check if holidays table exists, if not return empty
         try {
             const holidays = await query<HolidayRow>(
-                'SELECT * FROM holidays ORDER BY date ASC'
+                'SELECT id, name, date, description FROM holidays ORDER BY date ASC'
             );
             return NextResponse.json({ holidays });
-        } catch {
-            // Table might not exist yet
+        } catch (err) {
+            console.error('Holidays query error:', err);
             return NextResponse.json({ holidays: [] });
         }
     } catch (error) {
@@ -57,16 +56,6 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Name and date are required' }, { status: 400 });
         }
 
-        // Create holidays table if not exists
-        await query(`
-            CREATE TABLE IF NOT EXISTS holidays (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                name VARCHAR(200) NOT NULL,
-                date DATE NOT NULL,
-                description TEXT,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
 
         const holidays = await query<HolidayRow>(
             `INSERT INTO holidays (name, date, description)

@@ -593,11 +593,11 @@ export default function TeacherReportPage() {
             <div class="conclusion">
                 <h3>${status.text}</h3>
                 <p>
-                    ${summary.attendancePercentage >= 75 
-                        ? `Dr. ${teacher.name} maintains excellent attendance records across their classes. The average attendance of ${summary.averageAttendance}% indicates strong student engagement.` 
-                        : summary.attendancePercentage >= 60 
-                        ? `Performance is within acceptable limits (${summary.averageAttendance}%). Focus on improving student attendance in lower-performing subjects is recommended.` 
-                        : `Average attendance of ${summary.averageAttendance}% falls below standards. A review of engagement strategies is advised.`}
+                    ${summary.averageAttendance >= 75
+                ? `Dr. ${teacher.name} maintains excellent attendance records across their classes. The average attendance of ${summary.averageAttendance}% indicates strong student engagement.`
+                : summary.averageAttendance >= 60
+                    ? `Performance is within acceptable limits (${summary.averageAttendance}%). Focus on improving student attendance in lower-performing subjects is recommended.`
+                    : `Average attendance of ${summary.averageAttendance}% falls below standards. A review of engagement strategies is advised.`}
                 </p>
             </div>
 
@@ -647,8 +647,8 @@ export default function TeacherReportPage() {
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-             {/* Mobile Sidebar */}
-             {user && (
+            {/* Mobile Sidebar */}
+            {user && (
                 <MobileSidebar
                     isOpen={sidebarOpen}
                     onClose={() => setSidebarOpen(false)}
@@ -672,7 +672,7 @@ export default function TeacherReportPage() {
                                 <div className="flex items-center gap-2 mb-2">
                                     <span className="text-blue-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                                 </div>
-                                
+
                                 <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
                                     Teacher Reports <span className="inline-block animate-wave">👨‍🏫</span>
                                 </h1>
@@ -680,9 +680,9 @@ export default function TeacherReportPage() {
                                     Analyze teacher attendance, track variations, and view individual performance details.
                                 </p>
                             </div>
-                            
-                             {/* Visual Icon */}
-                             <div className="hidden md:block p-3 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/20">
+
+                            {/* Visual Icon */}
+                            <div className="hidden md:block p-3 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/20">
                                 <Users className="w-8 h-8 text-white" />
                             </div>
                         </div>
@@ -726,7 +726,7 @@ export default function TeacherReportPage() {
                             </div>
                         )}
 
-                        <Button 
+                        <Button
                             className="bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200"
                             onClick={() => {
                                 setSelectedDepartmentId('');
@@ -759,8 +759,8 @@ export default function TeacherReportPage() {
                                     </div>
                                 ) : (
                                     <>
-                                         {/* Desktop View */}
-                                         <div className="hidden md:block overflow-x-auto">
+                                        {/* Desktop View */}
+                                        <div className="hidden md:block overflow-x-auto">
                                             <table className="w-full table-auto">
                                                 <thead className="bg-gray-50/50 border-b border-gray-100">
                                                     <tr>
@@ -796,7 +796,7 @@ export default function TeacherReportPage() {
                                                             <td className="px-6 py-4 whitespace-nowrap align-middle">
                                                                 <div className="flex items-center gap-3">
                                                                     <div className="flex-1 w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
-                                                                        <div 
+                                                                        <div
                                                                             className={`h-full rounded-full ${getAttendanceColor(teacher.averageAttendance)}`}
                                                                             style={{ width: `${Math.min(teacher.averageAttendance, 100)}%` }}
                                                                         ></div>
@@ -807,8 +807,8 @@ export default function TeacherReportPage() {
                                                                 </div>
                                                             </td>
                                                             <td className="px-6 py-4 whitespace-nowrap text-right">
-                                                                <Button 
-                                                                    variant="ghost" 
+                                                                <Button
+                                                                    variant="ghost"
                                                                     size="sm"
                                                                     onClick={() => openTeacherDetail(teacher.id)}
                                                                     className="text-gray-400 hover:text-purple-600 hover:bg-purple-50"
@@ -825,8 +825,8 @@ export default function TeacherReportPage() {
                                         {/* Mobile View */}
                                         <div className="md:hidden p-4 space-y-4">
                                             {filteredTeachers.map((teacher) => (
-                                                <div 
-                                                    key={teacher.id} 
+                                                <div
+                                                    key={teacher.id}
                                                     onClick={() => openTeacherDetail(teacher.id)}
                                                     className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm active:scale-[0.99] transition-transform"
                                                 >
@@ -844,7 +844,7 @@ export default function TeacherReportPage() {
                                                             {teacher.averageAttendance}%
                                                         </span>
                                                     </div>
-                                                    
+
                                                     <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
                                                         <span className="flex items-center gap-1">
                                                             <BookOpen className="w-3 h-3" /> {teacher.totalSessions} Sessions
@@ -852,7 +852,7 @@ export default function TeacherReportPage() {
                                                     </div>
 
                                                     <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                                        <div 
+                                                        <div
                                                             className={`h-full rounded-full ${getAttendanceColor(teacher.averageAttendance)}`}
                                                             style={{ width: `${Math.min(teacher.averageAttendance, 100)}%` }}
                                                         ></div>
@@ -871,8 +871,8 @@ export default function TeacherReportPage() {
                 {(selectedTeacher || loadingDetail) && (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                         <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in fade-in zoom-in duration-200">
-                             {/* Modal Header */}
-                             <div className="px-6 py-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
+                            {/* Modal Header */}
+                            <div className="px-6 py-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
                                 <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                                     <Users className="w-5 h-5 text-purple-600" />
                                     Teacher Details
@@ -890,8 +890,8 @@ export default function TeacherReportPage() {
                                     </div>
                                 ) : selectedTeacher && (
                                     <div className="space-y-8">
-                                         {/* Profile Card */}
-                                         <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-100">
+                                        {/* Profile Card */}
+                                        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-100">
                                             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                                                 <div className="flex items-center gap-4">
                                                     <div className="w-16 h-16 bg-white rounded-full shadow-sm flex items-center justify-center text-2xl font-bold text-purple-600 border border-purple-100">
@@ -907,7 +907,7 @@ export default function TeacherReportPage() {
                                                         </div>
                                                     </div>
                                                 </div>
-                                                
+
                                                 <div className="flex gap-2">
                                                     <Button size="sm" onClick={downloadTeacherReportCard} className="bg-indigo-600 hover:bg-indigo-700 text-white">
                                                         <FileDown className="w-4 h-4 mr-2" /> Download Report
@@ -924,7 +924,7 @@ export default function TeacherReportPage() {
                                                     <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Total Students</div>
                                                     <div className="text-2xl font-bold text-purple-600">{selectedTeacher.summary.totalStudents}</div>
                                                 </div>
-                                                 <div className="bg-white p-4 rounded-xl shadow-sm border border-emerald-100 text-center">
+                                                <div className="bg-white p-4 rounded-xl shadow-sm border border-emerald-100 text-center">
                                                     <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Present</div>
                                                     <div className="text-2xl font-bold text-emerald-600">{selectedTeacher.summary.presentCount}</div>
                                                 </div>
@@ -943,43 +943,43 @@ export default function TeacherReportPage() {
                                         </div>
 
                                         {/* Filters for Detail (Department/Semester if applicable) */}
-                                        {((selectedTeacher.filters.departments && selectedTeacher.filters.departments.length > 1) || 
-                                          (selectedTeacher.filters.semesters && selectedTeacher.filters.semesters.length > 1)) && (
-                                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                                                <div className="text-xs font-semibold text-gray-500 uppercase mb-3">Filter Details</div>
-                                                <div className="flex flex-col sm:flex-row gap-3">
-                                                    {selectedTeacher.filters.departments?.length > 1 && (
-                                                        <select
-                                                            value={popupDeptFilter}
-                                                            onChange={(e) => setPopupDeptFilter(e.target.value)}
-                                                            className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
-                                                        >
-                                                            <option value="">All Departments</option>
-                                                            {selectedTeacher.filters.departments.map((dept) => (
-                                                                <option key={dept.id} value={dept.id}>{dept.name}</option>
-                                                            ))}
-                                                        </select>
-                                                    )}
-                                                    {selectedTeacher.filters.semesters?.length > 1 && (
-                                                        <select
-                                                            value={popupSemesterFilter}
-                                                            onChange={(e) => setPopupSemesterFilter(e.target.value)}
-                                                            className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
-                                                        >
-                                                            <option value="">All Semesters</option>
-                                                            {selectedTeacher.filters.semesters.map((sem) => (
-                                                                <option key={sem} value={sem}>Semester {sem}</option>
-                                                            ))}
-                                                        </select>
-                                                    )}
+                                        {((selectedTeacher.filters.departments && selectedTeacher.filters.departments.length > 1) ||
+                                            (selectedTeacher.filters.semesters && selectedTeacher.filters.semesters.length > 1)) && (
+                                                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                                    <div className="text-xs font-semibold text-gray-500 uppercase mb-3">Filter Details</div>
+                                                    <div className="flex flex-col sm:flex-row gap-3">
+                                                        {selectedTeacher.filters.departments?.length > 1 && (
+                                                            <select
+                                                                value={popupDeptFilter}
+                                                                onChange={(e) => setPopupDeptFilter(e.target.value)}
+                                                                className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+                                                            >
+                                                                <option value="">All Departments</option>
+                                                                {selectedTeacher.filters.departments.map((dept) => (
+                                                                    <option key={dept.id} value={dept.id}>{dept.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        )}
+                                                        {selectedTeacher.filters.semesters?.length > 1 && (
+                                                            <select
+                                                                value={popupSemesterFilter}
+                                                                onChange={(e) => setPopupSemesterFilter(e.target.value)}
+                                                                className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+                                                            >
+                                                                <option value="">All Semesters</option>
+                                                                {selectedTeacher.filters.semesters.map((sem) => (
+                                                                    <option key={sem} value={sem}>Semester {sem}</option>
+                                                                ))}
+                                                            </select>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
+                                            )}
 
                                         {/* Subject Breakdown */}
                                         {selectedTeacher.subjects.length > 0 && (
                                             <div>
-                                                 <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3 flex items-center gap-2">
+                                                <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3 flex items-center gap-2">
                                                     <BookOpen className="w-4 h-4 text-purple-600" />
                                                     Subject Performance
                                                 </h4>
@@ -1014,9 +1014,9 @@ export default function TeacherReportPage() {
                                         )}
 
                                         {/* Monthly Trend */}
-                                         {selectedTeacher.monthlyTrend.length > 0 && (
+                                        {selectedTeacher.monthlyTrend.length > 0 && (
                                             <div>
-                                                 <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3 flex items-center gap-2">
+                                                <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3 flex items-center gap-2">
                                                     <TrendingUp className="w-4 h-4 text-purple-600" />
                                                     Monthly Trend
                                                 </h4>
@@ -1024,9 +1024,8 @@ export default function TeacherReportPage() {
                                                     {selectedTeacher.monthlyTrend.map((trend) => (
                                                         <div key={trend.month} className="bg-white border rounded-lg p-3 text-center shadow-sm">
                                                             <div className="text-xs text-gray-500 mb-1">{trend.month}</div>
-                                                            <div className={`text-lg font-bold ${
-                                                                trend.attendance >= 75 ? 'text-emerald-600' : 'text-red-500'
-                                                            }`}>
+                                                            <div className={`text-lg font-bold ${trend.attendance >= 75 ? 'text-emerald-600' : 'text-red-500'
+                                                                }`}>
                                                                 {trend.attendance}%
                                                             </div>
                                                         </div>

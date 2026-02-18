@@ -54,11 +54,18 @@ CREATE TABLE IF NOT EXISTS subjects (
     code VARCHAR(20) NOT NULL,
     name VARCHAR(200) NOT NULL,
     degree_type VARCHAR(20) NOT NULL CHECK (degree_type IN ('ba', 'bsc', 'bcom', 'it', 'bba', 'mcom')),
-    semester INTEGER NOT NULL,
     credits INTEGER NOT NULL DEFAULT 3,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(code, degree_type, semester)
+    UNIQUE(code, degree_type)
+);
+
+-- Subject-Semester Mapping (One subject can be taught in multiple semesters)
+CREATE TABLE IF NOT EXISTS subject_semesters (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    subject_id UUID REFERENCES subjects(id) ON DELETE CASCADE,
+    semester INTEGER NOT NULL CHECK (semester >= 1 AND semester <= 8),
+    UNIQUE(subject_id, semester)
 );
 
 -- Teacher-Subject Assignment (One teacher per subject)

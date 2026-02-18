@@ -67,6 +67,13 @@ export default function MyPerformancePage() {
             return;
         }
         const parsedUser = JSON.parse(userData);
+
+        // Only teachers should access this page
+        if (parsedUser.role !== 'teacher') {
+            router.push('/reports');
+            return;
+        }
+
         setUser(parsedUser);
         fetchMyPerformance(token, parsedUser.id);
     }, [router]);
@@ -150,7 +157,7 @@ export default function MyPerformancePage() {
                                 <div className="flex items-center gap-2 mb-2">
                                     <span className="text-blue-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                                 </div>
-                                
+
                                 <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
                                     My Performance <span className="inline-block animate-wave">📈</span>
                                 </h1>
@@ -158,9 +165,9 @@ export default function MyPerformancePage() {
                                     Track your teaching statistics, attendance trends, and subject-wise performance.
                                 </p>
                             </div>
-                            
-                             {/* Visual Icon */}
-                             <div className="hidden md:block p-3 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/20">
+
+                            {/* Visual Icon */}
+                            <div className="hidden md:block p-3 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/20">
                                 <TrendingUp className="w-8 h-8 text-white" />
                             </div>
                         </div>

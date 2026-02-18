@@ -85,11 +85,12 @@ export async function GET(
 
         // Get unique semesters from teacher's subjects
         const semesters = await query<{ semester: number }>(
-            `SELECT DISTINCT s.semester
+            `SELECT DISTINCT ss.semester
              FROM teacher_subjects ts
              JOIN subjects s ON s.id = ts.subject_id
+             JOIN subject_semesters ss ON ss.subject_id = s.id
              WHERE ts.teacher_id = $1
-             ORDER BY s.semester`,
+             ORDER BY ss.semester`,
             [teacherId]
         );
 
@@ -103,7 +104,7 @@ export async function GET(
         }
         if (filterSemester) {
             subjectParams.push(parseInt(filterSemester));
-            subjectFilters.push(`s.semester = $${subjectParams.length}`);
+            subjectFilters.push(`EXISTS (SELECT 1 FROM subject_semesters ss WHERE ss.subject_id = s.id AND ss.semester = $${subjectParams.length})`);
         }
 
         // Get subject-wise stats with filters
@@ -112,7 +113,11 @@ export async function GET(
                 s.id as subject_id,
                 s.name as subject_name,
                 s.code as subject_code,
-                s.semester,
+                COALESCE(
+                    (SELECT string_agg(ss2.semester::text, ', ' ORDER BY ss2.semester)
+                     FROM subject_semesters ss2 WHERE ss2.subject_id = s.id),
+                    ''
+                ) as semester,
                 d.id as department_id,
                 d.name as department_name,
                 COUNT(DISTINCT ar.date || '-' || ar.lecture_number) as total_sessions,
@@ -130,8 +135,8 @@ export async function GET(
              LEFT JOIN departments d ON d.degree_type = s.degree_type
              LEFT JOIN attendance_records ar ON ar.subject_id = s.id AND ar.teacher_id = ts.teacher_id
              WHERE ${subjectFilters.join(' AND ')}
-             GROUP BY s.id, s.name, s.code, s.semester, d.id, d.name
-             ORDER BY s.semester, s.name`,
+             GROUP BY s.id, s.name, s.code, d.id, d.name
+             ORDER BY s.code, s.name`,
             subjectParams
         );
 
@@ -187,7 +192,7 @@ export async function GET(
              FROM attendance_records ar
              WHERE ar.teacher_id = $1
         `;
-        
+
         const overallStatsParams = [teacherId];
         const overallStats = await query<{ total_sessions: string; total_students: string; present_count: string; absent_count: string; avg_attendance: string }>(
             overallStatsQuery,
