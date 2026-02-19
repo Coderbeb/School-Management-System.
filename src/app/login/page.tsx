@@ -159,7 +159,6 @@ export default function LoginPage() {
                             <div className="space-y-2 group">
                                 <div className="flex items-center justify-between">
                                     <Label htmlFor="password" className="text-sm font-semibold text-gray-700 ml-1 group-focus-within:text-blue-600 transition-colors">Password</Label>
-                                    <a href="#" className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline">Forgot password?</a>
                                 </div>
                                 <div className="relative">
                                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -185,6 +184,9 @@ export default function LoginPage() {
                                             <Eye className="h-5 w-5" />
                                         )}
                                     </button>
+                                </div>
+                                <div className="text-right">
+                                    <a href="#" className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline">Forgot password?</a>
                                 </div>
                             </div>
 

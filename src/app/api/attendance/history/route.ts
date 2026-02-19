@@ -20,8 +20,15 @@ export async function GET(request: NextRequest) {
         const studentIds = searchParams.get('studentIds'); // comma-separated
         const subjectId = searchParams.get('subjectId');
 
+        console.log(`[History API Debug] studentIds count: ${studentIds ? studentIds.split(',').length : 0}`);
+        console.log(`[History API Debug] subjectId received: '${subjectId}' (type: ${typeof subjectId})`);
+
         if (!studentIds) {
             return NextResponse.json({ error: 'studentIds required' }, { status: 400 });
+        }
+
+        if (!subjectId) {
+            return NextResponse.json({ error: 'subjectId required for specific subject history' }, { status: 400 });
         }
 
         const studentIdArray = studentIds.split(',').filter(id => id.trim());
@@ -53,7 +60,7 @@ export async function GET(request: NextRequest) {
 
         // Group by student_id
         const history: Record<string, { status: string; date: string }[]> = {};
-        
+
         for (const record of records as { student_id: string; status: string; date: string }[]) {
             if (!history[record.student_id]) {
                 history[record.student_id] = [];

@@ -364,7 +364,7 @@ export default function AttendancePage() {
                     if (lectureInfoRes.ok) {
                         const lectureData = await lectureInfoRes.json();
                         const records = lectureData.detailedRecords || [];
-                        
+
                         // Find teacher's lecture number
                         const teacherRecord = records.find((r: any) => r.teacher_id === user.id);
                         if (teacherRecord) {
@@ -372,7 +372,7 @@ export default function AttendancePage() {
                         } else {
                             setCurrentLectureNumber(null); // Not yet marked
                         }
-                        
+
                         // Count total unique lectures for today
                         const uniqueLectures = new Set(records.map((r: any) => r.lecture_number));
                         setTotalLecturesToday(uniqueLectures.size);
@@ -384,7 +384,7 @@ export default function AttendancePage() {
 
             // FILTER: Only show attendance marked by THIS teacher (not other teachers)
             // Filter existingAttendance to only include records from current teacher
-            const teacherAttendance = user ? existingAttendance.filter((r: any) => 
+            const teacherAttendance = user ? existingAttendance.filter((r: any) =>
                 r.teacher_id === user.id
             ) : existingAttendance;
 
@@ -396,7 +396,7 @@ export default function AttendancePage() {
                 );
                 return {
                     ...student,
-                    attendance: record ? (record.status as 'present' | 'absent') : undefined
+                    attendance: record ? (record.status as 'present' | 'absent') : 'absent'
                 };
             });
 
@@ -704,7 +704,7 @@ export default function AttendancePage() {
                                     <div className="flex items-center gap-2">
                                         <BookOpen className="w-5 h-5 text-blue-600" />
                                         <span className="font-semibold text-blue-900">
-                                            {currentLectureNumber 
+                                            {currentLectureNumber
                                                 ? `You are marking: Lecture ${currentLectureNumber}`
                                                 : 'Ready to mark new lecture'
                                             }
@@ -798,11 +798,10 @@ export default function AttendancePage() {
                                                                     <button
                                                                         onClick={() => toggleAttendance(student.id)}
                                                                         onDoubleClick={() => markAttendance(student.id, 'absent')}
-                                                                        className={`relative group overflow-hidden w-24 h-12 rounded-xl flex items-center justify-center font-bold text-2xl transition-all duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${
-                                                                            student.attendance === 'present'
-                                                                                ? 'bg-green-500 text-white border-green-700 shadow-lg shadow-green-200'
-                                                                                : 'bg-red-500 text-white border-red-700 shadow-lg shadow-red-200'
-                                                                        }`}
+                                                                        className={`relative group overflow-hidden w-24 h-12 rounded-xl flex items-center justify-center font-bold text-2xl transition-all duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${student.attendance === 'present'
+                                                                            ? 'bg-green-500 text-white border-green-700 shadow-lg shadow-green-200'
+                                                                            : 'bg-red-500 text-white border-red-700 shadow-lg shadow-red-200'
+                                                                            }`}
                                                                     >
                                                                         {student.attendance === 'present' ? 'P' : 'A'}
                                                                     </button>
@@ -985,26 +984,37 @@ export default function AttendancePage() {
                                                         <td className="px-3 sm:px-6 py-3 text-xs sm:text-sm font-medium">{student.first_name} <span className="hidden sm:inline">{student.last_name}</span></td>
                                                         <td className="px-3 sm:px-6 py-3 text-center">
                                                             <div className="flex items-center justify-center gap-1">
-                                                                {[...(attendanceHistory[student.id] || [])].reverse().map((record, i) => (
-                                                                    <div
-                                                                        key={i}
-                                                                        title={record.date}
-                                                                        className={`w-2 h-2 rounded-full ${record.status === 'present' ? 'bg-green-500' :
-                                                                                record.status === 'absent' ? 'bg-red-500' : 'bg-yellow-500'
-                                                                            }`}
-                                                                    />
-                                                                ))}
-                                                                {!attendanceHistory[student.id]?.length && <span className="text-gray-300 text-xs">-</span>}
+                                                                {(() => {
+                                                                    const history = attendanceHistory[student.id] || [];
+                                                                    // Filter out today's record from history to avoid duplication, then slice last 4
+                                                                    const uniqueHistory = history.filter(h => h.date !== selectedDate);
+
+                                                                    // Construct display list: Last 4 history + Current status
+                                                                    const displayDots = [
+                                                                        ...[...uniqueHistory].reverse().slice(-4),
+                                                                        { status: student.attendance || 'absent', date: selectedDate }
+                                                                    ];
+
+                                                                    return displayDots.map((record, i) => (
+                                                                        <div
+                                                                            key={i}
+                                                                            title={record.date}
+                                                                            className={`w-2 h-2 rounded-full transition-colors duration-200 ${record.status === 'present' ? 'bg-green-500' :
+                                                                                    record.status === 'absent' ? 'bg-red-500' : 'bg-yellow-500'
+                                                                                }`}
+                                                                        />
+                                                                    ));
+                                                                })()}
+                                                                {!attendanceHistory[student.id]?.length && student.attendance === undefined && <span className="text-gray-300 text-xs">-</span>}
                                                             </div>
                                                         </td>
                                                         <td className="px-3 sm:px-6 py-3">
                                                             <div className="flex justify-center">
                                                                 <button
-                                                                    className={`w-20 h-12 rounded-xl flex items-center justify-center font-bold text-2xl transition-all duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${
-                                                                        student.attendance === 'present'
-                                                                            ? 'bg-green-500 text-white border-green-700 shadow-lg shadow-green-100'
-                                                                            : 'bg-red-500 text-white border-red-700 shadow-lg shadow-red-100'
-                                                                    }`}
+                                                                    className={`w-20 h-12 rounded-xl flex items-center justify-center font-bold text-2xl transition-all duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${student.attendance === 'present'
+                                                                        ? 'bg-green-500 text-white border-green-700 shadow-lg shadow-green-100'
+                                                                        : 'bg-red-500 text-white border-red-700 shadow-lg shadow-red-100'
+                                                                        }`}
                                                                     onClick={() => toggleAttendance(student.id)}
                                                                     onDoubleClick={() => markAttendance(student.id, 'absent')}
                                                                     title={student.attendance === 'present' ? 'Present - Double-click for Absent' : 'Absent - Click for Present'}
