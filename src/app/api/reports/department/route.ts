@@ -48,10 +48,11 @@ export async function GET(request: NextRequest) {
 
         const { role, departmentId: userDeptId } = payload;
 
-        // Only HOD and Super Admin can access
+        // Teachers cannot access department reports
         if (role === 'teacher') {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
+
 
         const searchParams = request.nextUrl.searchParams;
         const selectedDeptId = searchParams.get('departmentId') || userDeptId;
@@ -85,7 +86,7 @@ export async function GET(request: NextRequest) {
                 ) as avg_attendance
             FROM students s
             LEFT JOIN attendance_records ar ON ar.student_id = s.id
-            WHERE s.department_id = $1 AND s.is_active = true
+            WHERE s.department_id = $1
             GROUP BY s.current_semester
             ORDER BY s.current_semester`,
             [selectedDeptId]
@@ -97,7 +98,11 @@ export async function GET(request: NextRequest) {
                 sub.id,
                 sub.name,
                 sub.code,
-                sub.semester::text as semester,
+                COALESCE(
+                    (SELECT string_agg(ss2.semester::text, ', ' ORDER BY ss2.semester)
+                     FROM subject_semesters ss2 WHERE ss2.subject_id = sub.id),
+                    ''
+                ) as semester,
                 COUNT(DISTINCT ss.student_id) as total_students,
                 COALESCE(
                     ROUND(
@@ -112,8 +117,8 @@ export async function GET(request: NextRequest) {
             LEFT JOIN students st ON ss.student_id = st.id AND st.department_id = $1
             LEFT JOIN attendance_records ar ON ar.subject_id = sub.id AND ar.student_id = st.id
             WHERE sub.degree_type = $2
-            GROUP BY sub.id, sub.name, sub.code, sub.semester
-            ORDER BY sub.semester, sub.name`,
+            GROUP BY sub.id, sub.name, sub.code
+            ORDER BY sub.code, sub.name`,
             [selectedDeptId, deptInfo.degree_type]
         );
 
@@ -134,7 +139,7 @@ export async function GET(request: NextRequest) {
                 ) as attendance_pct
             FROM students s
             LEFT JOIN attendance_records ar ON ar.student_id = s.id
-            WHERE s.department_id = $1 AND s.is_active = true
+            WHERE s.department_id = $1
             GROUP BY s.id, s.roll_number, s.first_name, s.last_name, s.current_semester
             HAVING COUNT(ar.id) > 0 AND 
                 COALESCE(
@@ -167,7 +172,7 @@ export async function GET(request: NextRequest) {
                 ) as attendance_pct
             FROM students s
             LEFT JOIN attendance_records ar ON ar.student_id = s.id
-            WHERE s.department_id = $1 AND s.is_active = true
+            WHERE s.department_id = $1
             GROUP BY s.id, s.roll_number, s.first_name, s.last_name, s.current_semester
             HAVING COUNT(ar.id) > 0 AND 
                 COALESCE(
@@ -209,7 +214,7 @@ export async function GET(request: NextRequest) {
                 id: s.id,
                 name: s.name,
                 code: s.code,
-                semester: parseInt(s.semester),
+                semester: s.semester,
                 totalStudents: parseInt(s.total_students || '0'),
                 avgAttendance: Math.round(parseFloat(s.avg_attendance || '0')),
             })),

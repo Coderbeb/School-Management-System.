@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
 
         try {
             let queryStr = `
-                SELECT ar.*, 
+                SELECT ar.id, ar.student_id, ar.subject_id, ar.teacher_id, ar.date, ar.lecture_number, ar.status,
                        s.roll_number, s.first_name, s.last_name,
                        sub.code as subject_code, sub.name as subject_name
                 FROM attendance_records ar
@@ -170,6 +170,18 @@ export async function GET(request: NextRequest) {
                 WHERE ar.date = $1
             `;
             const params: (string | number)[] = [date];
+
+            // RBAC: Teachers only see their own records
+            if (payload.role === 'teacher') {
+                params.push(payload.userId);
+                queryStr += ` AND ar.teacher_id = $${params.length}`;
+            }
+
+            // RBAC: HODs only see their department's records
+            if (payload.role === 'hod' && payload.departmentId) {
+                params.push(payload.departmentId);
+                queryStr += ` AND ar.student_id IN (SELECT id FROM students WHERE department_id = $${params.length})`;
+            }
 
             if (subjectId) {
                 params.push(subjectId);
@@ -185,8 +197,9 @@ export async function GET(request: NextRequest) {
 
             const records = await query(queryStr, params);
             return NextResponse.json({ records });
-        } catch {
-            return NextResponse.json({ records: [] });
+        } catch (err) {
+            console.error('Attendance query error:', err);
+            return NextResponse.json({ error: 'Server error' }, { status: 500 });
         }
     } catch (error) {
         console.error('Get attendance error:', error);

@@ -30,7 +30,7 @@ interface Subject {
     subjectId: string;
     subjectCode: string;
     subjectName: string;
-    subjectSemester: number;
+    subjectSemesters: number[];
     academicYear: string;
     departmentId?: string;
     departmentName?: string;
@@ -40,6 +40,7 @@ interface Department {
     id: string;
     name: string;
     code: string;
+    deptType: string;
 }
 
 interface Holiday {
@@ -56,6 +57,7 @@ export default function AttendancePage() {
     const [subjects, setSubjects] = useState<Subject[]>([]);
     const [departments, setDepartments] = useState<Department[]>([]);
     const [teacherDepartmentIds, setTeacherDepartmentIds] = useState<string[]>([]); // All teacher's dept IDs for filtering
+    const [primaryDeptType, setPrimaryDeptType] = useState<string>('regular'); // Primary dept type for batch year calc
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
     // Selection States
@@ -145,7 +147,8 @@ export default function AttendancePage() {
                     allDepts.push({
                         id: teacher.department_id,
                         name: teacher.department_name,
-                        code: teacher.department_code || ''
+                        code: teacher.department_code || '',
+                        deptType: teacher.department_dept_type || 'regular'
                     });
                 }
 
@@ -157,7 +160,8 @@ export default function AttendancePage() {
                             allDepts.push({
                                 id: dept.id,
                                 name: dept.name,
-                                code: dept.code || ''
+                                code: dept.code || '',
+                                deptType: dept.dept_type || 'regular'
                             });
                         }
                     });
@@ -170,6 +174,8 @@ export default function AttendancePage() {
 
                 // Always store all department IDs for student filtering
                 setTeacherDepartmentIds(allDepts.map(d => d.id));
+                // Store primary dept type for batch year calculation
+                setPrimaryDeptType(allDepts[0]?.deptType || 'regular');
             }
         } catch (err) {
             console.error('Error fetching departments:', err);
@@ -189,9 +195,11 @@ export default function AttendancePage() {
             const assignments = data.assignments || [];
             setSubjects(assignments);
 
-            // Extract unique semesters
-            const semesters = Array.from(new Set(assignments.map((s: Subject) => s.subjectSemester))).sort((a, b) => (a as number) - (b as number));
-            setAvailableSemesters(semesters as number[]);
+            // Extract unique semesters from all assignments (each has semesters array)
+            const semesterSet = new Set<number>();
+            assignments.forEach((s: Subject) => s.subjectSemesters.forEach((sem: number) => semesterSet.add(sem)));
+            const semesters = Array.from(semesterSet).sort((a, b) => a - b);
+            setAvailableSemesters(semesters);
 
         } catch (err) {
             console.error('Error fetching subjects:', err);
@@ -259,7 +267,7 @@ export default function AttendancePage() {
     // Get semesters for filtered subjects. If filtering resulted in empty, fall back to all subjects
     const subjectsToUse = filteredSubjects.length > 0 ? filteredSubjects : subjects;
     const filteredSemesters = Array.from(
-        new Set(subjectsToUse.map((s: Subject) => s.subjectSemester))
+        new Set(subjectsToUse.flatMap((s: Subject) => s.subjectSemesters))
     ).sort((a, b) => a - b);
 
     // Auto-select subject when semester changes
@@ -271,7 +279,7 @@ export default function AttendancePage() {
         }
 
         // Use subjectsToUse (falls back to all subjects if filter is empty)
-        const semesterSubjects = subjectsToUse.filter(s => s.subjectSemester === parseInt(selectedSemester));
+        const semesterSubjects = subjectsToUse.filter(s => s.subjectSemesters.includes(parseInt(selectedSemester)));
         if (semesterSubjects.length > 0) {
             // Auto-select the first subject for this semester
             setSelectedSubjectId(semesterSubjects[0].subjectId);
@@ -281,12 +289,12 @@ export default function AttendancePage() {
     }, [selectedSemester, subjectsToUse.length, selectedDepartmentId]);
 
     // Fetch students when subject is selected (triggered by auto-select above)
-    // Refetch when date, subject, or department changes
+    // Refetch when date, subject, department, or semester changes
     useEffect(() => {
         if (selectedSubjectId) {
             fetchStudentsForSubject(selectedSubjectId);
         }
-    }, [selectedSubjectId, selectedDate, selectedDepartmentId]);
+    }, [selectedSubjectId, selectedDate, selectedDepartmentId, selectedSemester]);
 
 
     const fetchStudentsForSubject = async (subjectId: string) => {
@@ -296,7 +304,7 @@ export default function AttendancePage() {
         setLoading(true);
         try {
             // Get all subjects for the selected semester (not just one)
-            const semesterSubjects = subjectsToUse.filter(s => s.subjectSemester === parseInt(selectedSemester));
+            const semesterSubjects = subjectsToUse.filter(s => s.subjectSemesters.includes(parseInt(selectedSemester)));
 
             // Fetch students from ALL subjects for this semester and merge them
             const allStudentsMap = new Map<string, Student>();
@@ -313,8 +321,15 @@ export default function AttendancePage() {
 
                 (data.enrollments || []).forEach((e: any) => {
                     // Only add if student's department matches the selected/teacher's department
+                    // AND student's current semester matches the selected semester
                     // AND not already in the map (deduplicate by student ID)
                     const studentDeptId = e.studentDepartmentId;
+                    const studentSemester = e.studentCurrentSemester;
+
+                    // Filter by semester - only show students in the selected semester
+                    if (selectedSemester && studentSemester !== parseInt(selectedSemester)) {
+                        return;
+                    }
 
                     // If specific department is selected, filter by that; otherwise filter by all teacher's departments
                     let matchesDepartment = false;
@@ -668,9 +683,27 @@ export default function AttendancePage() {
                                     onChange={(e) => setSelectedSemester(e.target.value)}
                                 >
                                     <option value="">Select Semester</option>
-                                    {(departments.length > 1 && selectedDepartmentId ? filteredSemesters : availableSemesters).map(sem => (
-                                        <option key={sem} value={sem}>Sem {sem}</option>
-                                    ))}
+                                    {(departments.length > 1 && selectedDepartmentId ? filteredSemesters : availableSemesters).map(sem => {
+                                        // Calculate batch year label
+                                        // Determine dept type: use selected department or first/only department
+                                        const activeDept = selectedDepartmentId
+                                            ? departments.find(d => d.id === selectedDepartmentId)
+                                            : departments[0] || null;
+                                        const deptType = activeDept?.deptType || primaryDeptType;
+                                        // Current academic year start (e.g. 2025 from July 2025)
+                                        const now = new Date();
+                                        const academicStartYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+                                        // Batch start year: semester 1-2 = current year, 3-4 = year-1, etc.
+                                        const yearOffset = Math.floor((sem - 1) / 2);
+                                        const batchStart = academicStartYear - yearOffset;
+                                        // Program duration: vocational/pg = 3yr, regular = 4yr (NEP)
+                                        const duration = (deptType === 'vocational' || deptType === 'pg') ? 3 : 4;
+                                        const batchEnd = (batchStart + duration) % 100; // last 2 digits
+                                        const batchLabel = `${batchStart}-${String(batchEnd).padStart(2, '0')}`;
+                                        return (
+                                            <option key={sem} value={sem}>Sem {sem} ({batchLabel})</option>
+                                        );
+                                    })}
                                 </select>
                             </div>
 
@@ -859,11 +892,24 @@ export default function AttendancePage() {
                                         onChange={(e) => setSelectedSemester(e.target.value)}
                                     >
                                         <option value="">Select...</option>
-                                        {(departments.length > 1 && selectedDepartmentId ? filteredSemesters : availableSemesters).map(sem => (
-                                            <option key={sem} value={sem}>
-                                                Sem {sem}
-                                            </option>
-                                        ))}
+                                        {(departments.length > 1 && selectedDepartmentId ? filteredSemesters : availableSemesters).map(sem => {
+                                            const activeDept = selectedDepartmentId
+                                                ? departments.find(d => d.id === selectedDepartmentId)
+                                                : departments[0] || null;
+                                            const deptType = activeDept?.deptType || primaryDeptType;
+                                            const now = new Date();
+                                            const academicStartYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+                                            const yearOffset = Math.floor((sem - 1) / 2);
+                                            const batchStart = academicStartYear - yearOffset;
+                                            const duration = (deptType === 'vocational' || deptType === 'pg') ? 3 : 4;
+                                            const batchEnd = (batchStart + duration) % 100;
+                                            const batchLabel = `${batchStart}-${String(batchEnd).padStart(2, '0')}`;
+                                            return (
+                                                <option key={sem} value={sem}>
+                                                    Sem {sem} ({batchLabel})
+                                                </option>
+                                            );
+                                        })}
                                     </select>
                                 </div>
 
@@ -984,28 +1030,16 @@ export default function AttendancePage() {
                                                         <td className="px-3 sm:px-6 py-3 text-xs sm:text-sm font-medium">{student.first_name} <span className="hidden sm:inline">{student.last_name}</span></td>
                                                         <td className="px-3 sm:px-6 py-3 text-center">
                                                             <div className="flex items-center justify-center gap-1">
-                                                                {(() => {
-                                                                    const history = attendanceHistory[student.id] || [];
-                                                                    // Filter out today's record from history to avoid duplication, then slice last 4
-                                                                    const uniqueHistory = history.filter(h => h.date !== selectedDate);
-
-                                                                    // Construct display list: Last 4 history + Current status
-                                                                    const displayDots = [
-                                                                        ...[...uniqueHistory].reverse().slice(-4),
-                                                                        { status: student.attendance || 'absent', date: selectedDate }
-                                                                    ];
-
-                                                                    return displayDots.map((record, i) => (
-                                                                        <div
-                                                                            key={i}
-                                                                            title={record.date}
-                                                                            className={`w-2 h-2 rounded-full transition-colors duration-200 ${record.status === 'present' ? 'bg-green-500' :
-                                                                                    record.status === 'absent' ? 'bg-red-500' : 'bg-yellow-500'
-                                                                                }`}
-                                                                        />
-                                                                    ));
-                                                                })()}
-                                                                {!attendanceHistory[student.id]?.length && student.attendance === undefined && <span className="text-gray-300 text-xs">-</span>}
+                                                                {[...(attendanceHistory[student.id] || [])].reverse().map((record, i) => (
+                                                                    <div
+                                                                        key={i}
+                                                                        title={record.date}
+                                                                        className={`w-2 h-2 rounded-full ${record.status === 'present' ? 'bg-green-500' :
+                                                                            record.status === 'absent' ? 'bg-red-500' : 'bg-yellow-500'
+                                                                            }`}
+                                                                    />
+                                                                ))}
+                                                                {!attendanceHistory[student.id]?.length && <span className="text-gray-300 text-xs">-</span>}
                                                             </div>
                                                         </td>
                                                         <td className="px-3 sm:px-6 py-3">

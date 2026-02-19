@@ -10,8 +10,16 @@ import {
     Pencil, Trash2, Search,
     Plus,
     ChevronDown,
-    BookOpen
+    BookOpen,
+    FileUp,
+    FileSpreadsheet,
+    Download,
+    AlertTriangle,
+    X,
+    CheckCircle2
 } from 'lucide-react';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { Navbar } from '@/components/ui/Navbar';
 import { AccessDenied } from '@/components/ui/access-denied';
@@ -20,7 +28,7 @@ interface Subject {
     id: string;
     code: string;
     name: string;
-    semester: number;
+    semesters: number[];
     degreeType: string;
     credits: number;
 }
@@ -73,6 +81,12 @@ export default function SubjectsPage() {
     const [filterDegreeType, setFilterDegreeType] = useState('');
     const [filterSemester, setFilterSemester] = useState('');
 
+    // Import States
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [previewData, setPreviewData] = useState<any[]>([]);
+    const [importResults, setImportResults] = useState<{ success: number; failed: number; errors: any[] } | null>(null);
+    const [isImporting, setIsImporting] = useState(false);
 
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -116,20 +130,23 @@ export default function SubjectsPage() {
         }
     };
 
-    // Group subjects by code
+    // Group subjects by code (subjects are now one-per-degree-type from API)
     const groupedSubjects = useMemo(() => {
         const groups: Map<string, GroupedSubject> = new Map();
 
         subjects.forEach(subject => {
-            const key = subject.code; // Group by code only
+            const key = subject.code;
 
             if (groups.has(key)) {
                 const group = groups.get(key)!;
                 if (!group.degreeTypes.includes(subject.degreeType)) {
                     group.degreeTypes.push(subject.degreeType);
                 }
-                if (!group.semesters.includes(subject.semester)) {
-                    group.semesters.push(subject.semester);
+                // Merge semesters (union)
+                for (const sem of subject.semesters) {
+                    if (!group.semesters.includes(sem)) {
+                        group.semesters.push(sem);
+                    }
                 }
                 group.ids.push(subject.id);
             } else {
@@ -138,7 +155,7 @@ export default function SubjectsPage() {
                     name: subject.name,
                     degreeTypes: [subject.degreeType],
                     credits: subject.credits,
-                    semesters: [subject.semester],
+                    semesters: [...subject.semesters],
                     ids: [subject.id]
                 });
             }
@@ -390,6 +407,156 @@ export default function SubjectsPage() {
         }
     };
 
+    // ========== Import Helper Functions ==========
+    const normalizeData = (data: any[]) => {
+        const keyMap: { [key: string]: string } = {
+            'code': 'code', 'subject code': 'code', 'subject_code': 'code', 'code*': 'code', 'subjectcode': 'code',
+            'name': 'name', 'subject name': 'name', 'subject_name': 'name', 'name*': 'name', 'subjectname': 'name', 'title': 'name',
+            'degree type': 'degree_type', 'degree_type': 'degree_type', 'degreetype': 'degree_type', 'degree_type*': 'degree_type', 'degree': 'degree_type', 'type': 'degree_type',
+            'semesters': 'semesters', 'semester': 'semesters', 'sem': 'semesters', 'semesters*': 'semesters',
+            'credits': 'credits', 'credit': 'credits', 'cr': 'credits'
+        };
+
+        return data.map(row => {
+            const newRow: any = {};
+            Object.keys(row).forEach(key => {
+                const lowerKey = key.toString().toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+
+                let mappedKey = null;
+                for (const [mapK, mapV] of Object.entries(keyMap)) {
+                    const cleanMapK = mapK.replace(/[^a-z0-9]/g, '');
+                    if (cleanMapK === lowerKey) {
+                        mappedKey = mapV;
+                        break;
+                    }
+                }
+
+                if (mappedKey) {
+                    newRow[mappedKey] = row[key];
+                } else {
+                    newRow[key] = row[key];
+                }
+            });
+            return newRow;
+        });
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setImportFile(file);
+        setPreviewData([]);
+        setImportResults(null);
+        setError('');
+
+        if (file.name.endsWith('.csv')) {
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: (results) => {
+                    setPreviewData(results.data.slice(0, 5));
+                },
+                error: (err) => {
+                    setError('Failed to parse CSV file');
+                    console.error(err);
+                }
+            });
+        } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const bstr = evt.target?.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const wsname = wb.SheetNames[0];
+                const ws = wb.Sheets[wsname];
+                const data = XLSX.utils.sheet_to_json(ws);
+                setPreviewData(data.slice(0, 5));
+            };
+            reader.readAsBinaryString(file);
+        } else {
+            setError('Please upload a valid CSV or Excel file');
+            setImportFile(null);
+        }
+    };
+
+    const downloadTemplate = () => {
+        const headers = ['code*', 'name*', 'degree_type*', 'semesters', 'credits'];
+        const dummyData = [
+            ['ENG101', 'English Literature', 'ba', '1,2,3,4,5', '4'],
+            ['MATH101', 'Mathematics', 'bsc', '1,2,3', '4'],
+            ['ACC101', 'Accountancy', 'bcom', '1,2,3,4,5,6', '3'],
+            ['PROG101', 'Programming in C', 'it,bba', '1,2', '4'],
+            ['EVS101', 'Environmental Studies', 'ba,bsc,bcom', '1', '2'],
+            ['MGT101', 'Management Principles', 'bba', '1,2,3', '3']
+        ];
+
+        const csvContent = [
+            headers.join(','),
+            ...dummyData.map(row => row.map(cell => cell.includes(',') ? `"${cell}"` : cell).join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'subject_import_template.csv';
+        a.click();
+    };
+
+    const handleImport = async () => {
+        if (!importFile) return;
+        setIsImporting(true);
+        setError('');
+
+        const processImport = async (rawData: any[]) => {
+            const data = normalizeData(rawData);
+            try {
+                const token = localStorage.getItem('token');
+                const res = await fetch('/api/subjects/import', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ subjects: data })
+                });
+
+                const result = await res.json();
+                if (res.ok) {
+                    setImportResults(result);
+                    if (result.success > 0) {
+                        fetchSubjects(token!);
+                        setSuccess(`Successfully imported ${result.success} subject(s)!`);
+                    }
+                } else {
+                    setError(result.error || 'Import failed');
+                }
+            } catch {
+                setError('Network error occurred during import');
+            }
+            setIsImporting(false);
+        };
+
+        if (importFile.name.endsWith('.csv')) {
+            Papa.parse(importFile, {
+                header: true,
+                skipEmptyLines: true,
+                complete: (results) => processImport(results.data)
+            });
+        } else {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const bstr = evt.target?.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const wsname = wb.SheetNames[0];
+                const ws = wb.Sheets[wsname];
+                const data = XLSX.utils.sheet_to_json(ws);
+                processImport(data);
+            };
+            reader.readAsBinaryString(importFile);
+        }
+    };
+
     if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
     if (user?.role === 'teacher') {
@@ -434,6 +601,10 @@ export default function SubjectsPage() {
                     </div>
                     {canManage && (
                         <div className="flex gap-2 shrink-0">
+                            <Button variant="outline" onClick={() => setShowImportModal(true)} className="hidden md:flex">
+                                <FileUp className="w-4 h-4 mr-2" />
+                                Import CSV
+                            </Button>
                             <Button
                                 onClick={() => {
                                     resetForm();
@@ -525,6 +696,7 @@ export default function SubjectsPage() {
                             <table className="w-full">
                                 <thead className="bg-gray-50/50 border-b border-gray-100">
                                     <tr>
+                                        <th className="px-4 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">S.No.</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject Info</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Degree</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Semesters</th>
@@ -533,8 +705,9 @@ export default function SubjectsPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
-                                    {filteredGroups.map((group) => (
+                                    {filteredGroups.map((group, index) => (
                                         <tr key={group.code} className="hover:bg-gray-50/80 transition-colors">
+                                            <td className="px-4 py-4 text-center text-sm font-medium text-gray-500">{index + 1}</td>
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold shadow-sm shadow-indigo-200">
@@ -674,13 +847,19 @@ export default function SubjectsPage() {
 
             {/* Mobile Floating Add Button - Right Bottom */}
             {canManage && (
-                <div className="md:hidden fixed bottom-6 right-6 z-40">
+                <div className="md:hidden fixed bottom-6 right-6 flex flex-col gap-3 z-40">
+                    <button
+                        onClick={() => setShowImportModal(true)}
+                        className="h-12 w-12 bg-white text-gray-700 rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-transform border border-gray-200"
+                    >
+                        <FileUp className="w-5 h-5" />
+                    </button>
                     <button
                         onClick={() => {
                             resetForm();
                             setShowModal(true);
                         }}
-                        className="w-14 h-14 bg-gray-900 text-white rounded-full shadow-lg hover:bg-gray-800 transition-colors flex items-center justify-center shadow-gray-900/20 active:scale-95"
+                        className="h-14 w-14 bg-gray-900 text-white rounded-full shadow-xl flex items-center justify-center active:scale-95 transition-transform"
                     >
                         <Plus className="w-6 h-6" />
                     </button>
@@ -889,6 +1068,112 @@ export default function SubjectsPage() {
                                     <Button type="submit">{editingGroup ? 'Update' : 'Save'} Subject</Button>
                                 </div>
                             </form>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {/* Import Modal */}
+            {showImportModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+                    <Card className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border-0 max-h-[90vh] flex flex-col">
+                        <CardHeader className="bg-gray-50/50 border-b border-gray-100 pb-4 shrink-0">
+                            <div className="flex justify-between items-center">
+                                <CardTitle className="text-xl">Import Subjects</CardTitle>
+                                <button onClick={() => setShowImportModal(false)} className="text-gray-400 hover:text-gray-600">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="pt-6 space-y-6 overflow-y-auto">
+                            <div className="p-4 bg-blue-50 text-blue-800 rounded-xl text-sm border border-blue-100 flex items-start gap-3">
+                                <div className="mt-0.5"><FileSpreadsheet className="w-5 h-5" /></div>
+                                <div>
+                                    <p className="font-semibold">Bulk Import Instructions</p>
+                                    <p className="mt-1 opacity-90">Upload a CSV or Excel file with subject details. Required columns: <code>code</code>, <code>name</code>, <code>degree_type</code>. Optional: <code>semesters</code> (comma-separated, default 1), <code>credits</code> (default 3).</p>
+                                    <p className="mt-1 opacity-75 text-xs">Valid degree types: ba, bsc, bcom, it, bba, mcom. For multiple types, use comma-separated values (e.g. &quot;it,bba&quot;).</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Upload File</Label>
+                                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
+                                    <input
+                                        type="file"
+                                        accept=".csv,.xlsx,.xls"
+                                        onChange={handleFileChange}
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    />
+                                    <div className="flex flex-col items-center gap-2">
+                                        <div className="h-12 w-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-500">
+                                            <FileUp className="w-6 h-6" />
+                                        </div>
+                                        {importFile ? (
+                                            <p className="text-sm font-medium text-blue-600">{importFile.name}</p>
+                                        ) : (
+                                            <>
+                                                <p className="text-sm font-medium text-gray-700">Click to upload or drag and drop</p>
+                                                <p className="text-xs text-gray-500">CSV, Excel files only</p>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={downloadTemplate}
+                                className="w-full rounded-xl border-dashed"
+                            >
+                                <Download className="w-4 h-4 mr-2" />
+                                Download Template
+                            </Button>
+
+                            {error && (
+                                <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm border border-red-100 flex items-center gap-2">
+                                    <AlertTriangle className="w-4 h-4" />
+                                    {error}
+                                </div>
+                            )}
+
+                            {success && (
+                                <div className="p-3 rounded-lg bg-green-50 text-green-600 text-sm border border-green-100 flex items-center gap-2">
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    {success}
+                                </div>
+                            )}
+
+                            {importResults?.errors && importResults.errors.length > 0 && (
+                                <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg">
+                                    <h4 className="text-red-800 font-semibold text-sm mb-2">Import Errors ({importResults.errors.length})</h4>
+                                    <div className="max-h-40 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                                        {importResults.errors.map((err: any, idx: number) => (
+                                            <div key={idx} className="text-xs text-red-600 bg-white p-2 rounded border border-red-100 shadow-sm">
+                                                <span className="font-bold">Row {err.row} ({err.name}):</span> {err.error}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-3 pt-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setShowImportModal(false)}
+                                    className="rounded-xl"
+                                >
+                                    Close
+                                </Button>
+                                <Button
+                                    onClick={handleImport}
+                                    disabled={!importFile || isImporting}
+                                    className="rounded-xl bg-gray-900 hover:bg-gray-800 w-full sm:w-auto"
+                                >
+                                    {isImporting ? 'Importing...' : 'Start Import'}
+                                </Button>
+                            </div>
                         </CardContent>
                     </Card>
                 </div>

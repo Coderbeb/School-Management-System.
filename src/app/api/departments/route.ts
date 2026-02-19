@@ -59,11 +59,21 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
-        const { name, code, deptType } = await request.json();
+        const body = await request.json();
+        const name = body.name?.trim();
+        const code = body.code?.trim();
+        const deptType = body.deptType?.trim();
 
         if (!name || !code || !deptType) {
             return NextResponse.json(
                 { error: 'Name, code, and department type are required' },
+                { status: 400 }
+            );
+        }
+
+        if (name.length > 100 || code.length > 20) {
+            return NextResponse.json(
+                { error: 'Name must be under 100 characters, code under 20' },
                 { status: 400 }
             );
         }
@@ -199,6 +209,17 @@ export async function DELETE(request: NextRequest) {
         if (parseInt(studentsCheck[0].count) > 0) {
             return NextResponse.json(
                 { error: 'Cannot delete department with existing students' },
+                { status: 400 }
+            );
+        }
+
+        const teachersCheck = await query<{ count: string }>(
+            'SELECT COUNT(*) as count FROM users WHERE department_id = $1 AND role IN (\'teacher\', \'hod\')',
+            [id]
+        );
+        if (parseInt(teachersCheck[0].count) > 0) {
+            return NextResponse.json(
+                { error: 'Cannot delete department with existing teachers' },
                 { status: 400 }
             );
         }

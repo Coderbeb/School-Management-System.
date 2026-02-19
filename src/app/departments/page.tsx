@@ -251,6 +251,7 @@ export default function DepartmentsPage() {
                             <table className="w-full">
                                 <thead className="bg-gray-50/50 border-b border-gray-100">
                                     <tr>
+                                        <th className="px-4 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">S.No.</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Code</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Department Name</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
@@ -259,8 +260,9 @@ export default function DepartmentsPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
-                                    {filteredDepartments.map((dept) => (
+                                    {filteredDepartments.map((dept, index) => (
                                         <tr key={dept.id} className="hover:bg-gray-50/80 transition-colors">
+                                            <td className="px-4 py-4 text-center text-sm font-medium text-gray-500">{index + 1}</td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-md bg-amber-50 text-amber-700 border border-amber-100">
                                                     {dept.code}

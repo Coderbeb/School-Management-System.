@@ -177,6 +177,7 @@ export default function HolidaysPage() {
                             <table className="w-full">
                                 <thead className="bg-gray-50">
                                     <tr>
+                                        <th className="px-4 py-3 text-center text-sm font-semibold w-16">S.No.</th>
                                         <th className="px-6 py-3 text-left text-sm font-semibold">Date</th>
                                         <th className="px-6 py-3 text-left text-sm font-semibold">Name</th>
                                         <th className="px-6 py-3 text-left text-sm font-semibold">Description</th>
@@ -184,8 +185,9 @@ export default function HolidaysPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y">
-                                    {holidays.map((holiday) => (
+                                    {holidays.map((holiday, index) => (
                                         <tr key={holiday.id} className="hover:bg-gray-50">
+                                            <td className="px-4 py-4 text-center text-sm font-medium text-gray-500">{index + 1}</td>
                                             <td className="px-6 py-4">
                                                 <span className="px-2 py-1 bg-cyan-50 text-cyan-700 rounded font-mono border border-cyan-100">
                                                     {new Date(holiday.date).toLocaleDateString()}

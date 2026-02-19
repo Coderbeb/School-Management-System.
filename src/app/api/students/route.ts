@@ -162,7 +162,19 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'Student ID required' }, { status: 400 });
         }
 
-        // HOD restriction check could be added here similar to DELETE
+        // HOD can only edit students in their own department
+        if (payload.role === 'hod') {
+            const student = await query<{ department_id: string }>(
+                'SELECT department_id FROM students WHERE id = $1',
+                [id]
+            );
+            if (student.length === 0) {
+                return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+            }
+            if (student[0].department_id !== payload.departmentId) {
+                return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+            }
+        }
 
         const updateFields: string[] = [];
         const params: (string | number | boolean)[] = [id];

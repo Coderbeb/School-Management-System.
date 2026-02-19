@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -75,7 +75,7 @@ interface StudentDetail {
     } | null;
 }
 
-export default function StudentReportPage() {
+function StudentReportContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const statusParam = searchParams.get('status');
@@ -1257,5 +1257,13 @@ export default function StudentReportPage() {
                 )}
             </main>
         </div>
+    );
+}
+
+export default function StudentReportPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full"></div></div>}>
+            <StudentReportContent />
+        </Suspense>
     );
 }

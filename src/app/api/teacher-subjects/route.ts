@@ -36,8 +36,13 @@ export async function GET(request: NextRequest) {
         let queryStr = `
             SELECT ts.*, 
                    u.first_name as teacher_first_name, u.last_name as teacher_last_name,
-                   s.code as subject_code, s.name as subject_name, s.semester as subject_semester,
-                   s.degree_type
+                   s.code as subject_code, s.name as subject_name,
+                   s.degree_type,
+                   COALESCE(
+                       (SELECT array_agg(ss.semester ORDER BY ss.semester)
+                        FROM subject_semesters ss WHERE ss.subject_id = s.id),
+                       ARRAY[]::integer[]
+                   ) as subject_semesters
             FROM teacher_subjects ts
             JOIN users u ON u.id = ts.teacher_id
             JOIN subjects s ON s.id = ts.subject_id
@@ -62,7 +67,7 @@ export async function GET(request: NextRequest) {
 
         queryStr += ' ORDER BY ts.created_at DESC';
 
-        const assignments = await query<TeacherSubjectRow & { subject_semester: number; degree_type: string }>(queryStr, params);
+        const assignments = await query<TeacherSubjectRow & { subject_semesters: number[]; degree_type: string }>(queryStr, params);
 
         return NextResponse.json({
             assignments: assignments.map(a => ({
@@ -72,7 +77,7 @@ export async function GET(request: NextRequest) {
                 subjectId: a.subject_id,
                 subjectCode: a.subject_code,
                 subjectName: a.subject_name,
-                subjectSemester: a.subject_semester,
+                subjectSemesters: a.subject_semesters || [],
                 academicYear: a.academic_year,
                 degreeType: a.degree_type,
                 createdAt: a.created_at

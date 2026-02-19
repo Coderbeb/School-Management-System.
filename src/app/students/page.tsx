@@ -55,7 +55,7 @@ interface Subject {
     code: string;
     name: string;
     degreeType: string;
-    semester: number;
+    semesters: number[];
 }
 
 interface User {
@@ -327,7 +327,7 @@ export default function StudentsPage() {
 
         // Get subjects that match the department's degree type and semester
         const availableSubjects = subjects.filter(s =>
-            s.semester === semester && s.degreeType === selectedDept.degree_type
+            s.semesters.includes(semester) && s.degreeType === selectedDept.degree_type
         );
 
         const subjectsToSelect: string[] = [];
@@ -593,14 +593,14 @@ export default function StudentsPage() {
         if (!selectedDept) return [];
 
         return subjects.filter(s =>
-            s.semester === semester && s.degreeType === selectedDept.degree_type
+            s.semesters.includes(semester) && s.degreeType === selectedDept.degree_type
         );
     };
 
     // Get ALL subjects for the semester (for generic/minor electives that can be from any degree)
     const getAllSemesterSubjects = () => {
         const semester = parseInt(formData.semester);
-        return subjects.filter(s => s.semester === semester);
+        return subjects.filter(s => s.semesters.includes(semester));
     };
 
     // Get selected department's type (regular/vocational/pg)
@@ -1009,14 +1009,16 @@ export default function StudentsPage() {
                             <table className="w-full">
                                 <thead className="bg-gray-50/50 border-b border-gray-100">
                                     <tr>
+                                        <th className="px-4 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">S.No.</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Student Details</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
                                         {canManage && <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
-                                    {filteredStudents.map((student) => (
+                                    {filteredStudents.map((student, index) => (
                                         <tr key={student.id} className="hover:bg-gray-50/80 transition-colors">
+                                            <td className="px-4 py-4 text-center text-sm font-medium text-gray-500">{index + 1}</td>
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-emerald-100 to-teal-100 flex items-center justify-center text-emerald-700 font-bold text-sm">

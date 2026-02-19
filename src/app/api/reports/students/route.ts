@@ -48,7 +48,6 @@ export async function GET(request: NextRequest) {
             if (departmentId) {
                 params.push(departmentId);
                 filters.push(`s.department_id = $${params.length}`);
-                filters.push(`s.department_id = $${params.length}`);
             } else {
                 params.push(userId);
                 // Only show students who have enrolled in subjects taught by this teacher
@@ -82,17 +81,17 @@ export async function GET(request: NextRequest) {
         // Strict Isolation: Only count records marked by THIS teacher
         let teacherSubjectFilter = '1=1';
         if (role === 'teacher' && !subjectId) {
-             // finding the param index for userId
-             let uIdIndex = params.indexOf(userId);
-             if (uIdIndex === -1) {
-                 params.push(userId);
-                 uIdIndex = params.length - 1;
-             }
-             // OLD: Filter by subject assignment
-             // teacherSubjectFilter = `ar.subject_id IN (SELECT subject_id FROM teacher_subjects WHERE teacher_id = $${uIdIndex + 1})`;
-             
-             // NEW: Filter by who marked the attendance
-             teacherSubjectFilter = `ar.teacher_id = $${uIdIndex + 1}`;
+            // finding the param index for userId
+            let uIdIndex = params.indexOf(userId);
+            if (uIdIndex === -1) {
+                params.push(userId);
+                uIdIndex = params.length - 1;
+            }
+            // OLD: Filter by subject assignment
+            // teacherSubjectFilter = `ar.subject_id IN (SELECT subject_id FROM teacher_subjects WHERE teacher_id = $${uIdIndex + 1})`;
+
+            // NEW: Filter by who marked the attendance
+            teacherSubjectFilter = `ar.teacher_id = $${uIdIndex + 1}`;
         }
 
         const queryStr = `
