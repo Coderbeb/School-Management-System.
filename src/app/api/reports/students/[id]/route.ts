@@ -202,23 +202,7 @@ export async function GET(
             otherStatsParams
         );
 
-        // Get daily breakdown if date range is specified (for specific day view)
-        let dailyBreakdown: DailyRecord[] = [];
-        if (startDate && endDate) {
-            dailyBreakdown = await query<DailyRecord>(
-                `SELECT 
-                    ar.date::text as date,
-                    s.code as subject_code,
-                    s.name as subject_name,
-                    ar.lecture_number,
-                    ar.status
-                 FROM attendance_records ar
-                 JOIN subjects s ON s.id = ar.subject_id
-                 WHERE ar.student_id = $1 AND ar.date >= $2 AND ar.date <= $3
-                 ORDER BY ar.date DESC, ar.lecture_number ASC`,
-                [studentId, startDate, endDate]
-            );
-        }
+
 
         const student = studentInfo[0];
         const overall = overallStats[0] || { total_classes: '0', attended: '0', attendance_pct: '0' };
@@ -251,14 +235,7 @@ export async function GET(
                 attended: parseInt(m.attended) || 0,
                 attendance: Math.round(parseFloat(m.attendance_pct) || 0)
             })),
-            // New: Daily breakdown for specific day/range view
-            dailyBreakdown: dailyBreakdown.map(d => ({
-                date: d.date,
-                subjectCode: d.subject_code,
-                subjectName: d.subject_name,
-                lectureNumber: d.lecture_number,
-                status: d.status
-            })),
+
             // Include the date range in response for reference
             dateRange: startDate && endDate ? { startDate, endDate } : null
         });

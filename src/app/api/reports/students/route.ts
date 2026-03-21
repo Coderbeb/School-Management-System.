@@ -49,12 +49,13 @@ export async function GET(request: NextRequest) {
                 params.push(departmentId);
                 filters.push(`s.department_id = $${params.length}`);
             } else {
+                // Filter students to only those in the teacher's departments
                 params.push(userId);
-                // Only show students who have enrolled in subjects taught by this teacher
-                filters.push(`s.id IN (
-                    SELECT ss.student_id FROM student_subjects ss
-                    JOIN teacher_subjects ts ON ss.subject_id = ts.subject_id
-                    WHERE ts.teacher_id = $${params.length}
+                const teacherParamIdx = params.length;
+                filters.push(`s.department_id IN (
+                    SELECT department_id FROM users WHERE id = $${teacherParamIdx}
+                    UNION
+                    SELECT department_id FROM user_departments WHERE user_id = $${teacherParamIdx}
                 )`);
             }
         } else if (role === 'super_admin' && departmentId) {

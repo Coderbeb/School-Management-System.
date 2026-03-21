@@ -345,7 +345,7 @@ export default function DailyReportPage() {
 <body>
     <div class="container">
         <div class="header">
-            <div class="college-name">YSM College of Engineering</div>
+            <div class="college-name">Yogoda Satsanga Mahavidyalaya</div>
             <div class="report-title">DAILY ATTENDANCE REPORT - DETAILED</div>
             <div class="report-date">📅 ${formatDateDisplay(selectedDate)}</div>
             <div class="role-badge">${user?.role?.replace('_', ' ').toUpperCase() || 'USER'}</div>
@@ -429,124 +429,139 @@ export default function DailyReportPage() {
 
             <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
                 {/* Hero / Welcome Section */}
-                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-8 mb-8 shadow-xl">
-                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
-                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
+                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl">
 
-                    <div className="relative z-10">
-                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-                            <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-blue-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
-                                </div>
-                                
-                                <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-                                    Daily Report <span className="inline-block animate-wave">📅</span>
-                                </h1>
-                                <p className="text-blue-100 text-lg max-w-xl">
-                                    View attendance records by date, analyze daily trends, and export summaries.
-                                </p>
-                            </div>
 
-                            <div className="flex flex-col gap-3 self-start items-end">
-                                {/* Date Picker */}
-                                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1 flex items-center border border-white/20">
-                                    <input
-                                        type="date"
-                                        value={selectedDate}
-                                        onChange={(e) => setSelectedDate(e.target.value)}
-                                        className="bg-transparent text-white border-0 focus:ring-0 cursor-pointer [&::-webkit-calendar-picker-indicator]:invert p-1"
-                                    />
-                                </div>
-                                
-                                {/* Export Buttons */}
-                                <div className="flex gap-2 bg-white/10 p-1.5 rounded-xl backdrop-blur-sm border border-white/10">
-                                    <Button 
-                                        variant="ghost" 
-                                        size="sm" 
-                                        className="text-white hover:bg-white/20 h-8 px-2"
-                                        onClick={() => exportReport('pdf')}
-                                        title="Export PDF"
-                                    >
-                                        <FileText className="w-4 h-4" />
-                                    </Button>
-                                    <Button 
-                                        variant="ghost" 
-                                        size="sm" 
-                                        className="text-white hover:bg-white/20 h-8 px-2"
-                                        onClick={() => exportReport('excel')}
-                                        title="Export Excel"
-                                    >
-                                        <FileSpreadsheet className="w-4 h-4" />
-                                    </Button>
-                                    <Button 
-                                        variant="ghost" 
-                                        size="sm" 
-                                        className="text-white hover:bg-white/20 h-8 px-2"
-                                        onClick={() => exportReport('csv')}
-                                        title="Export CSV"
-                                    >
-                                        <FileDown className="w-4 h-4" />
-                                    </Button>
-                                </div>
+                    <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6">
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-blue-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                             </div>
+                            <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                                Daily Report <span className="inline-block animate-wave">📅</span>
+                            </h1>
+                            <p className="text-blue-100 text-lg max-w-xl">
+                                View attendance records by date, analyze daily trends, and <span className="font-semibold text-white">generate insights</span>.
+                            </p>
+                        </div>
+
+                        {/* Export Buttons in Hero */}
+                        <div className="flex gap-2 bg-white/10 p-1.5 rounded-xl backdrop-blur-md border border-white/20 self-start sm:self-auto">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-white hover:bg-white/20 hover:text-white h-8 px-3 transition-colors"
+                                onClick={() => exportReport('pdf')}
+                            >
+                                <FileText className="w-4 h-4 sm:mr-2" />
+                                <span className="hidden sm:inline">PDF</span>
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-white hover:bg-white/20 hover:text-white h-8 px-3 transition-colors"
+                                onClick={() => exportReport('excel')}
+                            >
+                                <FileSpreadsheet className="w-4 h-4 sm:mr-2" />
+                                <span className="hidden sm:inline">Excel</span>
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-white hover:bg-white/20 hover:text-white h-8 px-3 transition-colors"
+                                onClick={() => exportReport('csv')}
+                            >
+                                <FileDown className="w-4 h-4 sm:mr-2" />
+                                <span className="hidden sm:inline">CSV</span>
+                            </Button>
                         </div>
                     </div>
                 </div>
-                {/* Stats Summary Cards - Unified White Design */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                    <Card className="border-0 shadow-md bg-white hover:shadow-lg transition-shadow">
-                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                            <div className="p-3 bg-blue-50 text-blue-600 rounded-full mb-2">
-                                <Users className="w-5 h-5" />
+
+                {/* Overlapping Date Picker & Quick Stats Grid */}
+                <div className="relative z-20 mb-8">
+                    <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                                <CalendarDays className="w-5 h-5" />
                             </div>
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</p>
-                            <p className="text-2xl font-bold text-gray-900">{totals.students}</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="border-0 shadow-md bg-white hover:shadow-lg transition-shadow">
-                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-full mb-2">
-                                <UserCheck className="w-5 h-5" />
+                            <div>
+                                <h3 className="text-sm font-bold text-gray-900">Selected Date</h3>
+                                <p className="text-xs text-gray-500">Pick a day to analyze</p>
                             </div>
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Present</p>
-                            <p className="text-2xl font-bold text-emerald-600">{totals.present}</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="border-0 shadow-md bg-white hover:shadow-lg transition-shadow">
-                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                            <div className="p-3 bg-red-50 text-red-600 rounded-full mb-2">
-                                <UserX className="w-5 h-5" />
+                        </div>
+                        <input
+                            type="date"
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                            className="w-full sm:w-auto bg-gray-50 border border-gray-200 text-gray-700 rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all cursor-pointer shadow-sm hover:bg-gray-100"
+                        />
+                    </div>
+
+                    {/* Gradient Stats Cards */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        {/* Total Card */}
+                        <div className="group relative bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:border-blue-100 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+                            <div className="flex justify-between items-start mb-2">
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Total Students</p>
+                                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                                    <Users className="w-4 h-4" />
+                                </div>
                             </div>
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Absent</p>
-                            <p className="text-2xl font-bold text-red-600">{totals.absent}</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="border-0 shadow-md bg-white hover:shadow-lg transition-shadow">
-                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                            <div className={`p-3 rounded-full mb-2 ${avgPercentage >= 75 ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
-                                <CheckCircle className="w-5 h-5" />
+                            <h3 className="text-3xl font-black text-gray-900">{totals.students}</h3>
+                        </div>
+
+                        {/* Present Card */}
+                        <div className="group relative bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:border-emerald-100 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+                            <div className="flex justify-between items-start mb-2">
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Present</p>
+                                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                                    <UserCheck className="w-4 h-4" />
+                                </div>
                             </div>
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Average</p>
-                            <p className={`text-2xl font-bold ${avgPercentage >= 75 ? 'text-emerald-600' : 'text-orange-600'}`}>
-                                {avgPercentage}%
-                            </p>
-                        </CardContent>
-                    </Card>
+                            <h3 className="text-3xl font-black text-emerald-600">{totals.present}</h3>
+                        </div>
+
+                        {/* Absent Card */}
+                        <div className="group relative bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:border-red-100 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+                            <div className="flex justify-between items-start mb-2">
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Absent</p>
+                                <div className="p-2 bg-red-50 text-red-600 rounded-lg">
+                                    <UserX className="w-4 h-4" />
+                                </div>
+                            </div>
+                            <h3 className="text-3xl font-black text-rose-600">{totals.absent}</h3>
+                        </div>
+
+                        {/* Average Card */}
+                        <div className={`group relative bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:border-gray-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300`}>
+                            <div className="flex justify-between items-start mb-2">
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Average</p>
+                                <div className={`p-2 rounded-lg ${avgPercentage >= 75 ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
+                                    <CheckCircle className="w-4 h-4" />
+                                </div>
+                            </div>
+                            <h3 className={`text-3xl font-black ${avgPercentage >= 75 ? 'text-emerald-600' : 'text-orange-600'}`}>{avgPercentage}%</h3>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Filters Section - Top Bar */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
-                    <div className="flex flex-col md:flex-row gap-4 items-end">
+                {/* Advanced Filters Section */}
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-8">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Filter className="w-4 h-4 text-gray-500" />
+                        <h3 className="text-sm font-bold text-gray-700">Advanced Filters</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end">
                         {/* Department Filter */}
                         {(user?.role === 'super_admin' || departments.length > 1) && (
-                            <div className="w-full md:w-64">
-                                <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Department</label>
+                            <div className="w-full">
+                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Department</label>
                                 <div className="relative">
                                     <select
                                         value={selectedDepartmentId}
                                         onChange={(e) => setSelectedDepartmentId(e.target.value)}
-                                        className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
+                                        className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-blue-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium"
                                     >
                                         <option value="">All Departments</option>
                                         {departments.map((dept) => (
@@ -559,13 +574,13 @@ export default function DailyReportPage() {
                         )}
 
                         {/* Semester Filter */}
-                        <div className="w-full md:w-48">
-                            <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Semester</label>
+                        <div className="w-full">
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Semester</label>
                             <div className="relative">
                                 <select
                                     value={selectedSemester}
                                     onChange={(e) => setSelectedSemester(e.target.value)}
-                                    className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
+                                    className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-blue-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium"
                                 >
                                     <option value="">All Semesters</option>
                                     {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
@@ -577,13 +592,13 @@ export default function DailyReportPage() {
                         </div>
 
                         {/* Subject Filter */}
-                        <div className="w-full md:w-64">
-                            <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Subject</label>
+                        <div className="w-full md:col-span-2 lg:col-span-1">
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Subject</label>
                             <div className="relative">
                                 <select
                                     value={selectedSubjectId}
                                     onChange={(e) => setSelectedSubjectId(e.target.value)}
-                                    className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
+                                    className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-blue-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium"
                                 >
                                     <option value="">All Subjects</option>
                                     {subjects.map((subject) => (
@@ -596,17 +611,20 @@ export default function DailyReportPage() {
                             </div>
                         </div>
 
-                        <Button 
-                            className="bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200"
-                            onClick={() => {
-                                setSelectedSemester('');
-                                setSelectedDepartmentId('');
-                                setSelectedSubjectId('');
-                            }}
-                        >
-                            <Filter className="w-4 h-4 mr-2" />
-                            Reset
-                        </Button>
+                        {/* Reset Button */}
+                        <div className="w-full lg:w-auto">
+                            <Button 
+                                variant="outline"
+                                className="w-full lg:w-auto mt-6 bg-white hover:bg-red-50 text-gray-600 hover:text-red-600 border-gray-200 hover:border-red-200 rounded-xl transition-colors h-[42px]"
+                                onClick={() => {
+                                    setSelectedSemester('');
+                                    setSelectedDepartmentId('');
+                                    setSelectedSubjectId('');
+                                }}
+                            >
+                                Reset Filters
+                            </Button>
+                        </div>
                     </div>
                 </div>
 
@@ -633,18 +651,18 @@ export default function DailyReportPage() {
                                         {/* Desktop Table View */}
                                         <div className="hidden md:block overflow-x-auto">
                                             <table className="w-full table-auto">
-                                                <thead className="bg-gray-50/50 border-b border-gray-100">
+                                                <thead className="bg-gray-50/80 backdrop-blur-sm border-b border-gray-100">
                                                     <tr>
-                                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date & Session</th>
-                                                        <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Total</th>
-                                                        <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Present</th>
-                                                        <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Absent</th>
-                                                        <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date & Session</th>
+                                                        <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Total</th>
+                                                        <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Present</th>
+                                                        <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Absent</th>
+                                                        <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-50">
                                                     {records.map((record, index) => (
-                                                        <tr key={index} className="hover:bg-gray-50/50 transition-colors">
+                                                        <tr key={index} className="hover:bg-blue-50/50 transition-colors group">
                                                             <td className="px-6 py-4 whitespace-nowrap">
                                                                 <div className="text-sm font-medium text-gray-900">{formatDateDisplay(record.date)}</div>
                                                             </td>
