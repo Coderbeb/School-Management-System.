@@ -63,6 +63,10 @@ export async function GET(request: NextRequest) {
                 SELECT ss.student_id FROM student_subjects ss
                 JOIN teacher_subjects ts ON ss.subject_id = ts.subject_id
                 WHERE ts.teacher_id = $1
+            ) AND s.department_id IN (
+                SELECT department_id FROM users WHERE id = $1
+                UNION
+                SELECT department_id FROM user_departments WHERE user_id = $1
             )`;
             studentParams.push(userId);
 

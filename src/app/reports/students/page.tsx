@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, X, BookOpen, CheckCircle, TrendingUp, GraduationCap, ChevronRight, FileText, FileSpreadsheet, FileDown, Calendar, Filter, ChevronDown, User, AlertCircle, Eye, CalendarDays } from 'lucide-react';
+import { Search, X, BookOpen, CheckCircle, TrendingUp, GraduationCap, ChevronRight, FileText, FileSpreadsheet, FileDown, Calendar, Filter, ChevronDown, User, AlertCircle, Eye, CalendarDays, ArrowUpRight, ArrowDownRight, ChevronLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Input } from '@/components/ui/input';
 import { Navbar } from '@/components/ui/Navbar';
@@ -23,10 +23,12 @@ interface Department {
     id: string;
     name: string;
     code: string;
+    dept_type?: 'regular' | 'vocational' | 'pg';
 }
 
 interface StudentAttendance {
     id: string;
+    studentId: string;
     rollNumber: string;
     name: string;
     totalClasses: number;
@@ -37,6 +39,7 @@ interface StudentAttendance {
 interface StudentDetail {
     student: {
         id: string;
+        studentId: string;
         rollNumber: string;
         name: string;
         email: string;
@@ -86,8 +89,18 @@ function StudentReportContent() {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
     const [selectedSemester, setSelectedSemester] = useState('');
+    const [selectedStream, setSelectedStream] = useState<string>('all');
+    const [availableStreams, setAvailableStreams] = useState<string[]>([]);
     const [showSearch, setShowSearch] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+
+    // Sorting state
+    const [sortField, setSortField] = useState<'name' | 'rollNumber' | 'totalClasses' | 'attended' | 'percentage'>('rollNumber');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [perPage, setPerPage] = useState(25);
 
     // Detail popup state
     const [selectedStudent, setSelectedStudent] = useState<StudentDetail | null>(null);
@@ -152,6 +165,22 @@ function StudentReportContent() {
         }
     };
 
+    useEffect(() => {
+        let activeDepts = departments;
+        if (selectedDepartmentId) {
+            activeDepts = departments.filter(d => d.id === selectedDepartmentId);
+        }
+
+        const hasIT = activeDepts.some(d => d.code && d.code.toUpperCase() === 'IT');
+        
+        if (hasIT) {
+            setAvailableStreams(['BCA', 'BSCIT']);
+        } else {
+            setAvailableStreams([]);
+        }
+        setSelectedStream('all');
+    }, [departments, selectedDepartmentId]);
+
     // Fetch departments for teachers (based on their assignments)
     const fetchTeacherDepartments = async (token: string, teacherId: string) => {
         try {
@@ -176,9 +205,7 @@ function StudentReportContent() {
                         }
                     });
                 }
-                if (allDepts.length > 1) {
-                    setDepartments(allDepts);
-                }
+                setDepartments(allDepts);
             }
         } catch (err) {
             console.error('Error fetching teacher departments:', err);
@@ -567,7 +594,7 @@ function StudentReportContent() {
             <div class="info-card">
                 <div>
                     <h2 class="student-name">${student.name}</h2>
-                    <div class="student-roll">Roll No: ${student.rollNumber}</div>
+                    <div class="student-roll">Student ID: ${student.studentId || '-'} | Roll No: ${student.rollNumber}</div>
                 </div>
                 <div class="meta-values">
                     <div class="meta-row"><strong>Department:</strong> ${student.department}</div>
@@ -660,6 +687,10 @@ function StudentReportContent() {
 
         if (!matchesSearch) return false;
 
+        if (selectedStream !== 'all' && (!student.studentId || !student.studentId.toUpperCase().startsWith(selectedStream))) {
+            return false;
+        }
+
         if (statusParam === 'critical') {
             return student.percentage < 60;
         }
@@ -669,6 +700,35 @@ function StudentReportContent() {
 
         return true;
     });
+
+    // Sorting logic
+    const handleSort = (field: typeof sortField) => {
+        if (sortField === field) {
+            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortField(field);
+            setSortOrder(field === 'name' || field === 'rollNumber' ? 'asc' : 'desc');
+        }
+        setCurrentPage(1);
+    };
+
+    const sortedStudents = [...filteredStudents].sort((a, b) => {
+        const valA = a[sortField];
+        const valB = b[sortField];
+        if (typeof valA === 'string') return sortOrder === 'asc' ? valA.localeCompare(valB as string) : (valB as string).localeCompare(valA);
+        return sortOrder === 'asc' ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
+    });
+
+    // Pagination logic
+    const totalPages = Math.ceil(sortedStudents.length / perPage);
+    const paginatedStudents = sortedStudents.slice((currentPage - 1) * perPage, currentPage * perPage);
+
+    const SortIcon = ({ field }: { field: typeof sortField }) => {
+        if (sortField !== field) return <ChevronDown className="w-3 h-3 opacity-30" />;
+        return sortOrder === 'asc'
+            ? <ArrowUpRight className="w-3 h-3 text-purple-600" />
+            : <ArrowDownRight className="w-3 h-3 text-purple-600" />;
+    };
 
     const getAttendanceColor = (percentage: number) => {
         if (percentage >= 85) return 'bg-emerald-500';
@@ -691,10 +751,11 @@ function StudentReportContent() {
     };
 
     const exportReport = (format: 'csv' | 'excel' | 'pdf') => {
-        const headers = ['Roll Number', 'Name', 'Total Classes', 'Attended', 'Percentage', 'Status'];
+        const headers = ['Student ID', 'Roll Number', 'Name', 'Total Classes', 'Attended', 'Percentage', 'Status'];
         const rows = filteredStudents.map(s => {
             const status = s.percentage >= 75 ? 'Good Standing' : s.percentage >= 60 ? 'Warning' : 'Critical';
             return [
+                s.studentId || '-',
                 s.rollNumber,
                 s.name,
                 s.totalClasses.toString(),
@@ -748,16 +809,16 @@ function StudentReportContent() {
 </head>
 <body>
     <h1>📊 Student Attendance Report</h1>
-    <p class="meta">Generated on: ${new Date().toLocaleDateString()} | Total Students: ${filteredStudents.length}</p>
+    <p class="meta">Generated on: ${new Date().toLocaleDateString()} | Total Students: ${filteredStudents.length}${selectedSemester ? (() => { const now = new Date(); const acYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1; const admYear = acYear - (parseInt(selectedSemester) - 1); const dept = departments.find(d => d.id === selectedDepartmentId); const duration = dept?.dept_type === 'vocational' ? 3 : dept?.dept_type === 'pg' ? 2 : 4; const gradYear = admYear + duration; return ` | Semester: ${selectedSemester} | Batch: ${admYear}-${String(gradYear).slice(2)}`; })() : ''}${selectedDepartmentId ? ` | Department: ${departments.find(d => d.id === selectedDepartmentId)?.name || ''}` : ''}</p>
     <table>
         <thead>
             <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
         </thead>
         <tbody>
             ${rows.map(row => {
-                const status = row[5];
+                const status = row[6];
                 const statusClass = status === 'Good Standing' ? 'good' : status === 'Warning' ? 'warning' : 'critical';
-                return `<tr>${row.map((cell, i) => i === 5 ? `<td><span class="status-badge ${statusClass}">${cell}</span></td>` : `<td>${cell}</td>`).join('')}</tr>`;
+                return `<tr>${row.map((cell, i) => i === 6 ? `<td><span class="status-badge ${statusClass}">${cell}</span></td>` : `<td>${cell}</td>`).join('')}</tr>`;
             }).join('')}
         </tbody>
     </table>
@@ -789,126 +850,153 @@ function StudentReportContent() {
 
             <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
                 {/* Hero / Welcome Section */}
-                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-8 mb-8 shadow-xl">
-                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
-                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
+                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl">
 
-                    <div className="relative z-10">
-                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-                            <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-blue-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
-                                </div>
 
-                                <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-                                    Student Reports <span className="inline-block animate-wave">🎓</span>
-                                </h1>
-                                <p className="text-blue-100 text-lg max-w-xl">
-                                    View individual attendance records, track performance, and download detailed report cards.
-                                </p>
+                    <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6">
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-purple-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                             </div>
+                            <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                                Student Reports <span className="inline-block animate-bounce">🎓</span>
+                            </h1>
+                            <p className="text-purple-100 text-lg max-w-xl">
+                                View individual attendance records, track performance, and <span className="font-semibold text-white">identify at-risk students</span>.
+                            </p>
+                        </div>
 
-                            {/* Export Buttons */}
-                            <div className="flex gap-2 bg-white/10 p-1.5 rounded-xl backdrop-blur-sm border border-white/10 self-start">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-white hover:bg-white/20 h-8 px-2"
-                                    onClick={() => exportReport('pdf')}
-                                    title="Export PDF"
-                                >
-                                    <FileText className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-white hover:bg-white/20 h-8 px-2"
-                                    onClick={() => exportReport('excel')}
-                                    title="Export Excel"
-                                >
-                                    <FileSpreadsheet className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-white hover:bg-white/20 h-8 px-2"
-                                    onClick={() => exportReport('csv')}
-                                    title="Export CSV"
-                                >
-                                    <FileDown className="w-4 h-4" />
-                                </Button>
-                            </div>
+                        {/* Export Buttons in Hero */}
+                        <div className="flex gap-2 bg-white/10 p-1.5 rounded-xl backdrop-blur-md border border-white/20 self-start sm:self-auto">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-white hover:bg-white/20 hover:text-white h-8 px-3 transition-colors"
+                                onClick={() => exportReport('pdf')}
+                            >
+                                <FileText className="w-4 h-4 sm:mr-2" />
+                                <span className="hidden sm:inline">PDF</span>
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-white hover:bg-white/20 hover:text-white h-8 px-3 transition-colors"
+                                onClick={() => exportReport('excel')}
+                            >
+                                <FileSpreadsheet className="w-4 h-4 sm:mr-2" />
+                                <span className="hidden sm:inline">Excel</span>
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-white hover:bg-white/20 hover:text-white h-8 px-3 transition-colors"
+                                onClick={() => exportReport('csv')}
+                            >
+                                <FileDown className="w-4 h-4 sm:mr-2" />
+                                <span className="hidden sm:inline">CSV</span>
+                            </Button>
                         </div>
                     </div>
                 </div>
-                {/* Filters Section - Top Bar */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
-                    <div className="flex flex-col md:flex-row gap-4 items-end">
-                        {/* Search */}
-                        <div className="flex-1 w-full md:w-auto">
-                            <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Search Student</label>
-                            <div className="relative">
-                                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-                                <input
-                                    type="text"
-                                    placeholder="Name or Roll No."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all"
-                                />
-                            </div>
-                        </div>
 
-                        {/* Department Filter */}
-                        {(user?.role === 'super_admin' || departments.length > 1) && (
-                            <div className="w-full md:w-48 lg:w-64">
-                                <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Department</label>
+                {/* Overlapping Advanced Filters Section */}
+                <div className="relative z-20 mb-8">
+                    <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Filter className="w-4 h-4 text-purple-500" />
+                            <h3 className="text-sm font-bold text-gray-700">Search & Filters</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                            {/* Search */}
+                            <div className="w-full">
+                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Search Student</label>
+                                <div className="relative">
+                                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                                    <input
+                                        type="text"
+                                        placeholder="Name or Roll No."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full pl-9 pr-3 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-purple-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all shadow-sm"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Department Filter */}
+                            {(user?.role === 'super_admin' || departments.length > 1) && (
+                                <div className="w-full">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Department</label>
+                                    <div className="relative">
+                                        <select
+                                            value={selectedDepartmentId}
+                                            onChange={(e) => setSelectedDepartmentId(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-purple-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
+                                        >
+                                            <option value="">All Departments</option>
+                                            {departments.map((dept) => (
+                                                <option key={dept.id} value={dept.id}>{dept.name}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Stream Filter */}
+                            {availableStreams.length > 1 && (
+                                <div className="w-full">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Stream</label>
+                                    <div className="relative">
+                                        <select
+                                            value={selectedStream}
+                                            onChange={(e) => setSelectedStream(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-purple-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
+                                        >
+                                            <option value="all">All Streams</option>
+                                            {availableStreams.map((stream) => (
+                                                <option key={stream} value={stream}>{stream}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Semester Filter */}
+                            <div className="w-full">
+                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Semester</label>
                                 <div className="relative">
                                     <select
-                                        value={selectedDepartmentId}
-                                        onChange={(e) => setSelectedDepartmentId(e.target.value)}
-                                        className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
+                                        value={selectedSemester}
+                                        onChange={(e) => setSelectedSemester(e.target.value)}
+                                        className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-purple-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
                                     >
-                                        <option value="">All Departments</option>
-                                        {departments.map((dept) => (
-                                            <option key={dept.id} value={dept.id}>{dept.name}</option>
+                                        <option value="">All Semesters</option>
+                                        {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
+                                            <option key={sem} value={sem}>Semester {sem}</option>
                                         ))}
                                     </select>
                                     <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
                                 </div>
                             </div>
-                        )}
 
-                        {/* Semester Filter */}
-                        <div className="w-full md:w-40 lg:w-48">
-                            <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Semester</label>
-                            <div className="relative">
-                                <select
-                                    value={selectedSemester}
-                                    onChange={(e) => setSelectedSemester(e.target.value)}
-                                    className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
+                            {/* Reset Button */}
+                            <div className="w-full lg:w-auto">
+                                <Button
+                                    variant="outline"
+                                    className="w-full lg:w-auto mt-6 bg-white hover:bg-red-50 text-gray-600 hover:text-red-600 border-gray-200 hover:border-red-200 rounded-xl transition-colors h-[42px]"
+                                    onClick={() => {
+                                        setSelectedSemester('');
+                                        setSelectedDepartmentId('');
+                                        setSelectedStream('all');
+                                        setSearchTerm('');
+                                        router.push('/reports/students');
+                                    }}
                                 >
-                                    <option value="">All Semesters</option>
-                                    {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
-                                        <option key={sem} value={sem}>Semester {sem}</option>
-                                    ))}
-                                </select>
-                                <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
+                                    Reset Filters
+                                </Button>
                             </div>
                         </div>
-
-                        <Button
-                            className="bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200"
-                            onClick={() => {
-                                setSelectedSemester('');
-                                setSelectedDepartmentId('');
-                                setSearchTerm('');
-                                router.push('/reports/students');
-                            }}
-                        >
-                            <Filter className="w-4 h-4 mr-2" />
-                            Reset
-                        </Button>
                     </div>
                 </div>
 
@@ -935,18 +1023,31 @@ function StudentReportContent() {
                                         {/* Desktop View */}
                                         <div className="hidden md:block overflow-x-auto">
                                             <table className="w-full table-auto">
-                                                <thead className="bg-gray-50/50 border-b border-gray-100">
+                                                <thead className="bg-gray-50/80 backdrop-blur-sm border-b border-gray-100">
                                                     <tr>
-                                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Student</th>
-                                                        <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Classes</th>
-                                                        <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Attended</th>
-                                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Attendance Rate</th>
-                                                        <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
+                                                        {[
+                                                            { key: 'name' as const, label: 'Student', align: 'text-left' },
+                                                            { key: 'totalClasses' as const, label: 'Classes', align: 'text-center' },
+                                                            { key: 'attended' as const, label: 'Attended', align: 'text-center' },
+                                                            { key: 'percentage' as const, label: 'Attendance Rate', align: 'text-left' },
+                                                        ].map(col => (
+                                                            <th
+                                                                key={col.key}
+                                                                onClick={() => handleSort(col.key)}
+                                                                className={`px-6 py-4 ${col.align} text-xs font-bold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-purple-600 transition-colors select-none`}
+                                                            >
+                                                                <div className={`flex items-center gap-1 ${col.align === 'text-center' ? 'justify-center' : ''}`}>
+                                                                    {col.label}
+                                                                    <SortIcon field={col.key} />
+                                                                </div>
+                                                            </th>
+                                                        ))}
+                                                        <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Action</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-50">
-                                                    {filteredStudents.map((student) => (
-                                                        <tr key={student.id} className="hover:bg-gray-50/50 transition-colors group">
+                                                    {paginatedStudents.map((student) => (
+                                                        <tr key={student.id} className="hover:bg-blue-50/50 transition-colors group">
                                                             <td className="px-6 py-4 whitespace-nowrap">
                                                                 <div className="flex items-center">
                                                                     <div className="flex-shrink-0 h-10 w-10 bg-purple-50 rounded-full flex items-center justify-center text-purple-600 font-bold text-sm">
@@ -956,9 +1057,14 @@ function StudentReportContent() {
                                                                         <div className="text-sm font-medium text-gray-900 group-hover:text-purple-600 transition-colors cursor-pointer" onClick={() => fetchStudentDetail(student.id)}>
                                                                             {student.name}
                                                                         </div>
-                                                                        <div className="text-xs text-gray-500 font-mono bg-gray-100 px-1.5 py-0.5 rounded inline-block mt-0.5">
-                                                                            {student.rollNumber}
+                                                                    <div className="flex gap-2 mt-0.5">
+                                                                        <div className="text-xs text-gray-500 font-mono bg-gray-100 px-1.5 py-0.5 rounded inline-block">
+                                                                            ID: {student.studentId || '-'}
                                                                         </div>
+                                                                        <div className="text-xs text-gray-500 font-mono bg-gray-100 px-1.5 py-0.5 rounded inline-block">
+                                                                            Roll: {student.rollNumber}
+                                                                        </div>
+                                                                    </div>
                                                                     </div>
                                                                 </div>
                                                             </td>
@@ -999,7 +1105,7 @@ function StudentReportContent() {
 
                                         {/* Mobile View */}
                                         <div className="md:hidden p-4 space-y-4">
-                                            {filteredStudents.map((student) => (
+                                            {paginatedStudents.map((student) => (
                                                 <div
                                                     key={student.id}
                                                     onClick={() => fetchStudentDetail(student.id)}
@@ -1012,8 +1118,13 @@ function StudentReportContent() {
                                                             </div>
                                                             <div>
                                                                 <div className="font-semibold text-gray-900 text-sm">{student.name}</div>
-                                                                <div className="text-xs text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded inline-block">
-                                                                    {student.rollNumber}
+                                                                <div className="flex gap-2 mt-0.5">
+                                                                    <div className="text-xs text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded inline-block">
+                                                                        ID: {student.studentId || '-'}
+                                                                    </div>
+                                                                    <div className="text-xs text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded inline-block">
+                                                                        Roll: {student.rollNumber}
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -1042,6 +1153,67 @@ function StudentReportContent() {
                                             ))}
                                         </div>
                                     </>
+                                )}
+
+                                {/* Pagination Controls */}
+                                {sortedStudents.length > 0 && (
+                                    <div className="px-6 py-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-gray-50/50">
+                                        <div className="flex items-center gap-3 text-sm text-gray-500">
+                                            <span>Showing {((currentPage - 1) * perPage) + 1}–{Math.min(currentPage * perPage, sortedStudents.length)} of {sortedStudents.length}</span>
+                                            <select
+                                                value={perPage}
+                                                onChange={(e) => { setPerPage(parseInt(e.target.value)); setCurrentPage(1); }}
+                                                className="px-2 py-1 bg-white border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none"
+                                            >
+                                                <option value={25}>25 / page</option>
+                                                <option value={50}>50 / page</option>
+                                                <option value={100}>100 / page</option>
+                                            </select>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                                                disabled={currentPage === 1}
+                                                className="h-8 w-8 p-0"
+                                            >
+                                                <ChevronLeft className="w-4 h-4" />
+                                            </Button>
+                                            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                                                let page: number;
+                                                if (totalPages <= 5) {
+                                                    page = i + 1;
+                                                } else if (currentPage <= 3) {
+                                                    page = i + 1;
+                                                } else if (currentPage >= totalPages - 2) {
+                                                    page = totalPages - 4 + i;
+                                                } else {
+                                                    page = currentPage - 2 + i;
+                                                }
+                                                return (
+                                                    <Button
+                                                        key={page}
+                                                        variant={currentPage === page ? 'default' : 'ghost'}
+                                                        size="sm"
+                                                        onClick={() => setCurrentPage(page)}
+                                                        className={`h-8 w-8 p-0 text-xs ${currentPage === page ? 'bg-purple-600 text-white' : ''}`}
+                                                    >
+                                                        {page}
+                                                    </Button>
+                                                );
+                                            })}
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                                                disabled={currentPage === totalPages}
+                                                className="h-8 w-8 p-0"
+                                            >
+                                                <ChevronRight className="w-4 h-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
                                 )}
                             </CardContent>
                         </Card>
@@ -1083,7 +1255,10 @@ function StudentReportContent() {
                                                         <h2 className="text-xl font-bold text-gray-900">{selectedStudent.student.name}</h2>
                                                         <div className="flex flex-wrap gap-2 mt-1">
                                                             <span className="px-2 py-0.5 bg-white text-gray-600 text-xs font-mono rounded border border-gray-200">
-                                                                {selectedStudent.student.rollNumber}
+                                                                ID: {selectedStudent.student.studentId || '-'}
+                                                            </span>
+                                                            <span className="px-2 py-0.5 bg-white text-gray-600 text-xs font-mono rounded border border-gray-200">
+                                                                Roll: {selectedStudent.student.rollNumber}
                                                             </span>
                                                             <span className="px-2 py-0.5 bg-white text-gray-600 text-xs rounded border border-gray-200">
                                                                 {selectedStudent.student.department}
@@ -1249,6 +1424,8 @@ function StudentReportContent() {
                                                 </div>
                                             </div>
                                         )}
+
+
                                     </div>
                                 )}
                             </div>

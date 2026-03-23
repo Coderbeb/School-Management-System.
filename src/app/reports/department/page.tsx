@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { ArrowLeft, Users, BookOpen, AlertCircle, AlertTriangle, Building2, TrendingUp, GraduationCap, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Users, BookOpen, AlertCircle, AlertTriangle, Building2, TrendingUp, GraduationCap, ChevronRight, FileDown, FileSpreadsheet } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
+import * as XLSX from 'xlsx';
 
 interface User {
     id: string;
@@ -40,6 +41,7 @@ interface SubjectStat {
 
 interface StudentAlert {
     id: string;
+    studentId?: string;
     rollNumber: string;
     name: string;
     semester: number;
@@ -48,6 +50,7 @@ interface StudentAlert {
 
 interface DepartmentData {
     department: Department & { degreeType: string };
+    availableStreams?: string[];
     overallStats: {
         totalStudents: number;
         totalSubjects: number;
@@ -66,6 +69,7 @@ export default function DepartmentOverviewPage() {
     const [loading, setLoading] = useState(true);
     const [departments, setDepartments] = useState<Department[]>([]);
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
+    const [selectedStream, setSelectedStream] = useState<string>('all');
     const [data, setData] = useState<DepartmentData | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'semester' | 'subject' | 'critical' | 'warning'>('semester');
@@ -109,10 +113,14 @@ export default function DepartmentOverviewPage() {
     }, [router]);
 
     useEffect(() => {
+        setSelectedStream('all');
+    }, [selectedDepartmentId]);
+
+    useEffect(() => {
         if (selectedDepartmentId) {
             fetchDepartmentData();
         }
-    }, [selectedDepartmentId]);
+    }, [selectedDepartmentId, selectedStream]);
 
     const fetchDepartments = async (token: string) => {
         try {
@@ -137,7 +145,8 @@ export default function DepartmentOverviewPage() {
         setLoading(true);
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`/api/reports/department?departmentId=${selectedDepartmentId}`, {
+            const streamQuery = selectedStream !== 'all' ? `&stream=${selectedStream}` : '';
+            const res = await fetch(`/api/reports/department?departmentId=${selectedDepartmentId}${streamQuery}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
@@ -179,6 +188,49 @@ export default function DepartmentOverviewPage() {
         return 'bg-red-50 border-red-200';
     };
 
+    // Export department data
+    const exportDepartmentData = (format: 'csv' | 'excel') => {
+        if (!data) return;
+        const headers = ['Category', 'Name', 'Code/Roll', 'Semester', 'Students', 'Attendance %'];
+        const rows: string[][] = [];
+
+        // Semester stats
+        data.semesterStats.forEach(s => {
+            rows.push(['Semester', `Semester ${s.semester}`, '-', s.semester.toString(), s.totalStudents.toString(), `${s.avgAttendance}%`]);
+        });
+        // Subject stats
+        data.subjectStats.forEach(s => {
+            rows.push(['Subject', s.name, s.code, s.semester.toString(), s.totalStudents.toString(), `${s.avgAttendance}%`]);
+        });
+        // Critical students
+        data.criticalStudents.forEach(s => {
+            const idAndRoll = s.studentId ? `${s.studentId} / ${s.rollNumber}` : s.rollNumber;
+            rows.push(['Critical Student', s.name, idAndRoll, s.semester.toString(), '-', `${s.attendancePercentage}%`]);
+        });
+        // Warning students
+        data.warningStudents.forEach(s => {
+            const idAndRoll = s.studentId ? `${s.studentId} / ${s.rollNumber}` : s.rollNumber;
+            rows.push(['Warning Student', s.name, idAndRoll, s.semester.toString(), '-', `${s.attendancePercentage}%`]);
+        });
+
+        const filename = `department_${data.department?.name || 'report'}`;
+        if (format === 'csv') {
+            const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `${filename}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } else {
+            const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Department');
+            XLSX.writeFile(workbook, `${filename}.xlsx`);
+        }
+    };
+
     if (!user) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
     return (
@@ -198,56 +250,83 @@ export default function DepartmentOverviewPage() {
 
             {/* Main Content */}
             <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
-                {/* Hero / Welcome Section */}
-                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-8 mb-8 shadow-xl">
-                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
-                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
+            {/* Hero / Welcome Section */}
+            <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl mt-4">
 
-                    <div className="relative z-10">
-                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-                            <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-blue-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
-                                </div>
-                                
-                                <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-                                    Department Overview <span className="inline-block animate-wave">🏢</span>
-                                </h1>
-                                <p className="text-blue-100 text-lg max-w-xl">
-                                    View detailed performance metrics, subject-wise analysis, and student alerts.
-                                </p>
-                                
-                                {data?.department && (
-                                    <div className="flex items-center gap-3 mt-4">
-                                        <span className="px-3 py-1 bg-white/20 rounded-full text-sm font-medium backdrop-blur-sm border border-white/10">
-                                            {data.department.name}
-                                        </span>
-                                        <span className="px-3 py-1 bg-purple-500/30 rounded-full text-xs font-mono border border-purple-500/30">
-                                            {data.department.code}
-                                        </span>
-                                    </div>
-                                )}
+
+                <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6">
+                    <div>
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="text-rose-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
+                        </div>
+                        <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                            Department Overview <span className="inline-block animate-bounce">🏢</span>
+                        </h1>
+                        <p className="text-rose-100 text-lg max-w-xl">
+                            {data?.department ? data.department.name : 'View detailed performance metrics, subject-wise analysis, and student alerts.'}
+                        </p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                        {/* Department selector */}
+                        {user.role === 'super_admin' && departments.length > 0 && (
+                            <div className="bg-white/10 p-1.5 rounded-xl backdrop-blur-md border border-white/20">
+                                <select
+                                    value={selectedDepartmentId}
+                                    onChange={(e) => setSelectedDepartmentId(e.target.value)}
+                                    className="bg-transparent text-white border-0 px-2 py-1 text-sm outline-none cursor-pointer font-medium appearance-none"
+                                >
+                                    {departments.map(dept => (
+                                        <option key={dept.id} value={dept.id} className="text-gray-900">
+                                            {dept.name}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
-                            
-                            {/* Department selector */}
-                            {user.role === 'super_admin' && departments.length > 0 && (
-                                <div className="bg-white/10 p-1.5 rounded-xl backdrop-blur-sm border border-white/20 self-start">
-                                    <select
-                                        value={selectedDepartmentId}
-                                        onChange={(e) => setSelectedDepartmentId(e.target.value)}
-                                        className="bg-transparent text-white border-0 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:bg-gray-800 transition-colors cursor-pointer"
-                                    >
-                                        {departments.map(dept => (
-                                            <option key={dept.id} value={dept.id} className="text-gray-900 bg-white">
-                                                {dept.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
+                        )}
+
+                        {/* Stream selector */}
+                        {data?.availableStreams && data.availableStreams.length > 1 && (
+                            <div className="bg-white/10 p-1.5 rounded-xl backdrop-blur-md border border-white/20">
+                                <select
+                                    value={selectedStream}
+                                    onChange={(e) => setSelectedStream(e.target.value)}
+                                    className="bg-transparent text-white border-0 px-2 py-1 text-sm outline-none cursor-pointer font-medium appearance-none"
+                                >
+                                    <option value="all" className="text-gray-900">All Streams</option>
+                                    {data.availableStreams.map(stream => (
+                                        <option key={stream} value={stream} className="text-gray-900">
+                                            {stream}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {/* Export Buttons in Hero */}
+                        <div className="flex gap-2 bg-white/10 p-1.5 rounded-xl backdrop-blur-md border border-white/20">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-white hover:bg-white/20 hover:text-white h-8 px-3 transition-colors"
+                                onClick={() => exportDepartmentData('excel')}
+                            >
+                                <FileSpreadsheet className="w-4 h-4 sm:mr-2" />
+                                <span className="hidden sm:inline">Excel</span>
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-white hover:bg-white/20 hover:text-white h-8 px-3 transition-colors"
+                                onClick={() => exportDepartmentData('csv')}
+                            >
+                                <FileDown className="w-4 h-4 sm:mr-2" />
+                                <span className="hidden sm:inline">CSV</span>
+                            </Button>
                         </div>
                     </div>
                 </div>
+            </div>
                 {loading ? (
                     <div className="flex flex-col items-center justify-center h-64 gap-4">
                         <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
@@ -267,60 +346,56 @@ export default function DepartmentOverviewPage() {
                     <div className="space-y-8">
                         {/* Stats Cards - Enhanced */}
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-                            <Card className="border-0 shadow-lg bg-gradient-to-br from-purple-500 to-purple-600 text-white overflow-hidden relative group hover:shadow-xl transition-shadow">
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
                                 <CardContent className="p-5 md:p-6 relative">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-purple-100 text-xs md:text-sm uppercase tracking-wide font-medium">Total Students</p>
-                                            <p className="text-3xl md:text-4xl font-bold mt-2">{data.overallStats.totalStudents}</p>
+                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Total Students</p>
+                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.overallStats.totalStudents}</p>
                                         </div>
-                                        <div className="p-2 md:p-3 bg-white/20 rounded-xl">
+                                        <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl">
                                             <Users className="w-5 h-5 md:w-6 md:h-6" />
                                         </div>
                                     </div>
                                 </CardContent>
                             </Card>
                             
-                            <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white overflow-hidden relative group hover:shadow-xl transition-shadow">
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
                                 <CardContent className="p-5 md:p-6 relative">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-blue-100 text-xs md:text-sm uppercase tracking-wide font-medium">Subjects</p>
-                                            <p className="text-3xl md:text-4xl font-bold mt-2">{data.overallStats.totalSubjects}</p>
+                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Subjects</p>
+                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.overallStats.totalSubjects}</p>
                                         </div>
-                                        <div className="p-2 md:p-3 bg-white/20 rounded-xl">
+                                        <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
                                             <BookOpen className="w-5 h-5 md:w-6 md:h-6" />
                                         </div>
                                     </div>
                                 </CardContent>
                             </Card>
                             
-                            <Card className="border-0 shadow-lg bg-gradient-to-br from-red-500 to-rose-600 text-white overflow-hidden relative group hover:shadow-xl transition-shadow">
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
                                 <CardContent className="p-5 md:p-6 relative">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-red-100 text-xs md:text-sm uppercase tracking-wide font-medium">Critical (&lt;60%)</p>
-                                            <p className="text-3xl md:text-4xl font-bold mt-2">{data.overallStats.criticalCount}</p>
+                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Critical (&lt;60%)</p>
+                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.overallStats.criticalCount}</p>
                                         </div>
-                                        <div className="p-2 md:p-3 bg-white/20 rounded-xl">
+                                        <div className="p-2.5 bg-red-50 text-red-600 rounded-xl">
                                             <AlertCircle className="w-5 h-5 md:w-6 md:h-6" />
                                         </div>
                                     </div>
                                 </CardContent>
                             </Card>
                             
-                            <Card className="border-0 shadow-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white overflow-hidden relative group hover:shadow-xl transition-shadow">
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
                                 <CardContent className="p-5 md:p-6 relative">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-amber-100 text-xs md:text-sm uppercase tracking-wide font-medium">Warning (60-75%)</p>
-                                            <p className="text-3xl md:text-4xl font-bold mt-2">{data.overallStats.warningCount}</p>
+                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Warning (60-75%)</p>
+                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.overallStats.warningCount}</p>
                                         </div>
-                                        <div className="p-2 md:p-3 bg-white/20 rounded-xl">
+                                        <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl">
                                             <AlertTriangle className="w-5 h-5 md:w-6 md:h-6" />
                                         </div>
                                     </div>
@@ -477,25 +552,30 @@ export default function DepartmentOverviewPage() {
                                             data.criticalStudents.map((student, index) => (
                                                 <div 
                                                     key={student.id} 
-                                                    className="flex items-center justify-between p-4 bg-gradient-to-r from-red-50 to-rose-50 rounded-xl border border-red-200 hover:shadow-md transition-all"
+                                                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-5 bg-white rounded-2xl border border-gray-100 hover:border-red-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 cursor-pointer relative group"
+                                                    onClick={() => router.push(`/reports/students?status=critical`)}
                                                 >
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                                                            <span className="text-sm font-bold text-red-600">{index + 1}</span>
+                                                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500 rounded-l-2xl"></div>
+                                                    <div className="flex items-center gap-4 relative z-10 pl-2">
+                                                        <div className="w-12 h-12 rounded-full bg-red-50 flex flex-shrink-0 items-center justify-center border border-red-100">
+                                                            <span className="text-lg font-bold text-red-600">{index + 1}</span>
                                                         </div>
                                                         <div>
-                                                            <p className="font-semibold text-gray-800">{student.name}</p>
-                                                            <div className="flex items-center gap-2 mt-0.5">
-                                                                <span className="text-sm text-gray-500">Roll: {student.rollNumber}</span>
-                                                                <span className="px-2 py-0.5 bg-purple-100 rounded-full text-xs text-purple-600">
+                                                            <p className="font-bold text-gray-900 text-lg">{student.name}</p>
+                                                            <div className="flex items-center gap-2 mt-1">
+                                                                <span className="text-sm text-gray-500">ID: {student.studentId || '-'}</span>
+                                                                <span className="text-sm text-gray-500 ml-1">Roll: {student.rollNumber}</span>
+                                                                <span className="text-xs font-medium px-2.5 py-1 bg-gray-100 rounded-full text-gray-600 ml-1">
                                                                     Sem {student.semester}
                                                                 </span>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-2xl font-bold text-red-600">{student.attendancePercentage}%</span>
-                                                        <ChevronRight className="w-5 h-5 text-gray-400" />
+                                                    <div className="flex items-center gap-3 relative z-10 mt-4 sm:mt-0 self-end sm:self-auto">
+                                                        <span className="text-3xl font-extrabold text-red-600 tracking-tight">{student.attendancePercentage}%</span>
+                                                        <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center border border-gray-200 group-hover:bg-red-50 group-hover:border-red-200 transition-colors">
+                                                            <ChevronRight className="w-5 h-5 text-red-400 group-hover:text-red-600" />
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))
@@ -518,25 +598,30 @@ export default function DepartmentOverviewPage() {
                                             data.warningStudents.map((student, index) => (
                                                 <div 
                                                     key={student.id} 
-                                                    className="flex items-center justify-between p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 hover:shadow-md transition-all"
+                                                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-5 bg-white rounded-2xl border border-gray-100 hover:border-amber-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 cursor-pointer relative group"
+                                                    onClick={() => router.push(`/reports/students?status=warning`)}
                                                 >
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
-                                                            <span className="text-sm font-bold text-amber-600">{index + 1}</span>
+                                                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-amber-500 rounded-l-2xl"></div>
+                                                    <div className="flex items-center gap-4 relative z-10 pl-2">
+                                                        <div className="w-12 h-12 rounded-full bg-amber-50 flex flex-shrink-0 items-center justify-center border border-amber-100">
+                                                            <span className="text-lg font-bold text-amber-600">{index + 1}</span>
                                                         </div>
                                                         <div>
-                                                            <p className="font-semibold text-gray-800">{student.name}</p>
-                                                            <div className="flex items-center gap-2 mt-0.5">
-                                                                <span className="text-sm text-gray-500">Roll: {student.rollNumber}</span>
-                                                                <span className="px-2 py-0.5 bg-purple-100 rounded-full text-xs text-purple-600">
+                                                            <p className="font-bold text-gray-900 text-lg">{student.name}</p>
+                                                            <div className="flex items-center gap-2 mt-1">
+                                                                <span className="text-sm text-gray-500">ID: {student.studentId || '-'}</span>
+                                                                <span className="text-sm text-gray-500 ml-1">Roll: {student.rollNumber}</span>
+                                                                <span className="text-xs font-medium px-2.5 py-1 bg-gray-100 rounded-full text-gray-600 ml-1">
                                                                     Sem {student.semester}
                                                                 </span>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-2xl font-bold text-amber-600">{student.attendancePercentage}%</span>
-                                                        <ChevronRight className="w-5 h-5 text-gray-400" />
+                                                    <div className="flex items-center gap-3 relative z-10 mt-4 sm:mt-0 self-end sm:self-auto">
+                                                        <span className="text-3xl font-extrabold text-amber-600 tracking-tight">{student.attendancePercentage}%</span>
+                                                        <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center border border-gray-200 group-hover:bg-amber-50 group-hover:border-amber-200 transition-colors">
+                                                            <ChevronRight className="w-5 h-5 text-amber-400 group-hover:text-amber-600" />
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))

@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, X, Users, BookOpen, TrendingUp, Filter, ChevronRight, FileDown, ArrowLeft, ChevronDown, CheckCircle, AlertCircle, Eye, GraduationCap } from 'lucide-react';
+import { Search, X, Users, BookOpen, TrendingUp, Filter, ChevronRight, FileDown, ArrowLeft, ChevronDown, CheckCircle, AlertCircle, Eye, GraduationCap, FileText, FileSpreadsheet, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
+import * as XLSX from 'xlsx';
 
 interface User {
     role: 'super_admin' | 'hod' | 'teacher';
@@ -631,6 +632,60 @@ export default function TeacherReportPage() {
         teacher.department.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    // Sorting state
+    const [sortField, setSortField] = useState<'name' | 'department' | 'totalSessions' | 'averageAttendance'>('name');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+    const handleListSort = (field: typeof sortField) => {
+        if (sortField === field) {
+            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortField(field);
+            setSortOrder(field === 'name' || field === 'department' ? 'asc' : 'desc');
+        }
+    };
+
+    const sortedTeachers = [...filteredTeachers].sort((a, b) => {
+        const valA = a[sortField];
+        const valB = b[sortField];
+        if (typeof valA === 'string') return sortOrder === 'asc' ? valA.localeCompare(valB as string) : (valB as string).localeCompare(valA);
+        return sortOrder === 'asc' ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
+    });
+
+    const ListSortIcon = ({ field }: { field: typeof sortField }) => {
+        if (sortField !== field) return <ChevronDown className="w-3 h-3 opacity-30" />;
+        return sortOrder === 'asc'
+            ? <ArrowUpRight className="w-3 h-3 text-purple-600" />
+            : <ArrowDownRight className="w-3 h-3 text-purple-600" />;
+    };
+
+    // Export functions
+    const exportTeacherList = (format: 'csv' | 'excel') => {
+        const headers = ['Name', 'Email', 'Department', 'Subjects', 'Sessions', 'Avg. Attendance %'];
+        const rows = sortedTeachers.map(t => [
+            t.name, t.email, t.department, t.subjects, t.totalSessions.toString(), `${t.averageAttendance}%`
+        ]);
+
+        if (format === 'csv') {
+            const csvContent = [
+                headers.join(','),
+                ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+            ].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'teacher_attendance_report.csv';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } else {
+            const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Teachers');
+            XLSX.writeFile(workbook, 'teacher_attendance_report.xlsx');
+        }
+    };
+
     const getAttendanceColor = (percentage: number) => {
         if (percentage >= 85) return 'bg-emerald-500';
         if (percentage >= 75) return 'bg-emerald-400';
@@ -662,80 +717,105 @@ export default function TeacherReportPage() {
 
             <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
                 {/* Hero / Welcome Section */}
-                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-8 mb-8 shadow-xl">
-                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
-                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
+                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl">
 
-                    <div className="relative z-10">
-                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-                            <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-blue-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
-                                </div>
 
-                                <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-                                    Teacher Reports <span className="inline-block animate-wave">👨‍🏫</span>
-                                </h1>
-                                <p className="text-blue-100 text-lg max-w-xl">
-                                    Analyze teacher attendance, track variations, and view individual performance details.
-                                </p>
+                    <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6">
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-indigo-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                             </div>
+                            <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                                Teacher Reports <span className="inline-block animate-bounce">👨‍🏫</span>
+                            </h1>
+                            <p className="text-indigo-100 text-lg max-w-xl">
+                                Analyze teacher attendance, track variations, and view <span className="font-semibold text-white">individual performance details</span>.
+                            </p>
+                        </div>
 
-                            {/* Visual Icon */}
-                            <div className="hidden md:block p-3 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/20">
-                                <Users className="w-8 h-8 text-white" />
-                            </div>
+                        {/* Export Buttons in Hero */}
+                        <div className="flex gap-2 bg-white/10 p-1.5 rounded-xl backdrop-blur-md border border-white/20 self-start sm:self-auto">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-white hover:bg-white/20 hover:text-white h-8 px-3 transition-colors"
+                                onClick={() => exportTeacherList('excel')}
+                            >
+                                <FileSpreadsheet className="w-4 h-4 sm:mr-2" />
+                                <span className="hidden sm:inline">Excel</span>
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-white hover:bg-white/20 hover:text-white h-8 px-3 transition-colors"
+                                onClick={() => exportTeacherList('csv')}
+                            >
+                                <FileDown className="w-4 h-4 sm:mr-2" />
+                                <span className="hidden sm:inline">CSV</span>
+                            </Button>
                         </div>
                     </div>
                 </div>
-                {/* Filters Section - Top Bar */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
-                    <div className="flex flex-col md:flex-row gap-4 items-end">
-                        {/* Search */}
-                        <div className="flex-1 w-full md:w-auto">
-                            <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Search Teacher</label>
-                            <div className="relative">
-                                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-                                <input
-                                    type="text"
-                                    placeholder="Name, Email or Dept..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all"
-                                />
-                            </div>
-                        </div>
 
-                        {/* Department Filter */}
-                        {user?.role === 'super_admin' && (
-                            <div className="w-full md:w-64">
-                                <label className="text-xs font-semibold text-gray-500 uppercase mb-1.5 block">Department</label>
+                {/* Advanced Filters Section */}
+                <div className="relative z-20 mb-8">
+                    <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Filter className="w-4 h-4 text-indigo-500" />
+                            <h3 className="text-sm font-bold text-gray-700">Search & Filters</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                            {/* Search */}
+                            <div className="w-full lg:col-span-2">
+                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Search Teacher</label>
                                 <div className="relative">
-                                    <select
-                                        value={selectedDepartmentId}
-                                        onChange={(e) => setSelectedDepartmentId(e.target.value)}
-                                        className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all"
-                                    >
-                                        <option value="">All Departments</option>
-                                        {departments.map((dept) => (
-                                            <option key={dept.id} value={dept.id}>{dept.name}</option>
-                                        ))}
-                                    </select>
-                                    <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
+                                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                                    <input
+                                        type="text"
+                                        placeholder="Name, Email or Dept..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full pl-9 pr-3 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-indigo-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all shadow-sm"
+                                    />
                                 </div>
                             </div>
-                        )}
 
-                        <Button
-                            className="bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200"
-                            onClick={() => {
-                                setSelectedDepartmentId('');
-                                setSearchTerm('');
-                            }}
-                        >
-                            <Filter className="w-4 h-4 mr-2" />
-                            Reset
-                        </Button>
+                            {/* Department Filter */}
+                            {user?.role === 'super_admin' ? (
+                                <div className="w-full">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Department</label>
+                                    <div className="relative">
+                                        <select
+                                            value={selectedDepartmentId}
+                                            onChange={(e) => setSelectedDepartmentId(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-indigo-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
+                                        >
+                                            <option value="">All Departments</option>
+                                            {departments.map((dept) => (
+                                                <option key={dept.id} value={dept.id}>{dept.name}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="hidden lg:block w-full"></div>
+                            )}
+
+                            {/* Reset Button */}
+                            <div className="w-full lg:w-auto">
+                                <Button
+                                    variant="outline"
+                                    className="w-full lg:w-auto mt-6 bg-white hover:bg-red-50 text-gray-600 hover:text-red-600 border-gray-200 hover:border-red-200 rounded-xl transition-colors h-[42px]"
+                                    onClick={() => {
+                                        setSelectedDepartmentId('');
+                                        setSearchTerm('');
+                                    }}
+                                >
+                                    Reset Filters
+                                </Button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -762,18 +842,31 @@ export default function TeacherReportPage() {
                                         {/* Desktop View */}
                                         <div className="hidden md:block overflow-x-auto">
                                             <table className="w-full table-auto">
-                                                <thead className="bg-gray-50/50 border-b border-gray-100">
+                                                <thead className="bg-gray-50/80 backdrop-blur-sm border-b border-gray-100">
                                                     <tr>
-                                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Teacher</th>
-                                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Department</th>
-                                                        <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Sessions</th>
-                                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Avg. Attendance</th>
-                                                        <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
+                                                        {[
+                                                            { key: 'name' as const, label: 'Teacher', align: 'text-left' },
+                                                            { key: 'department' as const, label: 'Department', align: 'text-left' },
+                                                            { key: 'totalSessions' as const, label: 'Sessions', align: 'text-center' },
+                                                            { key: 'averageAttendance' as const, label: 'Avg. Attendance', align: 'text-left' },
+                                                        ].map(col => (
+                                                            <th
+                                                                key={col.key}
+                                                                onClick={() => handleListSort(col.key)}
+                                                                className={`px-6 py-4 ${col.align} text-xs font-bold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600 transition-colors select-none`}
+                                                            >
+                                                                <div className={`flex items-center gap-1 ${col.align === 'text-center' ? 'justify-center' : ''}`}>
+                                                                    {col.label}
+                                                                    <ListSortIcon field={col.key} />
+                                                                </div>
+                                                            </th>
+                                                        ))}
+                                                        <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Action</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-50">
-                                                    {filteredTeachers.map((teacher) => (
-                                                        <tr key={teacher.id} className="hover:bg-gray-50/50 transition-colors group">
+                                                    {sortedTeachers.map((teacher) => (
+                                                        <tr key={teacher.id} className="hover:bg-indigo-50/50 transition-colors group">
                                                             <td className="px-6 py-4 whitespace-nowrap">
                                                                 <div className="flex items-center">
                                                                     <div className="flex-shrink-0 h-10 w-10 bg-purple-50 rounded-full flex items-center justify-center text-purple-600 font-bold text-sm">
@@ -993,8 +1086,8 @@ export default function TeacherReportPage() {
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y">
-                                                            {selectedTeacher.subjects.map((subj) => (
-                                                                <tr key={subj.id} className="bg-white hover:bg-gray-50/50">
+                                                            {selectedTeacher.subjects.map((subj, idx) => (
+                                                                <tr key={`${subj.id}-${idx}`} className="bg-white hover:bg-gray-50/50">
                                                                     <td className="px-4 py-3">
                                                                         <div className="font-medium text-gray-900">{subj.name}</div>
                                                                         <div className="text-xs text-gray-500">Sem {subj.semester} • {subj.code}</div>

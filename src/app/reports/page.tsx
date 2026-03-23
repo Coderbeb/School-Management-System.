@@ -121,8 +121,8 @@ export default function ReportsPage() {
             bgLight: 'bg-purple-50',
             href: '/reports/students'
         },
-        // My Performance - for teachers and HODs to see their own stats
-        {
+        // My Performance - for HODs only
+        ...(user?.role === 'hod' ? [{
             id: 'my-performance',
             title: 'My Performance',
             description: 'Your teaching statistics',
@@ -131,7 +131,7 @@ export default function ReportsPage() {
             gradient: 'from-indigo-500 to-indigo-600',
             bgLight: 'bg-indigo-50',
             href: '/reports/my-performance'
-        },
+        }] : []),
         ...(user && user.role !== 'teacher' ? [{
             id: 'teachers',
             title: 'Teacher-wise',
@@ -210,9 +210,8 @@ export default function ReportsPage() {
 
             <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
                 {/* Hero / Welcome Section */}
-                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-8 mb-8 shadow-xl">
-                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
-                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
+                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl">
+
 
                     <div className="relative z-10">
                         <div className="flex items-start justify-between">
@@ -241,22 +240,32 @@ export default function ReportsPage() {
                 </div>
                 {/* Quick Stats Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                    {getQuickStats().map((stat, index) => (
-                        <Card key={index} className={`border-0 shadow-lg text-white bg-gradient-to-br ${stat.gradient} overflow-hidden group hover:-translate-y-1 transition-transform duration-300`}>
-                            <CardContent className="p-5 relative">
-                                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-110 transition-transform duration-500"></div>
-                                <div className="flex items-start justify-between relative z-10">
-                                    <div>
-                                        <p className="text-white/80 text-xs font-bold uppercase tracking-wider mb-1">{stat.label}</p>
-                                        <p className="text-3xl font-bold">{stat.value}</p>
+                    {getQuickStats().map((stat, index) => {
+                        const colorMap: Record<string, {bg: string, text: string}> = {
+                            'from-blue-500 to-blue-600': { bg: 'bg-blue-50', text: 'text-blue-600' },
+                            'from-purple-500 to-purple-600': { bg: 'bg-purple-50', text: 'text-purple-600' },
+                            'from-emerald-500 to-emerald-600': { bg: 'bg-emerald-50', text: 'text-emerald-600' },
+                            'from-orange-500 to-orange-600': { bg: 'bg-orange-50', text: 'text-orange-600' },
+                            'from-red-500 to-rose-600': { bg: 'bg-red-50', text: 'text-red-600' }
+                        };
+                        const colors = colorMap[stat.gradient] || { bg: 'bg-gray-50', text: 'text-gray-600' };
+                        
+                        return (
+                            <Card key={index} className="border border-gray-100 shadow-sm bg-white overflow-hidden group hover:-translate-y-0.5 hover:shadow-md transition-all duration-300">
+                                <CardContent className="p-5">
+                                    <div className="flex items-start justify-between">
+                                        <div>
+                                            <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">{stat.label}</p>
+                                            <p className="text-gray-900 text-3xl font-bold">{stat.value}</p>
+                                        </div>
+                                        <div className={`p-2 ${colors.bg} ${colors.text} rounded-lg`}>
+                                            <stat.icon className="w-5 h-5" />
+                                        </div>
                                     </div>
-                                    <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
-                                        <stat.icon className="w-5 h-5" />
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))}
+                                </CardContent>
+                            </Card>
+                        );
+                    })}
                 </div>
 
                 {/* HOD/Admin - Alerts Section */}
@@ -324,10 +333,8 @@ export default function ReportsPage() {
                             onClick={() => router.push(report.href)}
                             className="group bg-white rounded-2xl p-5 shadow-sm hover:shadow-xl border border-transparent hover:border-purple-100 transition-all duration-300 cursor-pointer flex items-start gap-4 relative overflow-hidden"
                         >
-                            <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${report.gradient} opacity-5 rounded-bl-full transform translate-x-8 -translate-y-8 group-hover:scale-150 transition-transform duration-500`}></div>
-                            
-                            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${report.gradient} flex items-center justify-center shrink-0 shadow-md group-hover:scale-110 transition-transform duration-300`}>
-                                <report.icon className="w-6 h-6 text-white" />
+                            <div className={`w-12 h-12 rounded-xl ${report.bgLight} flex items-center justify-center shrink-0 shadow-sm group-hover:scale-110 transition-transform duration-300`}>
+                                <report.icon className={`w-6 h-6 ${report.color.replace('bg-', 'text-')}`} />
                             </div>
                             
                             <div className="flex-1 z-10">

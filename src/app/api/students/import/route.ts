@@ -64,6 +64,9 @@ export async function POST(req: Request) {
         // Collect subject enrollments for batch insert at the end
         const enrollmentBatch: { studentId: string; subjectId: string }[] = [];
 
+        // Collect valid students for batch insert
+        const studentBatch: any[] = [];
+
         // Process each student
         for (let i = 0; i < students.length; i++) {
             const student = students[i];
@@ -126,20 +129,21 @@ export async function POST(req: Request) {
                 // 5. Determine final values
                 const finalRollNumber = student.roll_number ? parseInt(student.roll_number) : (parsed.rollNumber || 0);
                 const finalSemester = student.semester ? parseInt(student.semester) : (parsed.semester || 1);
-
-                // 6. Insert Student (single query on same connection)
                 const newStudentId = uuidv4();
-                await client.query(
-                    `INSERT INTO students (
-                        id, student_id, roll_number, roll_number_old,
-                        first_name, last_name, email, department_id, current_semester, batch_year
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-                    [
-                        newStudentId, sid, finalRollNumber, finalRollNumber.toString(),
-                        student.first_name, student.last_name || '', student.email || null,
-                        deptId, finalSemester, parsed.admissionYear || new Date().getFullYear()
-                    ]
-                );
+
+                // 6. Buffer Student for internal batch chunk
+                studentBatch.push({
+                    newStudentId,
+                    sid,
+                    finalRollNumber,
+                    rollNumberOld: finalRollNumber.toString(),
+                    firstName: student.first_name,
+                    lastName: student.last_name || '',
+                    email: student.email || null,
+                    deptId,
+                    finalSemester,
+                    batchYear: parsed.admissionYear || new Date().getFullYear()
+                });
 
                 // Mark as existing to prevent duplicates within the batch
                 existingStudentIds.add(sid);
@@ -208,6 +212,31 @@ export async function POST(req: Request) {
                     name: `${student.first_name || 'Unknown'} ${student.last_name || ''}`.trim(),
                     error: err.message
                 });
+            }
+        }
+
+        // Start transaction for batch inserts
+        await client.query('BEGIN');
+
+        // Batch insert all valid students in chunks of 50
+        if (studentBatch.length > 0) {
+            const STUDENT_CHUNK_SIZE = 50; // Keep at 50 to avoid too many PostgreSQL statement parameters
+            for (let i = 0; i < studentBatch.length; i += STUDENT_CHUNK_SIZE) {
+                const chunk = studentBatch.slice(i, i + STUDENT_CHUNK_SIZE);
+                const values: string[] = [];
+                const params: any[] = [];
+                chunk.forEach((s, idx) => {
+                    const offset = idx * 10;
+                    values.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10})`);
+                    params.push(s.newStudentId, s.sid, s.finalRollNumber, s.rollNumberOld, s.firstName, s.lastName, s.email, s.deptId, s.finalSemester, s.batchYear);
+                });
+                await client.query(
+                    `INSERT INTO students (
+                        id, student_id, roll_number, roll_number_old,
+                        first_name, last_name, email, department_id, current_semester, batch_year
+                    ) VALUES ${values.join(', ')}`,
+                    params
+                );
             }
         }
 

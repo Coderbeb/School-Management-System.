@@ -68,8 +68,8 @@ export default function MyPerformancePage() {
         }
         const parsedUser = JSON.parse(userData);
 
-        // Only teachers should access this page
-        if (parsedUser.role !== 'teacher') {
+        // Only HODs should access this page
+        if (parsedUser.role !== 'hod') {
             router.push('/reports');
             return;
         }
@@ -146,33 +146,24 @@ export default function MyPerformancePage() {
             <Navbar user={user} onMenuClick={() => setSidebarOpen(true)} />
 
             <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
-                {/* Hero / Welcome Section */}
-                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-8 mb-8 shadow-xl">
-                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
-                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
+            {/* Hero / Welcome Section */}
+            <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl mt-4">
 
-                    <div className="relative z-10">
-                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-                            <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-blue-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
-                                </div>
 
-                                <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-                                    My Performance <span className="inline-block animate-wave">📈</span>
-                                </h1>
-                                <p className="text-blue-100 text-lg max-w-xl">
-                                    Track your teaching statistics, attendance trends, and subject-wise performance.
-                                </p>
-                            </div>
-
-                            {/* Visual Icon */}
-                            <div className="hidden md:block p-3 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/20">
-                                <TrendingUp className="w-8 h-8 text-white" />
-                            </div>
+                <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6">
+                    <div>
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="text-indigo-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                         </div>
+                        <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                            My Performance <span className="inline-block animate-bounce">📈</span>
+                        </h1>
+                        <p className="text-indigo-100 text-lg max-w-xl">
+                            Track your teaching statistics, attendance trends, and <span className="font-semibold text-white">subject-wise performance</span>.
+                        </p>
                     </div>
                 </div>
+            </div>
 
                 {loading ? (
                     <div className="flex items-center justify-center py-20">
@@ -186,63 +177,66 @@ export default function MyPerformancePage() {
                     <main className="space-y-6 pb-8">
                         {/* Teacher Info Card - Mobile */}
                         <div className="md:hidden">
-                            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl p-4 text-white">
-                                <h2 className="text-lg font-semibold">{data.teacher.name}</h2>
-                                <p className="text-purple-200 text-sm">{data.teacher.email}</p>
-                                <p className="text-purple-200 text-sm mt-1">{data.teacher.department}</p>
+                            <div className="bg-white border border-gray-100 shadow-sm rounded-2xl p-4 text-gray-900">
+                                <h2 className="text-lg font-bold text-gray-900">{data.teacher.name}</h2>
+                                <p className="text-gray-500 text-sm">{data.teacher.email}</p>
+                                <p className="text-gray-500 text-sm mt-1">{data.teacher.department}</p>
                             </div>
                         </div>
 
                         {/* Summary Stats */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-                            <Card className="bg-white">
-                                <CardContent className="p-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
-                                            <Calendar className="w-5 h-5" />
-                                        </div>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
+                                <CardContent className="p-5 md:p-6 relative">
+                                    <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-2xl font-bold">{data.summary.totalSessions}</p>
-                                            <p className="text-xs text-gray-500">Total Sessions</p>
+                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Total Sessions</p>
+                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.summary.totalSessions}</p>
+                                        </div>
+                                        <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                                            <Calendar className="w-5 h-5 md:w-6 md:h-6" />
                                         </div>
                                     </div>
                                 </CardContent>
                             </Card>
-                            <Card className="bg-white">
-                                <CardContent className="p-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-green-100 text-green-600 rounded-lg">
-                                            <Users className="w-5 h-5" />
-                                        </div>
+
+                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
+                                <CardContent className="p-5 md:p-6 relative">
+                                    <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-2xl font-bold">{data.summary.totalStudents}</p>
-                                            <p className="text-xs text-gray-500">Students</p>
+                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Students</p>
+                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.summary.totalStudents}</p>
+                                        </div>
+                                        <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
+                                            <Users className="w-5 h-5 md:w-6 md:h-6" />
                                         </div>
                                     </div>
                                 </CardContent>
                             </Card>
-                            <Card className="bg-white">
-                                <CardContent className="p-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">
-                                            <TrendingUp className="w-5 h-5" />
-                                        </div>
+
+                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
+                                <CardContent className="p-5 md:p-6 relative">
+                                    <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-2xl font-bold">{data.summary.averageAttendance}%</p>
-                                            <p className="text-xs text-gray-500">Avg Attendance</p>
+                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Avg Attendance</p>
+                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.summary.averageAttendance}%</p>
+                                        </div>
+                                        <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl">
+                                            <TrendingUp className="w-5 h-5 md:w-6 md:h-6" />
                                         </div>
                                     </div>
                                 </CardContent>
                             </Card>
-                            <Card className="bg-white">
-                                <CardContent className="p-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
-                                            <BookOpen className="w-5 h-5" />
-                                        </div>
+
+                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
+                                <CardContent className="p-5 md:p-6 relative">
+                                    <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-2xl font-bold">{data.subjects.length}</p>
-                                            <p className="text-xs text-gray-500">Subjects</p>
+                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Subjects</p>
+                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.subjects.length}</p>
+                                        </div>
+                                        <div className="p-2.5 bg-orange-50 text-orange-600 rounded-xl">
+                                            <BookOpen className="w-5 h-5 md:w-6 md:h-6" />
                                         </div>
                                     </div>
                                 </CardContent>
@@ -250,7 +244,7 @@ export default function MyPerformancePage() {
                         </div>
 
                         {/* Subject-wise Performance */}
-                        <Card>
+                        <Card className="border-0 shadow-md bg-white">
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2">
                                     <BookOpen className="w-5 h-5" />
@@ -262,26 +256,26 @@ export default function MyPerformancePage() {
                                     <p className="text-gray-500 text-center py-4">No subjects assigned yet.</p>
                                 ) : (
                                     <div className="space-y-4">
-                                        {data.subjects.map((subject) => (
-                                            <div key={subject.id} className="p-4 bg-gray-50 rounded-xl">
-                                                <div className="flex justify-between items-start mb-2">
+                                        {data.subjects.map((subject, idx) => (
+                                            <div key={`${subject.id}-${idx}`} className="p-5 bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-100 hover:shadow-md transition-shadow">
+                                                <div className="flex justify-between items-start mb-3">
                                                     <div>
-                                                        <h3 className="font-semibold text-gray-900">{subject.code} - {subject.name}</h3>
-                                                        <p className="text-sm text-gray-500">Semester {subject.semester} • {subject.sessions} sessions</p>
+                                                        <h3 className="font-bold text-gray-900">{subject.code} - {subject.name}</h3>
+                                                        <p className="text-xs font-medium text-gray-500 mt-0.5">Sem {subject.semester} • {subject.sessions} sessions</p>
                                                     </div>
-                                                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getAttendanceColor(subject.attendance)}`}>
+                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold shadow-sm ${getAttendanceColor(subject.attendance)}`}>
                                                         {subject.attendance}%
                                                     </span>
                                                 </div>
-                                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                                <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
                                                     <div
-                                                        className={`h-2 rounded-full ${getProgressColor(subject.attendance)}`}
+                                                        className={`h-full rounded-full transition-all duration-500 ${getProgressColor(subject.attendance)}`}
                                                         style={{ width: `${subject.attendance}%` }}
                                                     />
                                                 </div>
-                                                <div className="flex justify-between mt-2 text-xs text-gray-500">
-                                                    <span>{subject.students} students</span>
-                                                    <span>{subject.sessions} classes conducted</span>
+                                                <div className="flex justify-between mt-3 text-xs font-medium text-gray-500">
+                                                    <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {subject.students} students</span>
+                                                    <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> {subject.sessions} classes</span>
                                                 </div>
                                             </div>
                                         ))}
@@ -291,7 +285,7 @@ export default function MyPerformancePage() {
                         </Card>
 
                         {/* Monthly Trend */}
-                        <Card>
+                        <Card className="border-0 shadow-md bg-white">
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2">
                                     <Clock className="w-5 h-5" />
@@ -304,12 +298,14 @@ export default function MyPerformancePage() {
                                 ) : (
                                     <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
                                         {data.monthlyTrend.map((month) => (
-                                            <div key={month.month} className="text-center p-3 bg-gray-50 rounded-xl">
-                                                <p className="text-xs text-gray-500 mb-1">{formatMonth(month.month)}</p>
-                                                <p className={`text-lg font-bold ${month.attendance >= 75 ? 'text-green-600' : 'text-red-600'}`}>
+                                            <div key={month.month} className="text-center p-4 bg-gradient-to-br from-gray-50 to-white border border-gray-100 rounded-2xl hover:-translate-y-1 hover:shadow-md transition-all duration-300">
+                                                <p className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">{formatMonth(month.month)}</p>
+                                                <p className={`text-xl font-bold mb-1 ${month.attendance >= 75 ? 'text-emerald-600' : 'text-red-500'}`}>
                                                     {month.attendance}%
                                                 </p>
-                                                <p className="text-xs text-gray-400">{month.sessions} sessions</p>
+                                                <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[10px] font-medium">
+                                                    <Calendar className="w-3 h-3" /> {month.sessions}
+                                                </div>
                                             </div>
                                         ))}
                                     </div>

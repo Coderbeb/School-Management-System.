@@ -100,7 +100,7 @@ export async function GET(
 
         if (filterDeptId) {
             subjectParams.push(filterDeptId);
-            subjectFilters.push(`d.id = $${subjectParams.length}`);
+            subjectFilters.push(`s.degree_type IN (SELECT degree_type FROM departments WHERE id = $${subjectParams.length})`);
         }
         if (filterSemester) {
             subjectParams.push(parseInt(filterSemester));
@@ -118,8 +118,8 @@ export async function GET(
                      FROM subject_semesters ss2 WHERE ss2.subject_id = s.id),
                     ''
                 ) as semester,
-                d.id as department_id,
-                d.name as department_name,
+                (SELECT id FROM departments WHERE degree_type = s.degree_type LIMIT 1) as department_id,
+                (SELECT name FROM departments WHERE degree_type = s.degree_type LIMIT 1) as department_name,
                 COUNT(DISTINCT ar.date || '-' || ar.lecture_number) as total_sessions,
                 COUNT(DISTINCT ar.student_id) as total_students,
                 COALESCE(
@@ -132,10 +132,9 @@ export async function GET(
                 ) as avg_attendance
              FROM teacher_subjects ts
              JOIN subjects s ON s.id = ts.subject_id
-             LEFT JOIN departments d ON d.degree_type = s.degree_type
              LEFT JOIN attendance_records ar ON ar.subject_id = s.id AND ar.teacher_id = ts.teacher_id
              WHERE ${subjectFilters.join(' AND ')}
-             GROUP BY s.id, s.name, s.code, d.id, d.name
+             GROUP BY s.id, s.name, s.code, s.degree_type
              ORDER BY s.code, s.name`,
             subjectParams
         );

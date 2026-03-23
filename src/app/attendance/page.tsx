@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { MobileSidebar } from '@/components/ui/MobileSidebar';
 
 interface Student {
     id: string;
+    student_custom_id?: string;
     roll_number: string;
     first_name: string;
     last_name: string;
@@ -66,6 +67,7 @@ export default function AttendancePage() {
     const [selectedSubjectId, setSelectedSubjectId] = useState('');
     const [selectedSection, setSelectedSection] = useState(''); // Optional section
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
+    const [selectedStream, setSelectedStream] = useState<string>('all');
 
     const [loading, setLoading] = useState(true);
     // Initialize with local date (IST) to prevent previous day issue in early morning
@@ -167,10 +169,8 @@ export default function AttendancePage() {
                     });
                 }
 
-                // Only show filter if teacher has more than 1 department
-                if (allDepts.length > 1) {
-                    setDepartments(allDepts);
-                }
+                // Always populate departments state to allow stream checking
+                setDepartments(allDepts);
 
                 // Always store all department IDs for student filtering
                 setTeacherDepartmentIds(allDepts.map(d => d.id));
@@ -347,6 +347,7 @@ export default function AttendancePage() {
                     if (matchesDepartment && !allStudentsMap.has(e.studentId)) {
                         allStudentsMap.set(e.studentId, {
                             id: e.studentId,
+                            student_custom_id: e.studentCustomId,
                             roll_number: e.studentRollNumber || e.studentId.slice(-4),
                             first_name: e.studentName?.split(' ')[0] || 'Unknown',
                             last_name: e.studentName?.split(' ').slice(1).join(' ') || '',
@@ -504,7 +505,7 @@ export default function AttendancePage() {
                 console.error('Auto-save error:', err);
             }
             setAutoSaving(false);
-        }, 2000);
+        }, 1500);
     }, [selectedSubjectId, selectedDate]);
 
     const markAttendance = (studentId: string, status: 'present' | 'absent') => {
@@ -528,13 +529,19 @@ export default function AttendancePage() {
     };
 
     const markAllPresent = () => {
-        setStudents(prev => prev.map(s => ({ ...s, attendance: 'present' as const })));
+        setStudents(prev => prev.map(s => {
+            if (selectedStream !== 'all' && (!s.student_custom_id || !s.student_custom_id.toUpperCase().startsWith(selectedStream))) return s;
+            return { ...s, attendance: 'present' as const };
+        }));
         setMessage('');
         triggerAutoSave();
     };
 
     const markAllAbsent = () => {
-        setStudents(prev => prev.map(s => ({ ...s, attendance: 'absent' as const })));
+        setStudents(prev => prev.map(s => {
+            if (selectedStream !== 'all' && (!s.student_custom_id || !s.student_custom_id.toUpperCase().startsWith(selectedStream))) return s;
+            return { ...s, attendance: 'absent' as const };
+        }));
         setMessage('');
         triggerAutoSave();
     };
@@ -599,11 +606,43 @@ export default function AttendancePage() {
         };
     }, []);
 
+    const [availableStreams, setAvailableStreams] = useState<string[]>([]);
+
+    useEffect(() => {
+        const deptIdsToFetch = selectedDepartmentId 
+            ? [selectedDepartmentId] 
+            : teacherDepartmentIds;
+
+        if (deptIdsToFetch.length === 0) {
+            setAvailableStreams([]);
+            return;
+        }
+
+        const activeDepts = departments.filter(d => deptIdsToFetch.includes(d.id));
+        const hasIT = activeDepts.some(d => d.code.toUpperCase() === 'IT');
+        
+        if (hasIT) {
+            setAvailableStreams(['BCA', 'BSCIT']);
+        } else {
+            setAvailableStreams([]);
+        }
+    }, [selectedDepartmentId, teacherDepartmentIds, departments]);
+
+    const displayStudents = useMemo(() => {
+        if (selectedStream === 'all') return students;
+        return students.filter(s => s.student_custom_id && s.student_custom_id.toUpperCase().startsWith(selectedStream));
+    }, [students, selectedStream]);
+
+    // reset stream when department changes
+    useEffect(() => {
+        setSelectedStream('all');
+    }, [selectedDepartmentId]);
+
     if (loading && !students.length && !subjects.length) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
-    const markedCount = students.filter(s => s.attendance).length;
-    const presentCount = students.filter(s => s.attendance === 'present').length;
-    const absentCount = students.filter(s => s.attendance === 'absent').length;
+    const markedCount = displayStudents.filter(s => s.attendance).length;
+    const presentCount = displayStudents.filter(s => s.attendance === 'present').length;
+    const absentCount = displayStudents.filter(s => s.attendance === 'absent').length;
 
     // Find current subject details for display
     const currentSubject = subjects.find(s => s.subjectId === selectedSubjectId);
@@ -673,6 +712,19 @@ export default function AttendancePage() {
                                             <option key={dept.id} value={dept.id}>
                                                 {dept.code}
                                             </option>
+                                        ))}
+                                    </select>
+                                )}
+                                {/* Stream filter if multiple */}
+                                {availableStreams.length > 1 && (
+                                    <select
+                                        className="flex-1 px-3 py-2.5 bg-white border rounded-xl text-sm font-medium"
+                                        value={selectedStream}
+                                        onChange={(e) => setSelectedStream(e.target.value)}
+                                    >
+                                        <option value="all">All Streams</option>
+                                        {availableStreams.map(stream => (
+                                            <option key={stream} value={stream}>{stream}</option>
                                         ))}
                                     </select>
                                 )}
@@ -761,7 +813,7 @@ export default function AttendancePage() {
                                     <div className="flex items-center justify-between mb-3">
                                         <div className="flex items-center gap-4">
                                             <div className="text-center">
-                                                <div className="text-xl font-bold text-gray-900">{students.length}</div>
+                                                <div className="text-xl font-bold text-gray-900">{displayStudents.length}</div>
                                                 <div className="text-xs text-gray-500">Total</div>
                                             </div>
                                             <div className="w-px h-8 bg-gray-200" />
@@ -802,7 +854,7 @@ export default function AttendancePage() {
 
                             {/* Student Table with Sticky Header */}
                             <div className="mx-4 mb-24 bg-white rounded-xl shadow-sm overflow-hidden flex flex-col max-h-[60vh]">
-                                {students.length === 0 ? (
+                                {displayStudents.length === 0 ? (
                                     <div className="p-8 text-center text-gray-500">
                                         No students found for this subject.
                                     </div>
@@ -820,7 +872,7 @@ export default function AttendancePage() {
                                         <div className="overflow-auto flex-1">
                                             <table className="w-full">
                                                 <tbody className="divide-y divide-gray-100">
-                                                    {students.map((student) => (
+                                                    {displayStudents.map((student) => (
                                                         <tr key={student.id} className="hover:bg-gray-50">
                                                             <td className="px-3 py-2 text-sm font-mono font-bold text-gray-900">{student.roll_number}</td>
                                                             <td className="px-3 py-2 text-sm font-medium text-gray-900 truncate max-w-[150px]">
@@ -830,13 +882,14 @@ export default function AttendancePage() {
                                                                 <div className="flex justify-center">
                                                                     <button
                                                                         onClick={() => toggleAttendance(student.id)}
-                                                                        onDoubleClick={() => markAttendance(student.id, 'absent')}
                                                                         className={`relative group overflow-hidden w-24 h-12 rounded-xl flex items-center justify-center font-bold text-2xl transition-all duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${student.attendance === 'present'
                                                                             ? 'bg-green-500 text-white border-green-700 shadow-lg shadow-green-200'
-                                                                            : 'bg-red-500 text-white border-red-700 shadow-lg shadow-red-200'
+                                                                            : student.attendance === 'absent'
+                                                                            ? 'bg-red-500 text-white border-red-700 shadow-lg shadow-red-200'
+                                                                            : 'bg-gray-200 text-gray-500 border-gray-400 shadow-sm'
                                                                             }`}
                                                                     >
-                                                                        {student.attendance === 'present' ? 'P' : 'A'}
+                                                                        {student.attendance === 'present' ? 'P' : student.attendance === 'absent' ? 'A' : '-'}
                                                                     </button>
                                                                 </div>
                                                             </td>
@@ -877,6 +930,24 @@ export default function AttendancePage() {
                                                 <option key={dept.id} value={dept.id}>
                                                     {dept.name} ({dept.code})
                                                 </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {/* Stream Filter */}
+                                {availableStreams.length > 1 && (
+                                    <div className="w-1/2 sm:flex-1 sm:min-w-[120px] px-1 sm:px-0">
+                                        <label htmlFor="stream-select" className="block text-xs text-gray-500 mb-1">Stream</label>
+                                        <select
+                                            id="stream-select"
+                                            className="w-full p-2 border rounded bg-white text-sm"
+                                            value={selectedStream}
+                                            onChange={(e) => setSelectedStream(e.target.value)}
+                                        >
+                                            <option value="all">All Streams</option>
+                                            {availableStreams.map(stream => (
+                                                <option key={stream} value={stream}>{stream}</option>
                                             ))}
                                         </select>
                                     </div>
@@ -967,7 +1038,7 @@ export default function AttendancePage() {
                                     <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-4">
                                         <div className="flex items-center gap-2 bg-gray-50 p-2 rounded">
                                             <span className="text-gray-500 text-xs sm:text-sm">Total:</span>
-                                            <span className="font-bold text-sm sm:text-lg">{students.length}</span>
+                                            <span className="font-bold text-sm sm:text-lg">{displayStudents.length}</span>
                                         </div>
                                         <div className="flex items-center gap-2 bg-blue-50 p-2 rounded">
                                             <span className="text-gray-500 text-xs sm:text-sm">Marked:</span>
@@ -1005,7 +1076,7 @@ export default function AttendancePage() {
                             )}
 
                             {/* Desktop Student Table */}
-                            {students.length === 0 ? (
+                            {displayStudents.length === 0 ? (
                                 <Card>
                                     <CardContent className="py-8 text-center text-gray-500">
                                         No students found for this subject.
@@ -1024,7 +1095,7 @@ export default function AttendancePage() {
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y">
-                                                {students.map((student) => (
+                                                {displayStudents.map((student) => (
                                                     <tr key={student.id} className="hover:bg-gray-50">
                                                         <td className="px-3 sm:px-6 py-3 text-xs sm:text-sm font-mono font-bold">{student.roll_number}</td>
                                                         <td className="px-3 sm:px-6 py-3 text-xs sm:text-sm font-medium">{student.first_name} <span className="hidden sm:inline">{student.last_name}</span></td>
@@ -1047,13 +1118,14 @@ export default function AttendancePage() {
                                                                 <button
                                                                     className={`w-20 h-12 rounded-xl flex items-center justify-center font-bold text-2xl transition-all duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${student.attendance === 'present'
                                                                         ? 'bg-green-500 text-white border-green-700 shadow-lg shadow-green-100'
-                                                                        : 'bg-red-500 text-white border-red-700 shadow-lg shadow-red-100'
+                                                                        : student.attendance === 'absent'
+                                                                        ? 'bg-red-500 text-white border-red-700 shadow-lg shadow-red-100'
+                                                                        : 'bg-gray-200 text-gray-500 border-gray-400 shadow-sm'
                                                                         }`}
                                                                     onClick={() => toggleAttendance(student.id)}
-                                                                    onDoubleClick={() => markAttendance(student.id, 'absent')}
-                                                                    title={student.attendance === 'present' ? 'Present - Double-click for Absent' : 'Absent - Click for Present'}
+                                                                    title={student.attendance === 'present' ? 'Present - Cycle states' : student.attendance === 'absent' ? 'Absent - Cycle states' : 'Not Marked - Cycle states'}
                                                                 >
-                                                                    {student.attendance === 'present' ? 'P' : 'A'}
+                                                                    {student.attendance === 'present' ? 'P' : student.attendance === 'absent' ? 'A' : '-'}
                                                                 </button>
                                                             </div>
                                                         </td>

@@ -4,6 +4,7 @@ import { verifyToken } from '@/lib/auth';
 
 interface StudentData {
     id: string;
+    student_id: string;
     roll_number: string;
     first_name: string;
     last_name: string;
@@ -49,12 +50,13 @@ export async function GET(request: NextRequest) {
                 params.push(departmentId);
                 filters.push(`s.department_id = $${params.length}`);
             } else {
+                // Filter students to only those in the teacher's departments
                 params.push(userId);
-                // Only show students who have enrolled in subjects taught by this teacher
-                filters.push(`s.id IN (
-                    SELECT ss.student_id FROM student_subjects ss
-                    JOIN teacher_subjects ts ON ss.subject_id = ts.subject_id
-                    WHERE ts.teacher_id = $${params.length}
+                const teacherParamIdx = params.length;
+                filters.push(`s.department_id IN (
+                    SELECT department_id FROM users WHERE id = $${teacherParamIdx}
+                    UNION
+                    SELECT department_id FROM user_departments WHERE user_id = $${teacherParamIdx}
                 )`);
             }
         } else if (role === 'super_admin' && departmentId) {
@@ -97,6 +99,7 @@ export async function GET(request: NextRequest) {
         const queryStr = `
             SELECT 
                 s.id,
+                s.student_id,
                 s.roll_number,
                 s.first_name,
                 s.last_name,
@@ -109,7 +112,7 @@ export async function GET(request: NextRequest) {
             LEFT JOIN attendance_records ar ON ar.student_id = s.id AND (${teacherSubjectFilter})
             WHERE 1=1
             ${filterClause}
-            GROUP BY s.id, s.roll_number, s.first_name, s.last_name, d.name, s.current_semester
+            GROUP BY s.id, s.student_id, s.roll_number, s.first_name, s.last_name, d.name, s.current_semester
             ORDER BY s.roll_number ASC
         `;
 
@@ -117,6 +120,7 @@ export async function GET(request: NextRequest) {
 
         const formattedStudents = students.map(s => ({
             id: s.id,
+            studentId: s.student_id,
             rollNumber: s.roll_number,
             name: `${s.first_name} ${s.last_name}`,
             department: s.department_name || 'N/A',
