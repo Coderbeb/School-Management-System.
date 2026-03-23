@@ -26,6 +26,7 @@ interface SubjectStats {
 
 interface StudentAlert {
     id: string;
+    student_id: string;
     roll_number: string;
     name: string;
     semester: string;
@@ -56,9 +57,27 @@ export async function GET(request: NextRequest) {
 
         const searchParams = request.nextUrl.searchParams;
         const selectedDeptId = searchParams.get('departmentId') || userDeptId;
+        const stream = searchParams.get('stream');
 
         if (!selectedDeptId) {
             return NextResponse.json({ error: 'Department ID required' }, { status: 400 });
+        }
+
+        // Setup stream filtering params
+        let streamCondition = '';
+        const params: string[] = [selectedDeptId];
+        
+        let subjectStreamCondition = '';
+        const subjectParams: string[] = [selectedDeptId];
+
+        if (stream && stream !== 'all') {
+            params.push(`${stream}%`);
+            streamCondition = `AND s.student_id ILIKE $${params.length}`;
+            
+            // subjectParams has degree_type at $2
+            subjectParams.push(''); // placeholder for element 2
+            subjectParams.push(`${stream}%`); // element 3
+            subjectStreamCondition = `AND st.student_id ILIKE $3`;
         }
 
         // 1. Get department info including degree_type
@@ -69,6 +88,12 @@ export async function GET(request: NextRequest) {
 
         if (!deptInfo) {
             return NextResponse.json({ error: 'Department not found' }, { status: 404 });
+        }
+
+        // 0. Get available streams for this department
+        let availableStreams: string[] = [];
+        if (deptInfo.code.toUpperCase() === 'IT') {
+            availableStreams = ['BCA', 'BSCIT'];
         }
 
         // 2. Get semester-wise stats for students in this department
@@ -86,10 +111,10 @@ export async function GET(request: NextRequest) {
                 ) as avg_attendance
             FROM students s
             LEFT JOIN attendance_records ar ON ar.student_id = s.id
-            WHERE s.department_id = $1
+            WHERE s.department_id = $1 ${streamCondition}
             GROUP BY s.current_semester
             ORDER BY s.current_semester`,
-            [selectedDeptId]
+            params
         );
 
         // 3. Get subject-wise stats using degree_type to link subjects
@@ -114,18 +139,19 @@ export async function GET(request: NextRequest) {
                 ) as avg_attendance
             FROM subjects sub
             LEFT JOIN student_subjects ss ON ss.subject_id = sub.id
-            LEFT JOIN students st ON ss.student_id = st.id AND st.department_id = $1
+            LEFT JOIN students st ON ss.student_id = st.id AND st.department_id = $1 ${subjectStreamCondition}
             LEFT JOIN attendance_records ar ON ar.subject_id = sub.id AND ar.student_id = st.id
             WHERE sub.degree_type = $2
             GROUP BY sub.id, sub.name, sub.code
             ORDER BY sub.code, sub.name`,
-            [selectedDeptId, deptInfo.degree_type]
+            (() => { subjectParams[1] = deptInfo.degree_type; return subjectParams; })()
         );
 
         // 4. Get critical students (<60% attendance)
         const criticalStudents = await query<StudentAlert>(
             `SELECT 
                 s.id,
+                s.student_id,
                 s.roll_number::text as roll_number,
                 CONCAT(s.first_name, ' ', s.last_name) as name,
                 s.current_semester::text as semester,
@@ -139,8 +165,8 @@ export async function GET(request: NextRequest) {
                 ) as attendance_pct
             FROM students s
             LEFT JOIN attendance_records ar ON ar.student_id = s.id
-            WHERE s.department_id = $1
-            GROUP BY s.id, s.roll_number, s.first_name, s.last_name, s.current_semester
+            WHERE s.department_id = $1 ${streamCondition}
+            GROUP BY s.id, s.student_id, s.roll_number, s.first_name, s.last_name, s.current_semester
             HAVING COUNT(ar.id) > 0 AND 
                 COALESCE(
                     ROUND(
@@ -152,13 +178,14 @@ export async function GET(request: NextRequest) {
                 ) < 60
             ORDER BY attendance_pct ASC
             LIMIT 20`,
-            [selectedDeptId]
+            params
         );
 
         // 5. Get warning students (60-75% attendance)
         const warningStudents = await query<StudentAlert>(
             `SELECT 
                 s.id,
+                s.student_id,
                 s.roll_number::text as roll_number,
                 CONCAT(s.first_name, ' ', s.last_name) as name,
                 s.current_semester::text as semester,
@@ -172,8 +199,8 @@ export async function GET(request: NextRequest) {
                 ) as attendance_pct
             FROM students s
             LEFT JOIN attendance_records ar ON ar.student_id = s.id
-            WHERE s.department_id = $1
-            GROUP BY s.id, s.roll_number, s.first_name, s.last_name, s.current_semester
+            WHERE s.department_id = $1 ${streamCondition}
+            GROUP BY s.id, s.student_id, s.roll_number, s.first_name, s.last_name, s.current_semester
             HAVING COUNT(ar.id) > 0 AND 
                 COALESCE(
                     ROUND(
@@ -185,7 +212,7 @@ export async function GET(request: NextRequest) {
                 ) BETWEEN 60 AND 74.9
             ORDER BY attendance_pct ASC
             LIMIT 20`,
-            [selectedDeptId]
+            params
         );
 
         // Calculate totals
@@ -199,6 +226,7 @@ export async function GET(request: NextRequest) {
                 code: deptInfo.code,
                 degreeType: deptInfo.degree_type,
             },
+            availableStreams,
             overallStats: {
                 totalStudents,
                 totalSubjects,
@@ -220,6 +248,7 @@ export async function GET(request: NextRequest) {
             })),
             criticalStudents: criticalStudents.map(s => ({
                 id: s.id,
+                studentId: s.student_id,
                 rollNumber: s.roll_number,
                 name: s.name,
                 semester: parseInt(s.semester),
@@ -227,6 +256,7 @@ export async function GET(request: NextRequest) {
             })),
             warningStudents: warningStudents.map(s => ({
                 id: s.id,
+                studentId: s.student_id,
                 rollNumber: s.roll_number,
                 name: s.name,
                 semester: parseInt(s.semester),

@@ -4,6 +4,7 @@ import { verifyToken } from '@/lib/auth';
 
 interface StudentData {
     id: string;
+    student_id: string;
     roll_number: string;
     first_name: string;
     last_name: string;
@@ -98,6 +99,7 @@ export async function GET(request: NextRequest) {
         const queryStr = `
             SELECT 
                 s.id,
+                s.student_id,
                 s.roll_number,
                 s.first_name,
                 s.last_name,
@@ -110,7 +112,7 @@ export async function GET(request: NextRequest) {
             LEFT JOIN attendance_records ar ON ar.student_id = s.id AND (${teacherSubjectFilter})
             WHERE 1=1
             ${filterClause}
-            GROUP BY s.id, s.roll_number, s.first_name, s.last_name, d.name, s.current_semester
+            GROUP BY s.id, s.student_id, s.roll_number, s.first_name, s.last_name, d.name, s.current_semester
             ORDER BY s.roll_number ASC
         `;
 
@@ -118,6 +120,7 @@ export async function GET(request: NextRequest) {
 
         const formattedStudents = students.map(s => ({
             id: s.id,
+            studentId: s.student_id,
             rollNumber: s.roll_number,
             name: `${s.first_name} ${s.last_name}`,
             department: s.department_name || 'N/A',

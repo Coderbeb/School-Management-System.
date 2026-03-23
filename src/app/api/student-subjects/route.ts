@@ -10,6 +10,7 @@ interface StudentSubjectRow {
     student_last_name: string;
     student_department_id: string;
     student_current_semester: number;
+    student_custom_id?: string;
     subject_id: string;
     subject_code: string;
     subject_name: string;
@@ -42,6 +43,7 @@ export async function GET(request: NextRequest) {
                    st.first_name as student_first_name, st.last_name as student_last_name,
                    st.department_id as student_department_id,
                    st.current_semester as student_current_semester,
+                   st.student_id as student_custom_id,
                    s.code as subject_code, s.name as subject_name
             FROM student_subjects ss
             JOIN students st ON st.id = ss.student_id
@@ -77,6 +79,7 @@ export async function GET(request: NextRequest) {
                 studentName: `${e.student_first_name} ${e.student_last_name}`,
                 studentDepartmentId: e.student_department_id,
                 studentCurrentSemester: e.student_current_semester,
+                studentCustomId: e.student_custom_id,
                 subjectId: e.subject_id,
                 subjectCode: e.subject_code,
                 subjectName: e.subject_name,

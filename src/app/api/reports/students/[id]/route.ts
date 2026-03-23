@@ -4,6 +4,7 @@ import { verifyToken } from '@/lib/auth';
 
 interface StudentDetail {
     id: string;
+    student_id: string;
     roll_number: string;
     first_name: string;
     last_name: string;
@@ -60,7 +61,7 @@ export async function GET(
 
         // Get student basic info
         const studentInfo = await query<StudentDetail>(
-            `SELECT s.id, s.roll_number, s.first_name, s.last_name, s.email, 
+            `SELECT s.id, s.student_id, s.roll_number, s.first_name, s.last_name, s.email, 
                     s.current_semester, d.name as department_name
              FROM students s
              LEFT JOIN departments d ON d.id = s.department_id
@@ -210,6 +211,7 @@ export async function GET(
         return NextResponse.json({
             student: {
                 id: student.id,
+                studentId: student.student_id,
                 rollNumber: student.roll_number,
                 name: `${student.first_name} ${student.last_name}`,
                 email: student.email || 'N/A',

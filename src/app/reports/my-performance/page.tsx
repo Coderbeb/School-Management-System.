@@ -68,8 +68,8 @@ export default function MyPerformancePage() {
         }
         const parsedUser = JSON.parse(userData);
 
-        // Only teachers and HODs should access this page
-        if (parsedUser.role !== 'teacher' && parsedUser.role !== 'hod') {
+        // Only HODs should access this page
+        if (parsedUser.role !== 'hod') {
             router.push('/reports');
             return;
         }

@@ -28,6 +28,7 @@ interface Department {
 
 interface StudentAttendance {
     id: string;
+    studentId: string;
     rollNumber: string;
     name: string;
     totalClasses: number;
@@ -38,6 +39,7 @@ interface StudentAttendance {
 interface StudentDetail {
     student: {
         id: string;
+        studentId: string;
         rollNumber: string;
         name: string;
         email: string;
@@ -87,6 +89,8 @@ function StudentReportContent() {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
     const [selectedSemester, setSelectedSemester] = useState('');
+    const [selectedStream, setSelectedStream] = useState<string>('all');
+    const [availableStreams, setAvailableStreams] = useState<string[]>([]);
     const [showSearch, setShowSearch] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -161,6 +165,22 @@ function StudentReportContent() {
         }
     };
 
+    useEffect(() => {
+        let activeDepts = departments;
+        if (selectedDepartmentId) {
+            activeDepts = departments.filter(d => d.id === selectedDepartmentId);
+        }
+
+        const hasIT = activeDepts.some(d => d.code && d.code.toUpperCase() === 'IT');
+        
+        if (hasIT) {
+            setAvailableStreams(['BCA', 'BSCIT']);
+        } else {
+            setAvailableStreams([]);
+        }
+        setSelectedStream('all');
+    }, [departments, selectedDepartmentId]);
+
     // Fetch departments for teachers (based on their assignments)
     const fetchTeacherDepartments = async (token: string, teacherId: string) => {
         try {
@@ -185,9 +205,7 @@ function StudentReportContent() {
                         }
                     });
                 }
-                if (allDepts.length > 1) {
-                    setDepartments(allDepts);
-                }
+                setDepartments(allDepts);
             }
         } catch (err) {
             console.error('Error fetching teacher departments:', err);
@@ -576,7 +594,7 @@ function StudentReportContent() {
             <div class="info-card">
                 <div>
                     <h2 class="student-name">${student.name}</h2>
-                    <div class="student-roll">Roll No: ${student.rollNumber}</div>
+                    <div class="student-roll">Student ID: ${student.studentId || '-'} | Roll No: ${student.rollNumber}</div>
                 </div>
                 <div class="meta-values">
                     <div class="meta-row"><strong>Department:</strong> ${student.department}</div>
@@ -669,6 +687,10 @@ function StudentReportContent() {
 
         if (!matchesSearch) return false;
 
+        if (selectedStream !== 'all' && (!student.studentId || !student.studentId.toUpperCase().startsWith(selectedStream))) {
+            return false;
+        }
+
         if (statusParam === 'critical') {
             return student.percentage < 60;
         }
@@ -729,10 +751,11 @@ function StudentReportContent() {
     };
 
     const exportReport = (format: 'csv' | 'excel' | 'pdf') => {
-        const headers = ['Roll Number', 'Name', 'Total Classes', 'Attended', 'Percentage', 'Status'];
+        const headers = ['Student ID', 'Roll Number', 'Name', 'Total Classes', 'Attended', 'Percentage', 'Status'];
         const rows = filteredStudents.map(s => {
             const status = s.percentage >= 75 ? 'Good Standing' : s.percentage >= 60 ? 'Warning' : 'Critical';
             return [
+                s.studentId || '-',
                 s.rollNumber,
                 s.name,
                 s.totalClasses.toString(),
@@ -793,9 +816,9 @@ function StudentReportContent() {
         </thead>
         <tbody>
             ${rows.map(row => {
-                const status = row[5];
+                const status = row[6];
                 const statusClass = status === 'Good Standing' ? 'good' : status === 'Warning' ? 'warning' : 'critical';
-                return `<tr>${row.map((cell, i) => i === 5 ? `<td><span class="status-badge ${statusClass}">${cell}</span></td>` : `<td>${cell}</td>`).join('')}</tr>`;
+                return `<tr>${row.map((cell, i) => i === 6 ? `<td><span class="status-badge ${statusClass}">${cell}</span></td>` : `<td>${cell}</td>`).join('')}</tr>`;
             }).join('')}
         </tbody>
     </table>
@@ -919,6 +942,26 @@ function StudentReportContent() {
                                 </div>
                             )}
 
+                            {/* Stream Filter */}
+                            {availableStreams.length > 1 && (
+                                <div className="w-full">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Stream</label>
+                                    <div className="relative">
+                                        <select
+                                            value={selectedStream}
+                                            onChange={(e) => setSelectedStream(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-purple-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
+                                        >
+                                            <option value="all">All Streams</option>
+                                            {availableStreams.map((stream) => (
+                                                <option key={stream} value={stream}>{stream}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Semester Filter */}
                             <div className="w-full">
                                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Semester</label>
@@ -945,6 +988,7 @@ function StudentReportContent() {
                                     onClick={() => {
                                         setSelectedSemester('');
                                         setSelectedDepartmentId('');
+                                        setSelectedStream('all');
                                         setSearchTerm('');
                                         router.push('/reports/students');
                                     }}
@@ -1013,9 +1057,14 @@ function StudentReportContent() {
                                                                         <div className="text-sm font-medium text-gray-900 group-hover:text-purple-600 transition-colors cursor-pointer" onClick={() => fetchStudentDetail(student.id)}>
                                                                             {student.name}
                                                                         </div>
-                                                                        <div className="text-xs text-gray-500 font-mono bg-gray-100 px-1.5 py-0.5 rounded inline-block mt-0.5">
-                                                                            {student.rollNumber}
+                                                                    <div className="flex gap-2 mt-0.5">
+                                                                        <div className="text-xs text-gray-500 font-mono bg-gray-100 px-1.5 py-0.5 rounded inline-block">
+                                                                            ID: {student.studentId || '-'}
                                                                         </div>
+                                                                        <div className="text-xs text-gray-500 font-mono bg-gray-100 px-1.5 py-0.5 rounded inline-block">
+                                                                            Roll: {student.rollNumber}
+                                                                        </div>
+                                                                    </div>
                                                                     </div>
                                                                 </div>
                                                             </td>
@@ -1069,8 +1118,13 @@ function StudentReportContent() {
                                                             </div>
                                                             <div>
                                                                 <div className="font-semibold text-gray-900 text-sm">{student.name}</div>
-                                                                <div className="text-xs text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded inline-block">
-                                                                    {student.rollNumber}
+                                                                <div className="flex gap-2 mt-0.5">
+                                                                    <div className="text-xs text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded inline-block">
+                                                                        ID: {student.studentId || '-'}
+                                                                    </div>
+                                                                    <div className="text-xs text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded inline-block">
+                                                                        Roll: {student.rollNumber}
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -1201,7 +1255,10 @@ function StudentReportContent() {
                                                         <h2 className="text-xl font-bold text-gray-900">{selectedStudent.student.name}</h2>
                                                         <div className="flex flex-wrap gap-2 mt-1">
                                                             <span className="px-2 py-0.5 bg-white text-gray-600 text-xs font-mono rounded border border-gray-200">
-                                                                {selectedStudent.student.rollNumber}
+                                                                ID: {selectedStudent.student.studentId || '-'}
+                                                            </span>
+                                                            <span className="px-2 py-0.5 bg-white text-gray-600 text-xs font-mono rounded border border-gray-200">
+                                                                Roll: {selectedStudent.student.rollNumber}
                                                             </span>
                                                             <span className="px-2 py-0.5 bg-white text-gray-600 text-xs rounded border border-gray-200">
                                                                 {selectedStudent.student.department}

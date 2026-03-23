@@ -60,6 +60,9 @@ export async function POST(req: Request) {
         const currentYear = now.getFullYear();
         const academicYear = now.getMonth() >= 5 ? `${currentYear}-${currentYear + 1}` : `${currentYear - 1}-${currentYear}`;
 
+        const validTeachersBatch: any[] = [];
+        const teacherSubjectsMap = new Map<string, string[]>();
+
         for (let i = 0; i < teachers.length; i++) {
             const teacher = teachers[i];
             const rowNum = i + 1;
@@ -95,24 +98,12 @@ export async function POST(req: Request) {
                     throw new Error(`Invalid Role: ${teacher.role} (must be 'teacher' or 'hod')`);
                 }
 
-                // 2. Insert User (password was pre-hashed in parallel!)
-                const insertResult = await client.query(
-                    `INSERT INTO users (
-                        first_name, last_name, email, password_hash, role, department_id
-                    ) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-                    [teacher.first_name, teacher.last_name, email, passwordHashes[i], role, deptId]
-                );
-
-                const newTeacherId = insertResult.rows[0]?.id;
-                existingEmails.add(email);
-
-                // 3. Collect subject assignments (batch later)
-                if (newTeacherId && teacher.subject_codes) {
+                // 2. Resolve target subject IDs in memory
+                const resolvedSubjectIds: string[] = [];
+                if (teacher.subject_codes) {
                     const subjectInputs = teacher.subject_codes.split(',').map((s: string) => s.trim()).filter(Boolean);
-
                     for (const input of subjectInputs) {
                         const inputUpper = input.toUpperCase();
-                        // Use .filter() to get ALL semester rows for this subject, not just one
                         const matchedSubjects = allSubjects.filter((s: any) =>
                             s.degree_type === deptInfo.degreeType && (
                                 s.code.toUpperCase() === inputUpper ||
@@ -121,17 +112,26 @@ export async function POST(req: Request) {
                                 inputUpper.includes(s.name.toUpperCase())
                             )
                         );
-
                         for (const matchedSubject of matchedSubjects) {
-                            subjectAssignments.push({
-                                teacherId: newTeacherId,
-                                subjectId: matchedSubject.id,
-                                academicYear
-                            });
+                            resolvedSubjectIds.push(matchedSubject.id);
                         }
+                    }
+                    if (resolvedSubjectIds.length > 0) {
+                        teacherSubjectsMap.set(email, resolvedSubjectIds);
                     }
                 }
 
+                // 3. Buffer valid teacher for batch insert
+                validTeachersBatch.push({
+                    firstName: teacher.first_name,
+                    lastName: teacher.last_name,
+                    email: email,
+                    passwordHash: passwordHashes[i],
+                    role: role,
+                    deptId: deptId
+                });
+
+                existingEmails.add(email);
                 stats.success++;
 
             } catch (err: any) {
@@ -141,6 +141,43 @@ export async function POST(req: Request) {
                     name: `${teacher.first_name} ${teacher.last_name}`,
                     error: err.message
                 });
+            }
+        }
+
+        // Batch insert all valid users in chunks
+        if (validTeachersBatch.length > 0) {
+            const CHUNK_SIZE = 50; 
+            for (let i = 0; i < validTeachersBatch.length; i += CHUNK_SIZE) {
+                const chunk = validTeachersBatch.slice(i, i + CHUNK_SIZE);
+                const values: string[] = [];
+                const params: any[] = [];
+                chunk.forEach((t, idx) => {
+                    const offset = idx * 6;
+                    values.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`);
+                    params.push(t.firstName, t.lastName, t.email, t.passwordHash, t.role, t.deptId);
+                });
+                
+                const insertResult = await client.query(
+                    `INSERT INTO users (first_name, last_name, email, password_hash, role, department_id)
+                     VALUES ${values.join(', ')} RETURNING id, email`,
+                    params
+                );
+
+                // Collect assignments mapped to freshly generated User IDs
+                for (const row of insertResult.rows) {
+                    const newTeacherId = row.id;
+                    const insertedEmail = row.email;
+                    const resolvedIds = teacherSubjectsMap.get(insertedEmail);
+                    if (resolvedIds) {
+                        for (const subjectId of resolvedIds) {
+                            subjectAssignments.push({
+                                teacherId: newTeacherId,
+                                subjectId: subjectId,
+                                academicYear
+                            });
+                        }
+                    }
+                }
             }
         }
 

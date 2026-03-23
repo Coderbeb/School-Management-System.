@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { pool } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
         let success = 0;
         let failed = 0;
         const errors: { row: number; name: string; error: string }[] = [];
+        const validHolidays: { name: string; date: string; description: string | null }[] = [];
 
         for (let i = 0; i < holidays.length; i++) {
             const row = holidays[i];
@@ -84,26 +85,50 @@ export async function POST(request: NextRequest) {
             // Format to YYYY-MM-DD for PostgreSQL
             const formattedDate = parsedDate.toISOString().split('T')[0];
 
-            try {
-                await query(
-                    `INSERT INTO holidays (name, date, description)
-                     VALUES ($1, $2, $3)
-                     ON CONFLICT (date) DO UPDATE SET name = $1, description = COALESCE($3, holidays.description)`,
-                    [name, formattedDate, description]
-                );
-                success++;
-            } catch (err: any) {
-                failed++;
-                errors.push({ row: i + 1, name, error: err.message || 'Database error' });
-            }
+            validHolidays.push({ name, date: formattedDate, description });
+            success++;
         }
 
-        return NextResponse.json({
-            success,
-            failed,
-            total: holidays.length,
-            errors: errors.slice(0, 10) // Limit error details
-        });
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            if (validHolidays.length > 0) {
+                const CHUNK_SIZE = 100;
+                for (let i = 0; i < validHolidays.length; i += CHUNK_SIZE) {
+                    const chunk = validHolidays.slice(i, i + CHUNK_SIZE);
+                    const values: string[] = [];
+                    const params: any[] = [];
+                    chunk.forEach((h, idx) => {
+                        const offset = idx * 3;
+                        values.push(`($${offset + 1}, $${offset + 2}, $${offset + 3})`);
+                        params.push(h.name, h.date, h.description);
+                    });
+                    
+                    await client.query(
+                        `INSERT INTO holidays (name, date, description)
+                         VALUES ${values.join(', ')}
+                         ON CONFLICT (date) DO UPDATE SET name = EXCLUDED.name, description = COALESCE(EXCLUDED.description, holidays.description)`,
+                        params
+                    );
+                }
+            }
+
+            await client.query('COMMIT');
+            
+            return NextResponse.json({
+                success,
+                failed,
+                total: holidays.length,
+                errors: errors.slice(0, 10) // Limit error details
+            });
+        } catch (dbError: any) {
+            await client.query('ROLLBACK').catch(() => {});
+            console.error('Holiday DB insertion error:', dbError);
+            return NextResponse.json({ error: 'Database error during import' }, { status: 500 });
+        } finally {
+            client.release();
+        }
     } catch (error) {
         console.error('Holiday import error:', error);
         return NextResponse.json({ error: 'Server error during import' }, { status: 500 });

@@ -41,6 +41,7 @@ interface SubjectStat {
 
 interface StudentAlert {
     id: string;
+    studentId?: string;
     rollNumber: string;
     name: string;
     semester: number;
@@ -49,6 +50,7 @@ interface StudentAlert {
 
 interface DepartmentData {
     department: Department & { degreeType: string };
+    availableStreams?: string[];
     overallStats: {
         totalStudents: number;
         totalSubjects: number;
@@ -67,6 +69,7 @@ export default function DepartmentOverviewPage() {
     const [loading, setLoading] = useState(true);
     const [departments, setDepartments] = useState<Department[]>([]);
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
+    const [selectedStream, setSelectedStream] = useState<string>('all');
     const [data, setData] = useState<DepartmentData | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'semester' | 'subject' | 'critical' | 'warning'>('semester');
@@ -110,10 +113,14 @@ export default function DepartmentOverviewPage() {
     }, [router]);
 
     useEffect(() => {
+        setSelectedStream('all');
+    }, [selectedDepartmentId]);
+
+    useEffect(() => {
         if (selectedDepartmentId) {
             fetchDepartmentData();
         }
-    }, [selectedDepartmentId]);
+    }, [selectedDepartmentId, selectedStream]);
 
     const fetchDepartments = async (token: string) => {
         try {
@@ -138,7 +145,8 @@ export default function DepartmentOverviewPage() {
         setLoading(true);
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`/api/reports/department?departmentId=${selectedDepartmentId}`, {
+            const streamQuery = selectedStream !== 'all' ? `&stream=${selectedStream}` : '';
+            const res = await fetch(`/api/reports/department?departmentId=${selectedDepartmentId}${streamQuery}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
@@ -196,11 +204,13 @@ export default function DepartmentOverviewPage() {
         });
         // Critical students
         data.criticalStudents.forEach(s => {
-            rows.push(['Critical Student', s.name, s.rollNumber, s.semester.toString(), '-', `${s.attendancePercentage}%`]);
+            const idAndRoll = s.studentId ? `${s.studentId} / ${s.rollNumber}` : s.rollNumber;
+            rows.push(['Critical Student', s.name, idAndRoll, s.semester.toString(), '-', `${s.attendancePercentage}%`]);
         });
         // Warning students
         data.warningStudents.forEach(s => {
-            rows.push(['Warning Student', s.name, s.rollNumber, s.semester.toString(), '-', `${s.attendancePercentage}%`]);
+            const idAndRoll = s.studentId ? `${s.studentId} / ${s.rollNumber}` : s.rollNumber;
+            rows.push(['Warning Student', s.name, idAndRoll, s.semester.toString(), '-', `${s.attendancePercentage}%`]);
         });
 
         const filename = `department_${data.department?.name || 'report'}`;
@@ -269,6 +279,24 @@ export default function DepartmentOverviewPage() {
                                     {departments.map(dept => (
                                         <option key={dept.id} value={dept.id} className="text-gray-900">
                                             {dept.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {/* Stream selector */}
+                        {data?.availableStreams && data.availableStreams.length > 1 && (
+                            <div className="bg-white/10 p-1.5 rounded-xl backdrop-blur-md border border-white/20">
+                                <select
+                                    value={selectedStream}
+                                    onChange={(e) => setSelectedStream(e.target.value)}
+                                    className="bg-transparent text-white border-0 px-2 py-1 text-sm outline-none cursor-pointer font-medium appearance-none"
+                                >
+                                    <option value="all" className="text-gray-900">All Streams</option>
+                                    {data.availableStreams.map(stream => (
+                                        <option key={stream} value={stream} className="text-gray-900">
+                                            {stream}
                                         </option>
                                     ))}
                                 </select>
@@ -535,8 +563,9 @@ export default function DepartmentOverviewPage() {
                                                         <div>
                                                             <p className="font-bold text-gray-900 text-lg">{student.name}</p>
                                                             <div className="flex items-center gap-2 mt-1">
-                                                                <span className="text-sm text-gray-500">Roll: {student.rollNumber}</span>
-                                                                <span className="text-xs font-medium px-2.5 py-1 bg-gray-100 rounded-full text-gray-600">
+                                                                <span className="text-sm text-gray-500">ID: {student.studentId || '-'}</span>
+                                                                <span className="text-sm text-gray-500 ml-1">Roll: {student.rollNumber}</span>
+                                                                <span className="text-xs font-medium px-2.5 py-1 bg-gray-100 rounded-full text-gray-600 ml-1">
                                                                     Sem {student.semester}
                                                                 </span>
                                                             </div>
@@ -580,8 +609,9 @@ export default function DepartmentOverviewPage() {
                                                         <div>
                                                             <p className="font-bold text-gray-900 text-lg">{student.name}</p>
                                                             <div className="flex items-center gap-2 mt-1">
-                                                                <span className="text-sm text-gray-500">Roll: {student.rollNumber}</span>
-                                                                <span className="text-xs font-medium px-2.5 py-1 bg-gray-100 rounded-full text-gray-600">
+                                                                <span className="text-sm text-gray-500">ID: {student.studentId || '-'}</span>
+                                                                <span className="text-sm text-gray-500 ml-1">Roll: {student.rollNumber}</span>
+                                                                <span className="text-xs font-medium px-2.5 py-1 bg-gray-100 rounded-full text-gray-600 ml-1">
                                                                     Sem {student.semester}
                                                                 </span>
                                                             </div>

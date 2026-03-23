@@ -121,8 +121,8 @@ export default function ReportsPage() {
             bgLight: 'bg-purple-50',
             href: '/reports/students'
         },
-        // My Performance - for teachers and HODs to see their own stats
-        {
+        // My Performance - for HODs only
+        ...(user?.role === 'hod' ? [{
             id: 'my-performance',
             title: 'My Performance',
             description: 'Your teaching statistics',
@@ -131,7 +131,7 @@ export default function ReportsPage() {
             gradient: 'from-indigo-500 to-indigo-600',
             bgLight: 'bg-indigo-50',
             href: '/reports/my-performance'
-        },
+        }] : []),
         ...(user && user.role !== 'teacher' ? [{
             id: 'teachers',
             title: 'Teacher-wise',

@@ -220,8 +220,8 @@ export default function DashboardPage() {
                 },
                 {
                     id: 'reports',
-                    title: 'Performance',
-                    description: 'Track your class attendance trends',
+                    title: 'Reports',
+                    description: 'View student attendance reports',
                     href: '/reports',
                     iconComponent: <BarChart3 className="w-6 h-6" />,
                     gradient: 'from-violet-100 to-purple-100',
