@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { UsersRound } from 'lucide-react';
+import { PageSkeleton } from '@/components/ui/PageSkeleton';
 
 interface User {
     firstName: string;
@@ -43,7 +44,7 @@ export default function ClassesPage() {
         router.push('/login');
     };
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    if (loading) return <PageSkeleton type="classes" />;
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col font-sans">

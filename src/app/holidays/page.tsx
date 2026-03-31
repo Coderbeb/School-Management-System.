@@ -11,6 +11,7 @@ import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import { PageSkeleton } from '@/components/ui/PageSkeleton';
 
 interface Holiday {
     id: string;
@@ -49,6 +50,16 @@ export default function HolidaysPage() {
             return;
         }
         setUser(JSON.parse(userData));
+
+        // Try loading cached data first for instant display
+        try {
+            const cached = sessionStorage.getItem('cache_holidays');
+            if (cached) {
+                setHolidays(JSON.parse(cached));
+                setLoading(false);
+            }
+        } catch { /* ignore cache errors */ }
+
         fetchHolidays(token);
     }, [router]);
 
@@ -68,7 +79,9 @@ export default function HolidaysPage() {
                 return;
             }
             const data = await res.json();
-            setHolidays(data.holidays || []);
+            const holidaysList = data.holidays || [];
+            setHolidays(holidaysList);
+            try { sessionStorage.setItem('cache_holidays', JSON.stringify(holidaysList)); } catch {}
         } catch (err) {
             console.error('Error fetching holidays:', err);
         }
@@ -265,7 +278,7 @@ export default function HolidaysPage() {
         }
     };
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    if (loading) return <PageSkeleton type="holidays" />;
 
     const isSuperAdmin = user?.role === 'super_admin';
 

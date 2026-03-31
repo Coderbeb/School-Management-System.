@@ -23,6 +23,7 @@ import * as XLSX from 'xlsx';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { Navbar } from '@/components/ui/Navbar';
 import { AccessDenied } from '@/components/ui/access-denied';
+import { PageSkeleton } from '@/components/ui/PageSkeleton';
 
 interface Subject {
     id: string;
@@ -99,6 +100,18 @@ export default function SubjectsPage() {
             return;
         }
         setUser(JSON.parse(userData));
+
+        // Try loading cached data first for instant display
+        try {
+            const cachedSubjects = sessionStorage.getItem('cache_subjects');
+            const cachedDepts = sessionStorage.getItem('cache_departments');
+            if (cachedSubjects) {
+                setSubjects(JSON.parse(cachedSubjects));
+                setLoading(false); // Show cached data immediately, no skeleton
+            }
+            if (cachedDepts) setDepartments(JSON.parse(cachedDepts));
+        } catch { /* ignore cache errors */ }
+
         fetchSubjects(token);
         fetchDepartments(token);
     }, [router]);
@@ -113,7 +126,9 @@ export default function SubjectsPage() {
                 return;
             }
             const data = await res.json();
-            setSubjects(data.subjects || []);
+            const subjectsList = data.subjects || [];
+            setSubjects(subjectsList);
+            try { sessionStorage.setItem('cache_subjects', JSON.stringify(subjectsList)); } catch {}
         } catch (err) {
             console.error('Error fetching subjects:', err);
         }
@@ -124,7 +139,9 @@ export default function SubjectsPage() {
         try {
             const res = await fetch('/api/departments', { headers: { Authorization: `Bearer ${token}` } });
             const data = await res.json();
-            setDepartments(data.departments || []);
+            const deptsList = data.departments || [];
+            setDepartments(deptsList);
+            try { sessionStorage.setItem('cache_departments', JSON.stringify(deptsList)); } catch {}
         } catch (err) {
             console.error('Error fetching departments:', err);
         }
@@ -557,7 +574,7 @@ export default function SubjectsPage() {
         }
     };
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    if (loading) return <PageSkeleton type="subjects" />;
 
     if (user?.role === 'teacher') {
         return <AccessDenied message="Teachers do not have access to the Subjects page." />;

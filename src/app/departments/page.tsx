@@ -16,6 +16,7 @@ import {
     Building2
 } from 'lucide-react';
 import { AccessDenied } from '@/components/ui/access-denied';
+import { PageSkeleton } from '@/components/ui/PageSkeleton';
 
 interface Department {
     id: string;
@@ -52,6 +53,16 @@ export default function DepartmentsPage() {
             return;
         }
         setUser(JSON.parse(userData));
+
+        // Try loading cached data first for instant display
+        try {
+            const cached = sessionStorage.getItem('cache_dept_page');
+            if (cached) {
+                setDepartments(JSON.parse(cached));
+                setLoading(false);
+            }
+        } catch { /* ignore cache errors */ }
+
         fetchDepartments(token);
     }, [router]);
 
@@ -65,7 +76,9 @@ export default function DepartmentsPage() {
                 return;
             }
             const data = await res.json();
-            setDepartments(data.departments || []);
+            const deptsList = data.departments || [];
+            setDepartments(deptsList);
+            try { sessionStorage.setItem('cache_dept_page', JSON.stringify(deptsList)); } catch {}
         } catch (err) {
             console.error('Error fetching departments:', err);
         }
@@ -157,14 +170,7 @@ export default function DepartmentsPage() {
         return name.substring(0, 2).toUpperCase();
     };
 
-    if (loading) return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-            <div className="flex flex-col items-center gap-4">
-                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-gray-500 font-medium">Loading Departments...</p>
-            </div>
-        </div>
-    );
+    if (loading) return <PageSkeleton type="departments" />;
 
     // Teachers cannot access this page
     if (user?.role === 'teacher') {

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, BarChart3, Users, UserCheck, TrendingUp, ChevronRight, AlertTriangle, CheckCircle, Clock, BookOpen, Building2, GraduationCap, LayoutDashboard, UsersRound, CalendarDays } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
+import { PageSkeleton } from '@/components/ui/PageSkeleton';
 
 interface User {
     id: string;
@@ -51,6 +52,16 @@ export default function ReportsPage() {
             return;
         }
         setUser(JSON.parse(userData));
+
+        // Try loading cached data first for instant display
+        try {
+            const cached = sessionStorage.getItem('cache_report_stats');
+            if (cached) {
+                setStats(JSON.parse(cached));
+                setLoading(false);
+            }
+        } catch { /* ignore cache errors */ }
+
         fetchStats(token);
     }, [router]);
 
@@ -66,6 +77,7 @@ export default function ReportsPage() {
             const data = await res.json();
             if (data.stats) {
                 setStats(data.stats);
+                try { sessionStorage.setItem('cache_report_stats', JSON.stringify(data.stats)); } catch {}
             }
         } catch (err) {
             console.error('Error fetching stats:', err);
@@ -88,7 +100,7 @@ export default function ReportsPage() {
         return `${greeting}, ${user.firstName}!`;
     };
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    if (loading) return <PageSkeleton type="reports" />;
 
     const reportCards = [
         {

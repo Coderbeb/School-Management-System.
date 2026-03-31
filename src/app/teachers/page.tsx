@@ -26,6 +26,7 @@ import * as XLSX from 'xlsx';
 
 import { Navbar } from '@/components/ui/Navbar';
 import { AccessDenied } from '@/components/ui/access-denied';
+import { PageSkeleton } from '@/components/ui/PageSkeleton';
 
 interface DepartmentInfo {
     id: string;
@@ -161,6 +162,20 @@ export default function TeachersPage() {
             return;
         }
         setUser(JSON.parse(userData));
+
+        // Try loading cached data first for instant display
+        try {
+            const cachedTeachers = sessionStorage.getItem('cache_teachers');
+            if (cachedTeachers) {
+                setTeachers(JSON.parse(cachedTeachers));
+                setLoading(false);
+            }
+            const cachedDepts = sessionStorage.getItem('cache_departments');
+            if (cachedDepts) setDepartments(JSON.parse(cachedDepts));
+            const cachedSubjects = sessionStorage.getItem('cache_subjects');
+            if (cachedSubjects) setSubjects(JSON.parse(cachedSubjects));
+        } catch { /* ignore cache errors */ }
+
         fetchTeachers(token);
         fetchDepartments(token);
         fetchSubjects(token);
@@ -176,7 +191,9 @@ export default function TeachersPage() {
                 return;
             }
             const data = await res.json();
-            setTeachers(data.teachers || []);
+            const teachersList = data.teachers || [];
+            setTeachers(teachersList);
+            try { sessionStorage.setItem('cache_teachers', JSON.stringify(teachersList)); } catch {}
         } catch (err) {
             console.error('Error fetching teachers:', err);
         }
@@ -189,7 +206,9 @@ export default function TeachersPage() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
-            setDepartments(data.departments || []);
+            const deptsList = data.departments || [];
+            setDepartments(deptsList);
+            try { sessionStorage.setItem('cache_departments', JSON.stringify(deptsList)); } catch {}
         } catch (err) {
             console.error('Error fetching departments:', err);
         }
@@ -201,7 +220,9 @@ export default function TeachersPage() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
-            setSubjects(data.subjects || []);
+            const subjectsList = data.subjects || [];
+            setSubjects(subjectsList);
+            try { sessionStorage.setItem('cache_subjects', JSON.stringify(subjectsList)); } catch {}
         } catch (err) {
             console.error('Error fetching subjects:', err);
         }
@@ -620,14 +641,7 @@ export default function TeachersPage() {
         return (firstName[0] + lastName[0]).toUpperCase();
     };
 
-    if (loading) return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-            <div className="flex flex-col items-center gap-4">
-                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-gray-500 font-medium">Loading Teachers...</p>
-            </div>
-        </div>
-    );
+    if (loading) return <PageSkeleton type="teachers" />;
 
     const isSuperAdmin = user?.role === 'super_admin';
     const canManage = user?.role === 'super_admin' || user?.role === 'hod';
