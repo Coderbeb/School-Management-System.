@@ -142,6 +142,14 @@ export default function StudentsPage() {
         fetchSubjects(token);
     }, [router]);
 
+    const safeJson = async (res: Response) => {
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            return await res.json();
+        }
+        return null;
+    };
+
     const fetchStudents = async (token: string) => {
         try {
             const res = await fetch('/api/students', {
@@ -151,8 +159,8 @@ export default function StudentsPage() {
                 router.push('/login');
                 return;
             }
-            const data = await res.json();
-            setStudents(data.students || []);
+            const data = await safeJson(res);
+            setStudents(data?.students || []);
         } catch (err) {
             console.error('Error fetching students:', err);
         }
@@ -164,8 +172,9 @@ export default function StudentsPage() {
             const res = await fetch('/api/departments', {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            const data = await res.json();
-            setDepartments(data.departments || []);
+            if (res.status === 401) { router.push('/login'); return; }
+            const data = await safeJson(res);
+            setDepartments(data?.departments || []);
         } catch (err) {
             console.error('Error fetching departments:', err);
         }
@@ -176,8 +185,9 @@ export default function StudentsPage() {
             const res = await fetch('/api/subjects', {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            const data = await res.json();
-            setSubjects(data.subjects || []);
+            if (res.status === 401) { router.push('/login'); return; }
+            const data = await safeJson(res);
+            setSubjects(data?.subjects || []);
         } catch (err) {
             console.error('Error fetching subjects:', err);
         }
@@ -716,12 +726,12 @@ export default function StudentsPage() {
 
     // Template for Regular students (BA/BSC/BCOM)
     const downloadRegularTemplate = () => {
-        const headers = ['student_id*', 'first_name*', 'last_name', 'email', 'major*', 'minor', 'mdc', 'vac', 'aec'];
+        const headers = ['student_id*', 'first_name*', 'last_name', 'email', 'subject_codes'];
         const dummyData = [
-            ['BA2025HIS001', 'John', 'Doe', 'john@example.com', 'History', 'Political Science', 'Hindi', 'Environmental Studies', 'English Communication'],
-            ['BSC2025PHY002', 'Jane', 'Smith', 'jane@example.com', 'Physics', 'Chemistry', 'Mathematics', '', ''],
-            ['BCOM2025COM003', 'Bob', 'Wilson', 'bob@example.com', 'Commerce', 'Economics', '', '', ''],
-            ['BA2025ECO004', 'Alice', 'Brown', 'alice@example.com', 'Economics', 'History', 'Philosophy', '', '']
+            ['BA2025HIS001', 'John', 'Doe', 'john@example.com', '"History,Political Science,Hindi,Environmental Studies,English Communication"'],
+            ['BSC2025PHY002', 'Jane', 'Smith', 'jane@example.com', '"Physics,Chemistry,Mathematics"'],
+            ['BCOM2025COM003', 'Bob', 'Wilson', 'bob@example.com', '"Commerce,Economics"'],
+            ['BA2025ECO004', 'Alice', 'Brown', 'alice@example.com', '"Economics,History,Philosophy"']
         ];
         const csvContent = [headers.join(','), ...dummyData.map(row => row.join(','))].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -734,12 +744,14 @@ export default function StudentsPage() {
 
     // Template for Vocational students (BCA/BSCIT/BBA)
     const downloadVocationalTemplate = () => {
-        const headers = ['student_id*', 'first_name*', 'last_name', 'email', 'core1*', 'core2*', 'generic1', 'generic2', 'aecc'];
+        const headers = ['student_id*', 'first_name*', 'last_name', 'email', 'subject_codes'];
         const dummyData = [
-            ['BCA2025SC001', 'Rahul', 'Kumar', 'rahul@example.com', 'Programming', 'DBMS', 'Physics', 'Maths', 'English'],
-            ['BSCIT2025IT002', 'Priya', 'Sharma', 'priya@example.com', 'Web Dev', 'Networking', 'Physics', 'Maths', ''],
-            ['BBA2025BA003', 'Amit', 'Singh', 'amit@example.com', 'Management', 'Marketing', 'Economics', 'Accounts', ''],
-            ['BCA2025COM004', 'Neha', 'Gupta', 'neha@example.com', 'Programming', 'DBMS', 'Accounts', 'Business Studies', 'Hindi']
+            ['BCA2025SC001', 'Rahul', 'Kumar', 'rahul@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
+            ['BSCIT2025IT002', 'Priya', 'Sharma', 'priya@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
+            ['BBA2025BA003', 'Amit', 'Singh', 'amit@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
+            ['BCA2024SC004', 'Neha', 'Gupta', 'neha@example.com', '"C5,C6,C7,GE3A,GE3B,SEC1"'],
+            ['BCA2023SC005', 'Deepak', 'Roy', 'deepak@example.com', '"C11,C12,DSE1,DSE2"'],
+            ['BCA2022SC006', 'Anita', 'Das', 'anita@example.com', '"C13,C14,DSE3,DSE4"']
         ];
         const csvContent = [headers.join(','), ...dummyData.map(row => row.join(','))].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -805,11 +817,29 @@ export default function StudentsPage() {
             const data = normalizeData(rawData);
             try {
                 const token = localStorage.getItem('token');
+                if (!token) {
+                    setError('Not authenticated. Please log in again.');
+                    setIsImporting(false);
+                    return;
+                }
                 const res = await fetch('/api/students/import', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                     body: JSON.stringify({ students: data })
                 });
+
+                if (res.status === 401) {
+                    setError('Session expired. Please log out and log in again.');
+                    setIsImporting(false);
+                    return;
+                }
+
+                const contentType = res.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    setError('Server returned an unexpected response. Please try again.');
+                    setIsImporting(false);
+                    return;
+                }
 
                 const result = await res.json();
                 if (res.ok) {
