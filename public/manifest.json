@@ -1,0 +1,25 @@
+{
+  "name": "YSM Attendance",
+  "short_name": "Attendance",
+  "description": "College attendance management system - Yogoda Satsanga Mahavidyalaya",
+  "start_url": "/attendance",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#4f6dbc",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

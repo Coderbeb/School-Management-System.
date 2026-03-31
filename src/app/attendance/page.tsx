@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Check, X, Calendar, Users, Save, BookOpen, ClipboardCheck } from 'lucide-react';
+import { ArrowLeft, Check, X, Calendar, Users, Save, BookOpen, ClipboardCheck, WifiOff, CloudUpload } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
+import { useOfflineStatus } from '@/components/ServiceWorkerProvider';
+import { addToQueue, getQueueCount } from '@/lib/offlineQueue';
 
 interface Student {
     id: string;
@@ -503,6 +505,25 @@ export default function AttendancePage() {
                 pendingChangesRef.current = false;
             } catch (err) {
                 console.error('Auto-save error:', err);
+                // Queue for offline sync
+                const token = localStorage.getItem('token');
+                if (token) {
+                    try {
+                        await addToQueue({
+                            url: '/api/attendance',
+                            body: {
+                                records: attendanceData as { studentId: string; status: string }[],
+                                subjectId: selectedSubjectId,
+                                date: selectedDate
+                            },
+                            authHeader: `Bearer ${token}`,
+                            timestamp: Date.now(),
+                        });
+                        pendingChangesRef.current = false;
+                    } catch (queueErr) {
+                        console.error('Failed to queue offline:', queueErr);
+                    }
+                }
             }
             setAutoSaving(false);
         }, 1500);
@@ -582,17 +603,38 @@ export default function AttendancePage() {
             if (res.ok) {
                 pendingChangesRef.current = false;
                 const data = await res.json();
-                // Update lecture number from response
-                if (data.lectureNumber) {
-                    setCurrentLectureNumber(data.lectureNumber);
+                // Check if saved offline (from service worker)
+                if (data.offline) {
+                    setMessage('📱 Saved offline — will sync when online');
+                } else {
+                    // Update lecture number from response
+                    if (data.lectureNumber) {
+                        setCurrentLectureNumber(data.lectureNumber);
+                    }
+                    setMessage('✅ Attendance saved successfully!');
                 }
-                setMessage('✅ Attendance saved successfully!');
             } else {
                 const data = await res.json();
                 setMessage(`Error: ${data.error}`);
             }
         } catch (err) {
-            setMessage('Network error');
+            // Network error - queue offline
+            try {
+                await addToQueue({
+                    url: '/api/attendance',
+                    body: {
+                        records: attendanceData as { studentId: string; status: string }[],
+                        subjectId: selectedSubjectId,
+                        date: selectedDate
+                    },
+                    authHeader: `Bearer ${token}`,
+                    timestamp: Date.now(),
+                });
+                pendingChangesRef.current = false;
+                setMessage('📱 Saved offline — will sync when online');
+            } catch (queueErr) {
+                setMessage('❌ Network error — could not save');
+            }
         }
         setSaving(false);
     };
@@ -674,6 +716,11 @@ export default function AttendancePage() {
                             Mark Attendance
                             {autoSaving && (
                                 <span className="text-sm font-normal text-blue-500 animate-pulse ml-2">Saving...</span>
+                            )}
+                            {!navigator.onLine && (
+                                <span className="flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-200 ml-2">
+                                    <WifiOff className="w-3 h-3" /> Offline
+                                </span>
                             )}
                         </h1>
                         <div className="flex items-center gap-3">
@@ -863,9 +910,10 @@ export default function AttendancePage() {
                                         <table className="w-full">
                                             <thead className="bg-gray-50 border-b">
                                                 <tr>
-                                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Roll</th>
-                                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Name</th>
-                                                    <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600 w-24">Status</th>
+                                                    <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600">Roll</th>
+                                                    <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600">Name</th>
+                                                    <th className="px-1 py-2 text-center text-xs font-semibold text-gray-600">Last 5</th>
+                                                    <th className="px-2 py-2 text-center text-xs font-semibold text-gray-600 w-20">Status</th>
                                                 </tr>
                                             </thead>
                                         </table>
@@ -874,15 +922,29 @@ export default function AttendancePage() {
                                                 <tbody className="divide-y divide-gray-100">
                                                     {displayStudents.map((student) => (
                                                         <tr key={student.id} className="hover:bg-gray-50">
-                                                            <td className="px-3 py-2 text-sm font-mono font-bold text-gray-900">{student.roll_number}</td>
-                                                            <td className="px-3 py-2 text-sm font-medium text-gray-900 truncate max-w-[150px]">
+                                                            <td className="px-2 py-2 text-sm font-mono font-bold text-gray-900">{student.roll_number}</td>
+                                                            <td className="px-2 py-2 text-sm font-medium text-gray-900 truncate max-w-[120px]">
                                                                 {student.first_name} {student.last_name}
                                                             </td>
-                                                            <td className="px-3 py-2 w-20">
+                                                            <td className="px-1 py-2 text-center">
+                                                                <div className="flex items-center justify-center gap-0.5">
+                                                                    {[...(attendanceHistory[student.id] || [])].reverse().map((record, i) => (
+                                                                        <div
+                                                                            key={i}
+                                                                            title={record.date}
+                                                                            className={`w-2 h-2 rounded-full ${record.status === 'present' ? 'bg-green-500' :
+                                                                                record.status === 'absent' ? 'bg-red-500' : 'bg-yellow-500'
+                                                                                }`}
+                                                                        />
+                                                                    ))}
+                                                                    {!attendanceHistory[student.id]?.length && <span className="text-gray-300 text-xs">-</span>}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-2 py-2 w-20">
                                                                 <div className="flex justify-center">
                                                                     <button
                                                                         onClick={() => toggleAttendance(student.id)}
-                                                                        className={`relative group overflow-hidden w-24 h-12 rounded-xl flex items-center justify-center font-bold text-2xl transition-all duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${student.attendance === 'present'
+                                                                        className={`relative group overflow-hidden w-20 h-11 rounded-xl flex items-center justify-center font-bold text-xl transition-all duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${student.attendance === 'present'
                                                                             ? 'bg-green-500 text-white border-green-700 shadow-lg shadow-green-200'
                                                                             : student.attendance === 'absent'
                                                                             ? 'bg-red-500 text-white border-red-700 shadow-lg shadow-red-200'

@@ -15,10 +15,12 @@ export interface JWTPayload {
 }
 
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+const JWT_REMEMBER_ME_EXPIRES_IN = '30d';
 
-export function generateToken(payload: JWTPayload): string {
+export function generateToken(payload: JWTPayload, rememberMe: boolean = false): string {
+    const expiresIn = rememberMe ? JWT_REMEMBER_ME_EXPIRES_IN : JWT_EXPIRES_IN;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN } as any);
+    return jwt.sign(payload, JWT_SECRET, { expiresIn } as any);
 }
 
 export function verifyToken(token: string): JWTPayload | null {

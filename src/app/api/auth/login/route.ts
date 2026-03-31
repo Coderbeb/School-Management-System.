@@ -14,7 +14,7 @@ interface UserRow {
 
 export async function POST(request: NextRequest) {
     try {
-        const { email, password } = await request.json();
+        const { email, password, rememberMe } = await request.json();
 
         if (!email || !password) {
             return NextResponse.json(
@@ -45,13 +45,13 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Generate JWT token
+        // Generate JWT token (30 days if rememberMe, else default 7 days)
         const token = generateToken({
             userId: user.id,
             email: user.email,
             role: user.role,
             departmentId: user.department_id || undefined,
-        });
+        }, !!rememberMe);
 
         return NextResponse.json({
             token,
