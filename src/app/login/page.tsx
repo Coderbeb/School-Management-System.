@@ -226,7 +226,7 @@ export default function LoginPage() {
                             </Button>
                         </form>
 
-                        <div className="pt-8 text-center animate-fade-in-up delay-300">
+                        {/* <div className="pt-8 text-center animate-fade-in-up delay-300">
                              <div className="relative mb-6">
                                 <div className="absolute inset-0 flex items-center">
                                     <span className="w-full border-t border-gray-100" />
@@ -244,7 +244,7 @@ export default function LoginPage() {
                                 <span className="text-blue-300 hidden sm:inline">|</span>
                                 <span className="font-mono bg-white px-2 py-0.5 rounded text-xs border border-blue-100 shadow-sm">admin123</span>
                             </div>
-                        </div>
+                        </div> */}
                     </div>
                     
                     {/* Mobile Footer */}
