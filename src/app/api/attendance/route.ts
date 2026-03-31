@@ -85,12 +85,13 @@ export async function POST(request: NextRequest) {
                 }
 
                 // 1. Prevent Future Dates
-                const recordDateObj = new Date(recordDate);
-                const today = new Date();
-                today.setHours(23, 59, 59, 999); // End of today
+                const now = new Date();
+                // Convert current UTC time to IST by adding 5.5 hours (server runs in UTC online)
+                const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+                const todayStr = istTime.toISOString().split('T')[0];
 
-                if (recordDateObj > today) {
-                    console.warn(`Attempted to mark attendance for future date: ${recordDate}`);
+                if (recordDate > todayStr) {
+                    console.warn(`Attempted to mark attendance for future date: ${recordDate} (Today IST: ${todayStr})`);
                     continue; // Skip future dates
                 }
 

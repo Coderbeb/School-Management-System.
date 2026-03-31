@@ -45,7 +45,12 @@ export async function GET(request: NextRequest) {
         const { role, departmentId: userDeptId, userId } = payload;
 
         const { searchParams } = new URL(request.url);
-        const month = searchParams.get('month') || new Date().toISOString().slice(0, 7);
+        const getISTMonthStr = () => {
+            const now = new Date();
+            const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+            return istTime.toISOString().slice(0, 7);
+        };
+        const month = searchParams.get('month') || getISTMonthStr();
         const departmentId = searchParams.get('departmentId');
         const semester = searchParams.get('semester');
         const [year, monthNum] = month.split('-');

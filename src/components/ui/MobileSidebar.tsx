@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X, LogOut, User, Mail, Shield, Lock, Settings } from 'lucide-react';
+import { X, LogOut, User, Mail, Shield, Lock, Settings, LayoutDashboard, Building2, BookOpen, Users, GraduationCap, CalendarDays, BarChart3, ClipboardCheck, UsersRound, ChevronRight } from 'lucide-react';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { useRouter } from 'next/navigation';
 import { getInitials } from '@/lib/utils';
@@ -80,9 +80,64 @@ export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebar
                     </div>
                 </div>
 
-                {/* User Details */}
-                <div className="flex-1 p-4">
-                    <div className="space-y-4">
+                {/* Navigation & User Details */}
+                <div className="flex-1 p-4 overflow-y-auto">
+                    {/* Navigation Links */}
+                    <div className="space-y-1">
+                        {(() => {
+                            const commonLinks = [
+                                { id: 'dashboard', title: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
+                            ];
+                            let navLinks = commonLinks;
+                            if (user.role === 'super_admin') {
+                                navLinks = [
+                                    ...commonLinks,
+                                    { id: 'departments', title: 'Departments', href: '/departments', icon: <Building2 className="w-5 h-5" /> },
+                                    { id: 'subjects', title: 'Subjects', href: '/subjects', icon: <BookOpen className="w-5 h-5" /> },
+                                    { id: 'teachers', title: 'Teachers', href: '/teachers', icon: <Users className="w-5 h-5" /> },
+                                    { id: 'students', title: 'Students', href: '/students', icon: <GraduationCap className="w-5 h-5" /> },
+                                    { id: 'holidays', title: 'Holidays', href: '/holidays', icon: <CalendarDays className="w-5 h-5" /> },
+                                    { id: 'reports', title: 'Reports', href: '/reports', icon: <BarChart3 className="w-5 h-5" /> },
+                                ];
+                            } else if (user.role === 'hod') {
+                                navLinks = [
+                                    ...commonLinks,
+                                    { id: 'attendance', title: 'Attendance', href: '/attendance', icon: <ClipboardCheck className="w-5 h-5" /> },
+                                    { id: 'teachers', title: 'My Teachers', href: '/teachers', icon: <Users className="w-5 h-5" /> },
+                                    { id: 'students', title: 'My Students', href: '/students', icon: <GraduationCap className="w-5 h-5" /> },
+                                    { id: 'subjects', title: 'My Subjects', href: '/subjects', icon: <BookOpen className="w-5 h-5" /> },
+                                    { id: 'reports', title: 'Reports', href: '/reports', icon: <BarChart3 className="w-5 h-5" /> },
+                                ];
+                            } else {
+                                navLinks = [
+                                    ...commonLinks,
+                                    { id: 'attendance', title: 'Mark Attendance', href: '/attendance', icon: <ClipboardCheck className="w-5 h-5" /> },
+                                    { id: 'classes', title: 'My Classes', href: '/classes', icon: <UsersRound className="w-5 h-5" /> },
+                                    { id: 'reports', title: 'Reports', href: '/reports', icon: <BarChart3 className="w-5 h-5" /> },
+                                ];
+                            }
+
+                            return navLinks.map((link) => (
+                                <button
+                                    key={link.id}
+                                    onClick={() => { onClose(); router.push(link.href); }}
+                                    className="w-full group flex items-center justify-between p-3 rounded-xl hover:bg-blue-50 text-gray-700 hover:text-blue-700 font-medium transition-colors"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="text-gray-400 group-hover:text-blue-600 transition-colors">
+                                            {link.icon}
+                                        </div>
+                                        {link.title}
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-blue-400 transition-colors" />
+                                </button>
+                            ));
+                        })()}
+                    </div>
+
+                    {/* Profile Details */}
+                    <div className="pt-4 mt-4 border-t space-y-3">
+                        <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-2 mb-1">Profile Info</div>
                         <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                             <User className="w-5 h-5 text-gray-500" />
                             <div>
