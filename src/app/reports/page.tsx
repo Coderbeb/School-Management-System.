@@ -48,7 +48,7 @@ export default function ReportsPage() {
         const token = localStorage.getItem('token');
         const userData = localStorage.getItem('user');
         if (!token || !userData) {
-            router.push('/login');
+            router.replace('/login');
             return;
         }
         setUser(JSON.parse(userData));
@@ -71,7 +71,7 @@ export default function ReportsPage() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
-                router.push('/login');
+                router.replace('/login');
                 return;
             }
             const data = await res.json();
@@ -88,7 +88,7 @@ export default function ReportsPage() {
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        router.push('/login');
+        router.replace('/login');
     };
 
     // Get role-specific greeting message

@@ -77,14 +77,14 @@ export default function DepartmentOverviewPage() {
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        router.push('/login');
+        router.replace('/login');
     };
 
     useEffect(() => {
         const token = localStorage.getItem('token');
         const userData = localStorage.getItem('user');
         if (!token || !userData) {
-            router.push('/login');
+            router.replace('/login');
             return;
         }
         const parsedUser = JSON.parse(userData);
@@ -150,7 +150,7 @@ export default function DepartmentOverviewPage() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
-                router.push('/login');
+                router.replace('/login');
                 return;
             }
             if (res.status === 403) {

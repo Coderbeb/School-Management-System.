@@ -48,14 +48,14 @@ export default function DashboardPage() {
         const userData = localStorage.getItem('user');
 
         if (!token || !userData) {
-            router.push('/login');
+            router.replace('/login');
             return;
         }
 
         try {
             setUser(JSON.parse(userData));
         } catch {
-            router.push('/login');
+            router.replace('/login');
         }
         setLoading(false);
     }, [router]);
@@ -63,7 +63,7 @@ export default function DashboardPage() {
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        router.push('/login');
+        router.replace('/login');
     };
 
     if (loading) {

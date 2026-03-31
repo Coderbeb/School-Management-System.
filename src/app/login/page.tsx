@@ -40,8 +40,8 @@ export default function LoginPage() {
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
 
-            // Redirect to dashboard
-            router.push('/dashboard');
+            // Redirect to dashboard (replace so back button doesn't return to login)
+            router.replace('/dashboard');
         } catch (err) {
             setError('Unable to connect to the server. Please check your internet.');
             setLoading(false);

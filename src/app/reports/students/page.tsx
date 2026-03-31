@@ -127,7 +127,7 @@ function StudentReportContent() {
         const token = localStorage.getItem('token');
         const userData = localStorage.getItem('user');
         if (!token || !userData) {
-            router.push('/login');
+            router.replace('/login');
             return;
         }
         const parsedUser = JSON.parse(userData);
@@ -143,7 +143,7 @@ function StudentReportContent() {
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        router.push('/login');
+        router.replace('/login');
     };
 
     useEffect(() => {
@@ -181,7 +181,7 @@ function StudentReportContent() {
         setSelectedStream('all');
     }, [departments, selectedDepartmentId]);
 
-    // Fetch departments for teachers (based on their assignments)
+    // Fetch departments for teachers (from their profile + multi-department assignments)
     const fetchTeacherDepartments = async (token: string, teacherId: string) => {
         try {
             const res = await fetch('/api/teachers', {
@@ -225,7 +225,7 @@ function StudentReportContent() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
-                router.push('/login');
+                router.replace('/login');
                 return;
             }
             const data = await res.json();
@@ -253,7 +253,7 @@ function StudentReportContent() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
-                router.push('/login');
+                router.replace('/login');
                 return;
             }
             const data = await res.json();

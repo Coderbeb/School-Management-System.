@@ -17,6 +17,7 @@ interface DepartmentInfo {
     id: string;
     name: string;
     code: string;
+    dept_type?: string;
     is_primary: boolean;
 }
 

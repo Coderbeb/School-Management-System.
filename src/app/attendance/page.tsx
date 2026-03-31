@@ -103,14 +103,14 @@ export default function AttendancePage() {
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        router.push('/login');
+        router.replace('/login');
     };
 
     useEffect(() => {
         const token = localStorage.getItem('token');
         const userData = localStorage.getItem('user');
         if (!token || !userData) {
-            router.push('/login');
+            router.replace('/login');
             return;
         }
         const parsedUser = JSON.parse(userData);
@@ -135,7 +135,7 @@ export default function AttendancePage() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
-                router.push('/login');
+                router.replace('/login');
                 return;
             }
             const data = await res.json();
@@ -190,7 +190,7 @@ export default function AttendancePage() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
-                router.push('/login');
+                router.replace('/login');
                 return;
             }
             const data = await res.json();
@@ -214,7 +214,7 @@ export default function AttendancePage() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
-                router.push('/login');
+                router.replace('/login');
                 return;
             }
             const data = await res.json();
@@ -316,7 +316,7 @@ export default function AttendancePage() {
                     headers: { Authorization: `Bearer ${token}` },
                 });
                 if (res.status === 401) {
-                    router.push('/login');
+                    router.replace('/login');
                     return;
                 }
                 const data = await res.json();
@@ -366,7 +366,7 @@ export default function AttendancePage() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (attRes.status === 401) {
-                router.push('/login');
+                router.replace('/login');
                 return;
             }
             const attData = await attRes.json();
@@ -498,7 +498,7 @@ export default function AttendancePage() {
                 });
 
                 if (res.status === 401) {
-                    router.push('/login');
+                    router.replace('/login');
                     return;
                 }
 
@@ -596,7 +596,7 @@ export default function AttendancePage() {
             });
 
             if (res.status === 401) {
-                router.push('/login');
+                router.replace('/login');
                 return;
             }
 

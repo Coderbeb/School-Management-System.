@@ -26,14 +26,14 @@ export default function ClassesPage() {
         const userData = localStorage.getItem('user');
 
         if (!token || !userData) {
-            router.push('/login');
+            router.replace('/login');
             return;
         }
 
         try {
             setUser(JSON.parse(userData));
         } catch (e) {
-            router.push('/login');
+            router.replace('/login');
         }
         setLoading(false);
     }, [router]);
@@ -41,7 +41,7 @@ export default function ClassesPage() {
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        router.push('/login');
+        router.replace('/login');
     };
 
     if (loading) return <PageSkeleton type="classes" />;

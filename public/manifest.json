@@ -2,7 +2,7 @@
   "name": "YSM Attendance",
   "short_name": "Attendance",
   "description": "College attendance management system - Yogoda Satsanga Mahavidyalaya",
-  "start_url": "/attendance",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f9fafb",

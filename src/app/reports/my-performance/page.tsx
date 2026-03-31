@@ -63,7 +63,7 @@ export default function MyPerformancePage() {
         const token = localStorage.getItem('token');
         const userData = localStorage.getItem('user');
         if (!token || !userData) {
-            router.push('/login');
+            router.replace('/login');
             return;
         }
         const parsedUser = JSON.parse(userData);
@@ -81,7 +81,7 @@ export default function MyPerformancePage() {
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        router.push('/login');
+        router.replace('/login');
     };
 
     const fetchMyPerformance = async (token: string, userId: string) => {
@@ -92,7 +92,7 @@ export default function MyPerformancePage() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
-                router.push('/login');
+                router.replace('/login');
                 return;
             }
             if (res.ok) {

@@ -1,6 +1,6 @@
-const CACHE_NAME = 'ysm-attendance-v1';
-const STATIC_CACHE = 'ysm-static-v1';
-const API_CACHE = 'ysm-api-v1';
+const CACHE_NAME = 'ysm-attendance-v2';
+const STATIC_CACHE = 'ysm-static-v2';
+const API_CACHE = 'ysm-api-v2';
 const OFFLINE_QUEUE_STORE = 'offline-attendance-queue';
 
 // Static assets to pre-cache on install
@@ -121,9 +121,9 @@ async function networkFirstWithCache(request, cacheName) {
     if (cachedResponse) {
       return cachedResponse;
     }
-    // If it's a page navigation, return the cached attendance page
+    // If it's a page navigation, return the cached root page (handles auth redirect)
     if (request.mode === 'navigate') {
-      const fallback = await caches.match('/attendance');
+      const fallback = await caches.match('/');
       if (fallback) return fallback;
     }
     return new Response(JSON.stringify({ error: 'Offline', offline: true }), {

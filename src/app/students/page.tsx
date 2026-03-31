@@ -134,7 +134,7 @@ export default function StudentsPage() {
         const token = localStorage.getItem('token');
         const userData = localStorage.getItem('user');
         if (!token || !userData) {
-            router.push('/login');
+            router.replace('/login');
             return;
         }
         setUser(JSON.parse(userData));
@@ -171,7 +171,7 @@ export default function StudentsPage() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
-                router.push('/login');
+                router.replace('/login');
                 return;
             }
             const data = await safeJson(res);
@@ -189,7 +189,7 @@ export default function StudentsPage() {
             const res = await fetch('/api/departments', {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            if (res.status === 401) { router.push('/login'); return; }
+            if (res.status === 401) { router.replace('/login'); return; }
             const data = await safeJson(res);
             const deptsList = data?.departments || [];
             setDepartments(deptsList);
@@ -204,7 +204,7 @@ export default function StudentsPage() {
             const res = await fetch('/api/subjects', {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            if (res.status === 401) { router.push('/login'); return; }
+            if (res.status === 401) { router.replace('/login'); return; }
             const data = await safeJson(res);
             const subjectsList = data?.subjects || [];
             setSubjects(subjectsList);
@@ -217,7 +217,7 @@ export default function StudentsPage() {
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        router.push('/login');
+        router.replace('/login');
     };
 
     const handleEdit = async (student: Student) => {

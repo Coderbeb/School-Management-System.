@@ -45,19 +45,19 @@ export async function GET(request: NextRequest) {
             params.push(userDeptId);
             filters.push(`s.department_id = $${params.length}`);
         } else if (role === 'teacher') {
-            // Teacher: if departmentId param is provided, filter by it
+            // Teacher: Only show students who are enrolled in subjects this teacher teaches
+            // This matches: teacher's assigned subjects (teacher_subjects) ↔ student enrollments (student_subjects)
+            params.push(userId);
+            const teacherParamIdx = params.length;
+            filters.push(`s.id IN (
+                SELECT ss.student_id FROM student_subjects ss
+                JOIN teacher_subjects ts ON ts.subject_id = ss.subject_id
+                WHERE ts.teacher_id = $${teacherParamIdx}
+            )`);
+            // Additionally filter by department if provided
             if (departmentId) {
                 params.push(departmentId);
                 filters.push(`s.department_id = $${params.length}`);
-            } else {
-                // Filter students to only those in the teacher's departments
-                params.push(userId);
-                const teacherParamIdx = params.length;
-                filters.push(`s.department_id IN (
-                    SELECT department_id FROM users WHERE id = $${teacherParamIdx}
-                    UNION
-                    SELECT department_id FROM user_departments WHERE user_id = $${teacherParamIdx}
-                )`);
             }
         } else if (role === 'super_admin' && departmentId) {
             // Super admin with department filter (students.department_id)
