@@ -17,7 +17,7 @@ function loadEnv() {
                 return;
             }
         }
-        
+
         const envConfig = fs.readFileSync(envPath, 'utf8');
         envConfig.split('\n').forEach(line => {
             // Skip comments and empty lines
@@ -79,7 +79,7 @@ async function setup() {
                 is_active = true;
         `;
 
-        await client.query(insertUserQuery, ['admin@college.edu', hash, 'Super', 'Admin']);
+        await client.query(insertUserQuery, ['admin@ysm.edu', hash, 'Super', 'Admin']);
         console.log(`✅ Super Admin created with password: ${password}`);
 
         console.log('Database setup complete!');
