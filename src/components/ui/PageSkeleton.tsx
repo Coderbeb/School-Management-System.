@@ -137,7 +137,7 @@ const MobileCardSkeleton = ({ count = 4 }: { count?: number }) => (
 const ReportCardsSkeleton = () => (
     <>
         {/* Hero Section Skeleton */}
-        <div className="rounded-3xl bg-gray-200 animate-pulse p-6 sm:p-8 mb-6 h-48" />
+        <div className="rounded-3xl bg-gray-200 animate-pulse p-6 sm:p-8 mb-6 h-40" />
         
         {/* Quick Stats Skeleton */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -146,7 +146,7 @@ const ReportCardsSkeleton = () => (
                     <div className="flex items-start justify-between">
                         <div>
                             <Shimmer className="w-20 h-3 mb-2" />
-                            <Shimmer className="w-16 h-8" />
+                            <Shimmer className="w-14 h-7" />
                         </div>
                         <Shimmer className="w-9 h-9 rounded-lg" />
                     </div>

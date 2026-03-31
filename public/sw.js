@@ -1,6 +1,6 @@
-const CACHE_NAME = 'ysm-attendance-v2';
-const STATIC_CACHE = 'ysm-static-v2';
-const API_CACHE = 'ysm-api-v2';
+const CACHE_NAME = 'ysm-attendance-v3';
+const STATIC_CACHE = 'ysm-static-v3';
+const API_CACHE = 'ysm-api-v3';
 const OFFLINE_QUEUE_STORE = 'offline-attendance-queue';
 
 // Static assets to pre-cache on install
@@ -23,7 +23,7 @@ const CACHEABLE_API_ROUTES = [
   '/api/holidays',
   '/api/subjects',
   '/api/departments',
-  '/api/attendance/history',
+  '/api/attendance',
 ];
 
 // API routes that should NEVER be cached

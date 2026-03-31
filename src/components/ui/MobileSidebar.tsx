@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X, LogOut, User, Mail, Shield, Lock } from 'lucide-react';
+import { X, LogOut, User, Mail, Shield, Lock, Settings } from 'lucide-react';
 import { ChangePasswordModal } from './ChangePasswordModal';
+import { useRouter } from 'next/navigation';
+import { getInitials } from '@/lib/utils';
 
 interface MobileSidebarProps {
     isOpen: boolean;
@@ -19,6 +21,7 @@ interface MobileSidebarProps {
 export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebarProps) {
     const [isVisible, setIsVisible] = useState(false);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const router = useRouter();
 
     useEffect(() => {
         if (isOpen) {
@@ -37,12 +40,12 @@ export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebar
         <>
             {/* Backdrop */}
             <div
-                className={`md:hidden fixed inset-0 bg-black/50 z-40 ${isOpen ? 'animate-fade-in' : 'animate-fade-out'}`}
+                className={`fixed inset-0 bg-black/50 z-40 ${isOpen ? 'animate-fade-in' : 'animate-fade-out'}`}
                 onClick={onClose}
             />
 
             {/* Sidebar */}
-            <div className={`md:hidden fixed left-0 top-0 h-full w-64 bg-white shadow-xl z-50 flex flex-col ${isOpen ? 'animate-slide-in-left' : 'animate-slide-out-left'}`}>
+            <div className={`fixed left-0 top-0 h-full w-64 bg-white shadow-xl z-50 flex flex-col ${isOpen ? 'animate-slide-in-left' : 'animate-slide-out-left'}`}>
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b">
                     <h2 className="text-lg font-semibold text-gray-900">Profile</h2>
@@ -59,7 +62,7 @@ export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebar
                     {/* Avatar */}
                     <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
                         <span className="text-2xl font-bold text-white">
-                            {user.firstName[0]}{user.lastName[0]}
+                            {getInitials(user.firstName, user.lastName)}
                         </span>
                     </div>
 
@@ -104,6 +107,15 @@ export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebar
 
                 {/* Footer Actions */}
                 <div className="p-4 border-t space-y-2">
+                    {user.role === 'super_admin' && (
+                        <button
+                            onClick={() => { onClose(); router.push('/settings'); }}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-50 text-blue-700 rounded-xl font-medium hover:bg-blue-100 transition-colors"
+                        >
+                            <Settings className="w-5 h-5" />
+                            Settings
+                        </button>
+                    )}
                     <button
                         onClick={() => setShowPasswordModal(true)}
                         className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-50 text-gray-700 rounded-xl font-medium hover:bg-gray-100 transition-colors"

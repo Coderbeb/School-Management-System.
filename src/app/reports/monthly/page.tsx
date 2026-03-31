@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Calendar, TrendingUp, TrendingDown, BarChart3, Filter, ChevronDown, AlertCircle, BookOpen, Users, FileText, FileSpreadsheet, FileDown, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Navbar } from '@/components/ui/Navbar';
@@ -392,10 +391,10 @@ export default function MonthlyReportPage() {
                             <div className="flex items-center gap-2 mb-2">
                                 <span className="text-emerald-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                             </div>
-                            <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                            <h1 className="text-2xl font-bold mb-2 flex items-center gap-3">
                                 Monthly Summary <span className="inline-block animate-wave">📈</span>
                             </h1>
-                            <p className="text-emerald-100 text-lg max-w-xl">
+                            <p className="text-emerald-100 text-sm max-w-xl">
                                 Analyze attendance trends, identify patterns, and <span className="font-semibold text-white">monitor overall performance</span>.
                             </p>
                         </div>
@@ -507,29 +506,29 @@ export default function MonthlyReportPage() {
                 {/* Content */}
                 <div className="w-full">
                     {loading ? (
-                        <Card className="border-0 shadow-sm bg-white">
-                            <CardContent className="p-12 text-center">
+                        <div className="shadow-sm bg-white rounded-2xl">
+                            <div className="p-12 text-center">
                                 <div className="animate-spin w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full mx-auto mb-4"></div>
                                 <p className="text-gray-500">Loading monthly stats...</p>
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
                     ) : !stats ? (
-                        <Card className="border-0 shadow-sm bg-white">
-                            <CardContent className="p-12 text-center">
+                        <div className="shadow-sm bg-white rounded-2xl">
+                            <div className="p-12 text-center">
                                 <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                                     <AlertCircle className="w-8 h-8 text-gray-400" />
                                 </div>
                                 <h3 className="text-lg font-medium text-gray-900">No data available</h3>
                                 <p className="text-gray-500 mt-1">Try selecting a different month or filter to see analytics.</p>
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
                     ) : (
                         <div className="space-y-6">
                             {/* Top Row: Circular Progress + Stats Grid */}
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                 {/* Circular Progress */}
-                                <Card className="border-0 shadow-md bg-white overflow-hidden relative">
-                                    <CardContent className="p-8">
+                                <div className="shadow-md bg-white overflow-hidden relative rounded-2xl">
+                                    <div className="p-8">
                                         <div className="flex flex-col items-center justify-center text-center">
                                             <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Average Attendance</h2>
                                             <div className="relative w-40 h-40 flex items-center justify-center mb-4">
@@ -554,8 +553,8 @@ export default function MonthlyReportPage() {
                                                 </div>
                                             </div>
                                         </div>
-                                    </CardContent>
-                                </Card>
+                                    </div>
+                                </div>
 
                                 {/* Stats Grid (2x3) */}
                                 <div className="lg:col-span-2 grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -567,7 +566,7 @@ export default function MonthlyReportPage() {
                                                 <Calendar className="w-4 h-4" />
                                             </div>
                                         </div>
-                                        <h3 className="text-3xl font-black text-gray-900">{stats.totalDays}</h3>
+                                        <h3 className="text-2xl font-bold text-gray-900">{stats.totalDays}</h3>
                                     </div>
 
                                     {/* Total Sessions Card */}
@@ -578,7 +577,7 @@ export default function MonthlyReportPage() {
                                                 <BarChart3 className="w-4 h-4" />
                                             </div>
                                         </div>
-                                        <h3 className="text-3xl font-black text-gray-900">{stats.totalSessions}</h3>
+                                        <h3 className="text-2xl font-bold text-gray-900">{stats.totalSessions}</h3>
                                     </div>
 
                                     {/* Total Present Card */}
@@ -589,7 +588,7 @@ export default function MonthlyReportPage() {
                                                 <Users className="w-4 h-4" />
                                             </div>
                                         </div>
-                                        <h3 className="text-3xl font-black text-emerald-600">{stats.totalPresent}</h3>
+                                        <h3 className="text-2xl font-bold text-emerald-600">{stats.totalPresent}</h3>
                                     </div>
 
                                     {/* Total Absent Card */}
@@ -600,7 +599,7 @@ export default function MonthlyReportPage() {
                                                 <AlertCircle className="w-4 h-4" />
                                             </div>
                                         </div>
-                                        <h3 className="text-3xl font-black text-rose-600">{stats.totalAbsent}</h3>
+                                        <h3 className="text-2xl font-bold text-rose-600">{stats.totalAbsent}</h3>
                                     </div>
 
                                     {/* Highest Day Card */}
@@ -611,7 +610,7 @@ export default function MonthlyReportPage() {
                                                 <TrendingUp className="w-4 h-4" />
                                             </div>
                                         </div>
-                                        <h3 className="text-3xl font-black text-emerald-600">{stats.highestAttendance}%</h3>
+                                        <h3 className="text-2xl font-bold text-emerald-600">{stats.highestAttendance}%</h3>
                                     </div>
 
                                     {/* Lowest Day Card */}
@@ -622,15 +621,15 @@ export default function MonthlyReportPage() {
                                                 <TrendingDown className="w-4 h-4" />
                                             </div>
                                         </div>
-                                        <h3 className="text-3xl font-black text-red-600">{stats.lowestAttendance}%</h3>
+                                        <h3 className="text-2xl font-bold text-red-600">{stats.lowestAttendance}%</h3>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Mini Bar Chart (Visual Trend) */}
                             {dailyBreakdown.length > 0 && (
-                                <Card className="border-0 shadow-sm bg-white">
-                                    <CardContent className="p-6">
+                                <div className="shadow-sm bg-white rounded-2xl">
+                                    <div className="p-6">
                                         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Daily Attendance Trend</h3>
                                         <div className="flex items-end gap-1 h-24">
                                             {dailyBreakdown.map((day, i) => (
@@ -653,8 +652,8 @@ export default function MonthlyReportPage() {
                                             <span>{dailyBreakdown.length > 0 ? formatDate(dailyBreakdown[0].date) : ''}</span>
                                             <span>{dailyBreakdown.length > 0 ? formatDate(dailyBreakdown[dailyBreakdown.length - 1].date) : ''}</span>
                                         </div>
-                                    </CardContent>
-                                </Card>
+                                    </div>
+                                </div>
                             )}
 
                             {/* Tabs: Daily / Subject-wise */}
@@ -691,8 +690,8 @@ export default function MonthlyReportPage() {
                             </div>
 
                             {/* Tab Content */}
-                            <Card className="border-0 shadow-xl bg-white overflow-hidden">
-                                <CardContent className="p-0">
+                            <div className="shadow-xl bg-white overflow-hidden rounded-2xl">
+                                <div className="p-0">
                                     {/* Daily Breakdown Tab */}
                                     {activeTab === 'daily' && (
                                         <>
@@ -866,8 +865,8 @@ export default function MonthlyReportPage() {
                                             )}
                                         </>
                                     )}
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>

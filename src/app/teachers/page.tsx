@@ -27,6 +27,7 @@ import * as XLSX from 'xlsx';
 import { Navbar } from '@/components/ui/Navbar';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
+import { getInitials } from '@/lib/utils';
 
 interface DepartmentInfo {
     id: string;
@@ -636,10 +637,6 @@ export default function TeachersPage() {
         }
     };
 
-    // Get initials from name
-    const getInitials = (firstName: string, lastName: string) => {
-        return (firstName[0] + lastName[0]).toUpperCase();
-    };
 
     if (loading) return <PageSkeleton type="teachers" />;
 

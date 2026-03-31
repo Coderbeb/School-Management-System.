@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+
 import { ArrowLeft, Users, BookOpen, AlertCircle, AlertTriangle, Building2, TrendingUp, GraduationCap, ChevronRight, FileDown, FileSpreadsheet } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
@@ -259,10 +259,10 @@ export default function DepartmentOverviewPage() {
                         <div className="flex items-center gap-2 mb-2">
                             <span className="text-rose-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                         </div>
-                        <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                        <h1 className="text-2xl font-bold mb-2 flex items-center gap-3">
                             Department Overview <span className="inline-block animate-bounce">🏢</span>
                         </h1>
-                        <p className="text-rose-100 text-lg max-w-xl">
+                        <p className="text-rose-100 text-sm max-w-xl">
                             {data?.department ? data.department.name : 'View detailed performance metrics, subject-wise analysis, and student alerts.'}
                         </p>
                     </div>
@@ -333,7 +333,7 @@ export default function DepartmentOverviewPage() {
                         <p className="text-gray-500">Loading department data...</p>
                     </div>
                 ) : !data || !data.overallStats ? (
-                    <Card className="p-12 text-center border-0 shadow-xl bg-white/80 backdrop-blur-sm">
+                    <div className="p-12 text-center shadow-xl bg-white/80 backdrop-blur-sm rounded-2xl">
                         <div className="w-20 h-20 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
                             <AlertCircle className="w-10 h-10 text-gray-400" />
                         </div>
@@ -341,66 +341,66 @@ export default function DepartmentOverviewPage() {
                         <p className="text-gray-500 max-w-md mx-auto">
                             No attendance data found for this department. Make sure attendance has been marked for students.
                         </p>
-                    </Card>
+                    </div>
                 ) : (
                     <div className="space-y-8">
                         {/* Stats Cards - Enhanced */}
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
-                                <CardContent className="p-5 md:p-6 relative">
+                            <div className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow rounded-xl">
+                                <div className="p-5">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Total Students</p>
-                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.overallStats.totalStudents}</p>
+                                            <p className="text-gray-500 text-xs uppercase tracking-wide font-bold">Total Students</p>
+                                            <p className="text-gray-900 text-2xl font-bold mt-1">{data.overallStats.totalStudents}</p>
                                         </div>
-                                        <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl">
-                                            <Users className="w-5 h-5 md:w-6 md:h-6" />
+                                        <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
+                                            <Users className="w-5 h-5" />
                                         </div>
                                     </div>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
                             
-                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
-                                <CardContent className="p-5 md:p-6 relative">
+                            <div className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow rounded-xl">
+                                <div className="p-5">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Subjects</p>
-                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.overallStats.totalSubjects}</p>
+                                            <p className="text-gray-500 text-xs uppercase tracking-wide font-bold">Subjects</p>
+                                            <p className="text-gray-900 text-2xl font-bold mt-1">{data.overallStats.totalSubjects}</p>
                                         </div>
-                                        <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
-                                            <BookOpen className="w-5 h-5 md:w-6 md:h-6" />
+                                        <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                                            <BookOpen className="w-5 h-5" />
                                         </div>
                                     </div>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
                             
-                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
-                                <CardContent className="p-5 md:p-6 relative">
+                            <div className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow rounded-xl">
+                                <div className="p-5">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Critical (&lt;60%)</p>
-                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.overallStats.criticalCount}</p>
+                                            <p className="text-gray-500 text-xs uppercase tracking-wide font-bold">Critical (&lt;60%)</p>
+                                            <p className="text-gray-900 text-2xl font-bold mt-1">{data.overallStats.criticalCount}</p>
                                         </div>
-                                        <div className="p-2.5 bg-red-50 text-red-600 rounded-xl">
-                                            <AlertCircle className="w-5 h-5 md:w-6 md:h-6" />
+                                        <div className="p-2 bg-red-50 text-red-600 rounded-lg">
+                                            <AlertCircle className="w-5 h-5" />
                                         </div>
                                     </div>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
                             
-                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
-                                <CardContent className="p-5 md:p-6 relative">
+                            <div className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow rounded-xl">
+                                <div className="p-5">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Warning (60-75%)</p>
-                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.overallStats.warningCount}</p>
+                                            <p className="text-gray-500 text-xs uppercase tracking-wide font-bold">Warning (60-75%)</p>
+                                            <p className="text-gray-900 text-2xl font-bold mt-1">{data.overallStats.warningCount}</p>
                                         </div>
-                                        <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl">
-                                            <AlertTriangle className="w-5 h-5 md:w-6 md:h-6" />
+                                        <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
+                                            <AlertTriangle className="w-5 h-5" />
                                         </div>
                                     </div>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Tabs - Enhanced */}
@@ -438,8 +438,8 @@ export default function DepartmentOverviewPage() {
                         </div>
 
                         {/* Tab Content */}
-                        <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm overflow-hidden">
-                            <CardContent className="p-6">
+                        <div className="shadow-xl bg-white/80 backdrop-blur-sm overflow-hidden rounded-2xl">
+                            <div className="p-5">
                                 {/* Semester-wise Tab */}
                                 {activeTab === 'semester' && (
                                     <div className="space-y-4">
@@ -561,7 +561,7 @@ export default function DepartmentOverviewPage() {
                                                             <span className="text-lg font-bold text-red-600">{index + 1}</span>
                                                         </div>
                                                         <div>
-                                                            <p className="font-bold text-gray-900 text-lg">{student.name}</p>
+                                                            <p className="font-bold text-gray-900 text-base">{student.name}</p>
                                                             <div className="flex items-center gap-2 mt-1">
                                                                 <span className="text-sm text-gray-500">ID: {student.studentId || '-'}</span>
                                                                 <span className="text-sm text-gray-500 ml-1">Roll: {student.rollNumber}</span>
@@ -572,7 +572,7 @@ export default function DepartmentOverviewPage() {
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-3 relative z-10 mt-4 sm:mt-0 self-end sm:self-auto">
-                                                        <span className="text-3xl font-extrabold text-red-600 tracking-tight">{student.attendancePercentage}%</span>
+                                                        <span className="text-2xl font-bold text-red-600 tracking-tight">{student.attendancePercentage}%</span>
                                                         <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center border border-gray-200 group-hover:bg-red-50 group-hover:border-red-200 transition-colors">
                                                             <ChevronRight className="w-5 h-5 text-red-400 group-hover:text-red-600" />
                                                         </div>
@@ -607,7 +607,7 @@ export default function DepartmentOverviewPage() {
                                                             <span className="text-lg font-bold text-amber-600">{index + 1}</span>
                                                         </div>
                                                         <div>
-                                                            <p className="font-bold text-gray-900 text-lg">{student.name}</p>
+                                                            <p className="font-bold text-gray-900 text-base">{student.name}</p>
                                                             <div className="flex items-center gap-2 mt-1">
                                                                 <span className="text-sm text-gray-500">ID: {student.studentId || '-'}</span>
                                                                 <span className="text-sm text-gray-500 ml-1">Roll: {student.rollNumber}</span>
@@ -618,7 +618,7 @@ export default function DepartmentOverviewPage() {
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-3 relative z-10 mt-4 sm:mt-0 self-end sm:self-auto">
-                                                        <span className="text-3xl font-extrabold text-amber-600 tracking-tight">{student.attendancePercentage}%</span>
+                                                        <span className="text-2xl font-bold text-amber-600 tracking-tight">{student.attendancePercentage}%</span>
                                                         <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center border border-gray-200 group-hover:bg-amber-50 group-hover:border-amber-200 transition-colors">
                                                             <ChevronRight className="w-5 h-5 text-amber-400 group-hover:text-amber-600" />
                                                         </div>
@@ -628,8 +628,8 @@ export default function DepartmentOverviewPage() {
                                         )}
                                     </div>
                                 )}
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
                     </div>
                 )}
             </main>

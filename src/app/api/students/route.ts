@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
+import { parseStudentId } from '@/lib/parseStudentId';
 
 interface StudentRow {
     id: string;
@@ -70,7 +71,9 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Student ID, roll number, first name, last name, and department are required' }, { status: 400 });
         }
 
-        const batchYear = new Date().getFullYear();
+        // Extract batch_year from the student ID (e.g., BCA2025SC001 → 2025)
+        const parsed = parseStudentId(studentId);
+        const batchYear = parsed.admissionYear || new Date().getFullYear();
 
         const students = await query<StudentRow>(
             `INSERT INTO students (roll_number, roll_number_old, first_name, last_name, email, current_semester, batch_year, department_id, student_id)

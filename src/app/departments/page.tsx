@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
+import { getInitials } from '@/lib/utils';
 
 interface Department {
     id: string;
@@ -160,14 +161,14 @@ export default function DepartmentsPage() {
         (dept.hod_name && dept.hod_name.toLowerCase().includes(searchQuery.toLowerCase()))
     );
 
-    // Get initials from HOD name
-    const getInitials = (name: string | null) => {
+    // Get initials from HOD name — use shared utility
+    const getHodInitials = (name: string | null) => {
         if (!name) return '??';
         const parts = name.trim().split(/\s+/);
         if (parts.length >= 2) {
-            return (parts[0][0] + parts[1][0]).toUpperCase();
+            return getInitials(parts.slice(0, -1).join(' '), parts[parts.length - 1]);
         }
-        return name.substring(0, 2).toUpperCase();
+        return getInitials(name, null);
     };
 
     if (loading) return <PageSkeleton type="departments" />;
@@ -288,7 +289,7 @@ export default function DepartmentsPage() {
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center">
                                                     <div className="flex-shrink-0 h-8 w-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-xs font-bold mr-3">
-                                                        {getInitials(dept.hod_name)}
+                                                        {getHodInitials(dept.hod_name)}
                                                     </div>
                                                     <div className="text-sm text-gray-600">{dept.hod_name || <span className="text-gray-400 italic">Unassigned</span>}</div>
                                                 </div>
@@ -355,7 +356,7 @@ export default function DepartmentsPage() {
 
                                     <div className="flex items-center gap-3 pt-3 border-t border-gray-50">
                                         <div className="h-7 w-7 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-xs font-bold">
-                                            {getInitials(dept.hod_name)}
+                                            {getHodInitials(dept.hod_name)}
                                         </div>
                                         <div className="flex flex-col">
                                             <span className="text-xs text-gray-500">Head of Department</span>

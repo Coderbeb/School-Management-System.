@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Menu, GraduationCap, ArrowLeft, LogOut, Lock } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { ChangePasswordModal } from './ChangePasswordModal';
+import { getInitials } from '@/lib/utils';
 
 interface User {
     firstName: string;
@@ -29,7 +30,7 @@ export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: Navb
                     <div className="flex items-center gap-3">
                         <button
                             onClick={onMenuClick}
-                            className="p-2 -ml-2 hover:bg-gray-100 rounded-lg md:hidden"
+                            className="p-2 -ml-2 hover:bg-gray-100 rounded-lg"
                         >
                             <Menu className="w-6 h-6 text-gray-600" />
                         </button>
@@ -56,8 +57,11 @@ export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: Navb
 
                     <div className="flex items-center gap-4">
                         {user && (
-                            <div className="flex items-center gap-3">
-                                <div className="flex flex-col items-end mr-1">
+                            <div 
+                                className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-1.5 pr-2 rounded-full transition-colors"
+                                onClick={onMenuClick}
+                            >
+                                <div className="hidden sm:flex flex-col items-end mr-1">
                                     <span className="text-sm font-bold text-gray-900 leading-none">
                                         {user.firstName} {user.lastName}
                                     </span>
@@ -67,30 +71,9 @@ export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: Navb
                                 </div>
                                 <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 p-0.5 shadow-sm">
                                     <div className="h-full w-full rounded-full bg-white flex items-center justify-center text-xs font-bold text-blue-700">
-                                        {user.firstName?.[0]}{user.lastName?.[0]}
+                                        {getInitials(user.firstName, user.lastName)}
                                     </div>
                                 </div>
-                                {/* Desktop Actions */}
-                                {pathname === '/dashboard' && (
-                                    <div className="hidden md:flex items-center gap-2 ml-2">
-                                        <button
-                                            onClick={() => setShowPasswordModal(true)}
-                                            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                            title="Change Password"
-                                        >
-                                            <Lock className="w-4 h-4" />
-                                        </button>
-                                        {onLogout && (
-                                            <button
-                                                onClick={onLogout}
-                                                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                            >
-                                                <LogOut className="w-4 h-4" />
-                                                <span>Logout</span>
-                                            </button>
-                                        )}
-                                    </div>
-                                )}
                             </div>
                         )}
                     </div>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 
-// GET - Get last 5 attendance records for students
+// GET - Get last 5 distinct DAYS of attendance for students
 export async function GET(request: NextRequest) {
     try {
         const authHeader = request.headers.get('authorization');
@@ -19,9 +19,9 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url);
         const studentIds = searchParams.get('studentIds'); // comma-separated
         const subjectId = searchParams.get('subjectId');
+        const currentDate = searchParams.get('currentDate'); // exclude this date from history (show only previous days)
 
-        console.log(`[History API Debug] studentIds count: ${studentIds ? studentIds.split(',').length : 0}`);
-        console.log(`[History API Debug] subjectId received: '${subjectId}' (type: ${typeof subjectId})`);
+
 
         if (!studentIds) {
             return NextResponse.json({ error: 'studentIds required' }, { status: 400 });
@@ -37,25 +37,51 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ history: {} });
         }
 
-        // Get last 5 attendance records for each student (filtered by teacher for teachers)
+        // Get last 5 distinct DAYS of attendance for each student (not individual lectures)
+        // Uses DENSE_RANK on date so multiple lectures on the same day count as 1 day.
+        // Aggregates status per day: if ANY lecture that day is 'absent', day = 'absent'; else 'present'.
+        // Excludes currentDate so only previous days are shown in the dots.
+        let paramIndex = 1;
+        const params: any[] = [studentIdArray];
+        paramIndex++;
+
+        let subjectFilter = '';
+        if (subjectId) {
+            subjectFilter = `AND subject_id = $${paramIndex}`;
+            params.push(subjectId);
+            paramIndex++;
+        }
+
+        const teacherFilter = `AND teacher_id = $${paramIndex}`;
+        params.push(payload.userId);
+        paramIndex++;
+
+        let dateExcludeFilter = '';
+        if (currentDate) {
+            dateExcludeFilter = `AND date < $${paramIndex}::date`;
+            params.push(currentDate);
+            paramIndex++;
+        }
+
         const queryStr = `
-            SELECT student_id, status, date
+            SELECT student_id, date,
+                   CASE WHEN COUNT(CASE WHEN status = 'absent' THEN 1 END) > 0 THEN 'absent' ELSE 'present' END as status
             FROM (
                 SELECT 
                     student_id, 
                     status,
                     date,
-                    ROW_NUMBER() OVER (PARTITION BY student_id ORDER BY date DESC, lecture_number DESC) as rn
+                    DENSE_RANK() OVER (PARTITION BY student_id ORDER BY date DESC) as day_rank
                 FROM attendance_records
                 WHERE student_id = ANY($1)
-                ${subjectId ? 'AND subject_id = $2' : ''}
-                AND teacher_id = $${subjectId ? '3' : '2'}
+                ${subjectFilter}
+                ${teacherFilter}
+                ${dateExcludeFilter}
             ) sub
-            WHERE rn <= 5
+            WHERE day_rank <= 5
+            GROUP BY student_id, date
             ORDER BY student_id, date DESC
         `;
-
-        const params = subjectId ? [studentIdArray, subjectId, payload.userId] : [studentIdArray, payload.userId];
         const records = await query(queryStr, params);
 
         // Group by student_id

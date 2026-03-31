@@ -76,6 +76,7 @@ export default function StudentsPage() {
     const [user, setUser] = useState<User | null>(null);
     const [showModal, setShowModal] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [batchConfig, setBatchConfig] = useState<Record<string, Record<string, number>>>({});
 
     // Form States
     const [formData, setFormData] = useState({
@@ -122,7 +123,7 @@ export default function StudentsPage() {
     const [importFile, setImportFile] = useState<File | null>(null);
     const [previewData, setPreviewData] = useState<any[]>([]);
     const [isImporting, setIsImporting] = useState(false);
-    const [importResults, setImportResults] = useState<{ success: number; failed: number; errors: any[] } | null>(null);
+    const [importResults, setImportResults] = useState<{ success: number; updated: number; failed: number; errors: any[] } | null>(null);
 
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -155,6 +156,7 @@ export default function StudentsPage() {
         fetchStudents(token);
         fetchDepartments(token);
         fetchSubjects(token);
+        fetchBatchConfig(token);
     }, [router]);
 
     const safeJson = async (res: Response) => {
@@ -212,6 +214,36 @@ export default function StudentsPage() {
         } catch (err) {
             console.error('Error fetching subjects:', err);
         }
+    };
+
+    // Fetch saved batch config from settings
+    const fetchBatchConfig = async (token: string) => {
+        try {
+            const res = await fetch('/api/settings/batch-config', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setBatchConfig(data.mappings || {});
+            }
+        } catch (err) {
+            console.error('Error fetching batch config:', err);
+        }
+    };
+
+    // Look up semester from saved batch config: given an admission year and dept type,
+    // find which semester has that admission year assigned
+    const getSemesterFromBatchConfig = (admissionYear: number, deptType: string): number | null => {
+        const mappings = batchConfig[deptType];
+        if (!mappings) return null;
+        
+        // Find the semester where the batch_year matches the admission year
+        for (const [semStr, batchYear] of Object.entries(mappings)) {
+            if (batchYear === admissionYear) {
+                return parseInt(semStr);
+            }
+        }
+        return null;
     };
 
     const handleLogout = () => {
@@ -327,21 +359,32 @@ export default function StudentsPage() {
                 setFormData(prev => ({ ...prev, rollNumber: parsed.rollNumber!.toString() }));
             }
 
-            // Auto-fill semester
-            let newSemester = formData.semester;
-            if (parsed.semester) {
-                newSemester = parsed.semester.toString();
-                setFormData(prev => ({ ...prev, semester: parsed.semester!.toString() }));
-            }
-
-            // Auto-fill department (only for admin, HOD has fixed dept)
+            // Auto-fill department first (needed to look up batch config)
             let newDeptId = formData.departmentId;
+            let detectedDeptType = 'regular';
             if (user?.role === 'super_admin' && parsed.courseType) {
                 const foundDept = findDepartmentByCode(departments, parsed);
                 if (foundDept) {
                     newDeptId = foundDept.id;
                     setFormData(prev => ({ ...prev, departmentId: foundDept.id }));
+                    const dept = departments.find(d => d.id === foundDept.id);
+                    if (dept) detectedDeptType = dept.dept_type;
                 }
+            } else if (formData.departmentId) {
+                const dept = departments.find(d => d.id === formData.departmentId);
+                if (dept) detectedDeptType = dept.dept_type;
+            }
+
+            // Auto-fill semester: use saved batch config first, fall back to parseStudentId calculation
+            let newSemester = formData.semester;
+            if (parsed.admissionYear) {
+                const configSemester = getSemesterFromBatchConfig(parsed.admissionYear, detectedDeptType);
+                if (configSemester) {
+                    newSemester = configSemester.toString();
+                } else if (parsed.semester) {
+                    newSemester = parsed.semester.toString();
+                }
+                setFormData(prev => ({ ...prev, semester: newSemester }));
             }
 
             // Auto-select subjects based on parsed info
@@ -865,7 +908,7 @@ export default function StudentsPage() {
                 const result = await res.json();
                 if (res.ok) {
                     setImportResults(result);
-                    if (result.success > 0) fetchStudents(token!);
+                    if (result.success > 0 || result.updated > 0) fetchStudents(token!);
                 } else {
                     setError(result.error || 'Import failed');
                 }
@@ -1257,10 +1300,10 @@ export default function StudentsPage() {
                                                 {parsedInfo.courseType?.toUpperCase()}
                                             </span>
                                             <span className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-full">
-                                                Batch: {parsedInfo.batch}
+                                                Batch: {parsedInfo.admissionYear ? `${parsedInfo.admissionYear}-${String((parsedInfo.admissionYear + (parsedInfo.courseType === 'vocational' ? 3 : 4)) % 100).padStart(2, '0')}` : parsedInfo.batch}
                                             </span>
                                             <span className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-full">
-                                                Semester: {parsedInfo.semester}
+                                                Semester: {formData.semester}
                                             </span>
                                             {parsedInfo.programVariant && (
                                                 <span className="px-2 py-1 text-xs bg-indigo-100 text-indigo-700 rounded-full">
@@ -1720,16 +1763,28 @@ export default function StudentsPage() {
                             ) : (
                                 // Results View
                                 <div className="space-y-6">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="bg-green-50 p-6 rounded-2xl text-center border border-green-100">
+                                    <div className={`grid gap-4 ${importResults.updated > 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                                        <div className="bg-green-50 p-5 rounded-2xl text-center border border-green-100">
                                             <div className="text-3xl font-bold text-green-600">{importResults.success}</div>
-                                            <div className="text-sm font-medium text-green-800 mt-1">Successfully Imported</div>
+                                            <div className="text-sm font-medium text-green-800 mt-1">New Students</div>
                                         </div>
-                                        <div className="bg-red-50 p-6 rounded-2xl text-center border border-red-100">
+                                        {importResults.updated > 0 && (
+                                            <div className="bg-blue-50 p-5 rounded-2xl text-center border border-blue-100">
+                                                <div className="text-3xl font-bold text-blue-600">{importResults.updated}</div>
+                                                <div className="text-sm font-medium text-blue-800 mt-1">Updated</div>
+                                            </div>
+                                        )}
+                                        <div className="bg-red-50 p-5 rounded-2xl text-center border border-red-100">
                                             <div className="text-3xl font-bold text-red-600">{importResults.failed}</div>
-                                            <div className="text-sm font-medium text-red-800 mt-1">Failed Rows</div>
+                                            <div className="text-sm font-medium text-red-800 mt-1">Failed</div>
                                         </div>
                                     </div>
+                                    {importResults.updated > 0 && (
+                                        <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-sm text-blue-700 flex items-center gap-2">
+                                            <Sparkles className="w-4 h-4 shrink-0" />
+                                            {importResults.updated} existing student(s) were updated with new data (name, semester, department, etc.)
+                                        </div>
+                                    )}
 
                                     {importResults.errors.length > 0 && (
                                         <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">

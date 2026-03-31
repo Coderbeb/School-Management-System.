@@ -13,6 +13,7 @@ import {
     BarChart3,
     ClipboardCheck,
     UsersRound,
+    Settings,
     ChevronRight,
     BookCheck
 } from 'lucide-react';
@@ -142,6 +143,16 @@ export default function DashboardPage() {
                     textColor: 'text-violet-700',
                     borderColor: 'border-violet-200'
                 },
+                {
+                    id: 'settings',
+                    title: 'Settings',
+                    description: 'Platform configs & Batch manager',
+                    href: '/settings',
+                    iconComponent: <Settings className="w-6 h-6" />,
+                    gradient: 'from-slate-100 to-gray-200',
+                    textColor: 'text-slate-700',
+                    borderColor: 'border-slate-300'
+                }
             ];
         } else if (user.role === 'hod') {
             return [
@@ -238,17 +249,17 @@ export default function DashboardPage() {
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
             {/* Mobile Sidebar */}
-            <MobileSidebar
-                isOpen={sidebarOpen}
-                onClose={() => setSidebarOpen(false)}
-                user={user}
+            <MobileSidebar 
+                isOpen={sidebarOpen} 
+                onClose={() => setSidebarOpen(false)} 
+                user={user} 
                 onLogout={handleLogout}
             />
-
+            
             {/* Navbar */}
             <Navbar user={user} onMenuClick={() => setSidebarOpen(true)} onLogout={handleLogout} />
 
-            <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
+            <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 mt-16">
 
                 {/* Hero / Welcome Section */}
                 <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-8 mb-8 shadow-xl">
@@ -258,10 +269,10 @@ export default function DashboardPage() {
                     <div className="relative z-10">
                         <div className="flex items-start justify-between">
                             <div>
-                                <h1 className="text-3xl font-bold mb-2">
+                                <h1 className="text-2xl font-bold mb-2">
                                     Hello, {user.firstName}! <span className="inline-block animate-wave">👋</span>
                                 </h1>
-                                <p className="text-blue-100 text-lg max-w-xl">
+                                <p className="text-blue-100 text-sm max-w-xl">
                                     Welcome to your dashboard. You have <span className="font-semibold text-white">full access</span> to manage {user.role === 'super_admin' ? 'the entire institution' : 'your academic duties'}.
                                 </p>
                             </div>

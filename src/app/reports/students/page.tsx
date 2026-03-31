@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 import { Search, X, BookOpen, CheckCircle, TrendingUp, GraduationCap, ChevronRight, FileText, FileSpreadsheet, FileDown, Calendar, Filter, ChevronDown, User, AlertCircle, Eye, CalendarDays, ArrowUpRight, ArrowDownRight, ChevronLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Input } from '@/components/ui/input';
@@ -858,10 +858,10 @@ function StudentReportContent() {
                             <div className="flex items-center gap-2 mb-2">
                                 <span className="text-purple-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                             </div>
-                            <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                            <h1 className="text-2xl font-bold mb-2 flex items-center gap-3">
                                 Student Reports <span className="inline-block animate-bounce">🎓</span>
                             </h1>
-                            <p className="text-purple-100 text-lg max-w-xl">
+                            <p className="text-purple-100 text-sm max-w-xl">
                                 View individual attendance records, track performance, and <span className="font-semibold text-white">identify at-risk students</span>.
                             </p>
                         </div>
@@ -1003,8 +1003,8 @@ function StudentReportContent() {
                 <div className="w-full">
                     {/* Report Data */}
                     <div className="lg:col-span-3">
-                        <Card className="border-0 shadow-sm border-gray-100 bg-white overflow-hidden">
-                            <CardContent className="p-0">
+                        <div className="shadow-sm border border-gray-100 bg-white overflow-hidden rounded-2xl">
+                            <div className="p-0">
                                 {loading ? (
                                     <div className="p-12 text-center">
                                         <div className="animate-spin w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full mx-auto mb-4"></div>
@@ -1215,8 +1215,8 @@ function StudentReportContent() {
                                         </div>
                                     </div>
                                 )}
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

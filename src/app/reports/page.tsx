@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, BarChart3, Users, UserCheck, TrendingUp, ChevronRight, AlertTriangle, CheckCircle, Clock, BookOpen, Building2, GraduationCap, LayoutDashboard, UsersRound, CalendarDays } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
@@ -228,17 +227,17 @@ export default function ReportsPage() {
                     <div className="relative z-10">
                         <div className="flex items-start justify-between">
                             <div>
-                                <h1 className="text-3xl font-bold mb-2">
+                                <h1 className="text-2xl font-bold mb-2">
                                     Attendance Analytics <span className="inline-block animate-wave">📊</span>
                                 </h1>
-                                <p className="text-blue-100 text-lg max-w-xl">
+                                <p className="text-blue-100 text-sm max-w-xl">
                                     Welcome to your reports dashboard. View detailed statistics, track attendance trends, and <span className="font-semibold text-white">generate insights</span>.
                                 </p>
                             </div>
                             <BarChart3 className="hidden sm:block w-12 h-12 text-blue-200 opacity-80" />
                         </div>
 
-                        <div className="mt-8 flex gap-3">
+                        <div className="mt-5 flex gap-3">
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm font-medium backdrop-blur-md">
                                 <UsersRound className="w-4 h-4" />
                                 {user?.role ? user.role.replace('_', ' ').toUpperCase() : 'USER'}
@@ -263,19 +262,17 @@ export default function ReportsPage() {
                         const colors = colorMap[stat.gradient] || { bg: 'bg-gray-50', text: 'text-gray-600' };
                         
                         return (
-                            <Card key={index} className="border border-gray-100 shadow-sm bg-white overflow-hidden group hover:-translate-y-0.5 hover:shadow-md transition-all duration-300">
-                                <CardContent className="p-5">
-                                    <div className="flex items-start justify-between">
-                                        <div>
-                                            <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">{stat.label}</p>
-                                            <p className="text-gray-900 text-3xl font-bold">{stat.value}</p>
-                                        </div>
-                                        <div className={`p-2 ${colors.bg} ${colors.text} rounded-lg`}>
-                                            <stat.icon className="w-5 h-5" />
-                                        </div>
+                            <div key={index} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 group hover:-translate-y-0.5 hover:shadow-md transition-all duration-300">
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">{stat.label}</p>
+                                        <p className="text-gray-900 text-2xl font-bold">{stat.value}</p>
                                     </div>
-                                </CardContent>
-                            </Card>
+                                    <div className={`p-2 ${colors.bg} ${colors.text} rounded-lg`}>
+                                        <stat.icon className="w-5 h-5" />
+                                    </div>
+                                </div>
+                            </div>
                         );
                     })}
                 </div>
@@ -285,15 +282,15 @@ export default function ReportsPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                         {/* Low Attendance Alert */}
                         {(stats.lowAttendanceCount || 0) > 0 && (
-                            <Card className="border-0 shadow-md bg-white hover:shadow-lg transition-shadow">
-                                <CardContent className="p-5">
+                            <div className="shadow-md bg-white hover:shadow-lg transition-shadow rounded-xl">
+                                <div className="p-5">
                                     <div className="flex items-center gap-4">
                                         <div className="p-3 bg-red-100 rounded-full">
                                             <AlertTriangle className="w-6 h-6 text-red-600" />
                                         </div>
                                         <div className="flex-1">
-                                            <h3 className="font-bold text-gray-900 text-lg">Critical Attendance</h3>
-                                            <p className="text-sm text-gray-500">Students with less than 60% attendance</p>
+                                            <h3 className="font-bold text-gray-900 text-base">Critical Attendance</h3>
+                                            <p className="text-xs text-gray-500">Students with less than 60% attendance</p>
                                         </div>
                                         <Button 
                                             variant="outline" 
@@ -303,21 +300,21 @@ export default function ReportsPage() {
                                             View List
                                         </Button>
                                     </div>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
                         )}
 
                         {/* Warning Alert */}
                         {(stats.warningAttendanceCount || 0) > 0 && (
-                            <Card className="border-0 shadow-md bg-white hover:shadow-lg transition-shadow">
-                                <CardContent className="p-5">
+                            <div className="shadow-md bg-white hover:shadow-lg transition-shadow rounded-xl">
+                                <div className="p-5">
                                     <div className="flex items-center gap-4">
                                         <div className="p-3 bg-amber-100 rounded-full">
                                             <Clock className="w-6 h-6 text-amber-600" />
                                         </div>
                                         <div className="flex-1">
-                                            <h3 className="font-bold text-gray-900 text-lg">Warning Zone</h3>
-                                            <p className="text-sm text-gray-500">Students between 60% and 75% attendance</p>
+                                            <h3 className="font-bold text-gray-900 text-base">Warning Zone</h3>
+                                            <p className="text-xs text-gray-500">Students between 60% and 75% attendance</p>
                                         </div>
                                         <Button 
                                             variant="outline" 
@@ -327,8 +324,8 @@ export default function ReportsPage() {
                                             View List
                                         </Button>
                                     </div>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
                         )}
                     </div>
                 ) : null}
@@ -343,15 +340,15 @@ export default function ReportsPage() {
                         <div
                             key={report.id}
                             onClick={() => router.push(report.href)}
-                            className="group bg-white rounded-2xl p-5 shadow-sm hover:shadow-xl border border-transparent hover:border-purple-100 transition-all duration-300 cursor-pointer flex items-start gap-4 relative overflow-hidden"
+                            className="group bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-xl hover:border-purple-100 transition-all duration-300 cursor-pointer flex items-start gap-4 relative overflow-hidden"
                         >
                             <div className={`w-12 h-12 rounded-xl ${report.bgLight} flex items-center justify-center shrink-0 shadow-sm group-hover:scale-110 transition-transform duration-300`}>
                                 <report.icon className={`w-6 h-6 ${report.color.replace('bg-', 'text-')}`} />
                             </div>
                             
                             <div className="flex-1 z-10">
-                                <h3 className="font-bold text-gray-900 group-hover:text-purple-700 transition-colors text-lg mb-1">{report.title}</h3>
-                                <p className="text-sm text-gray-500 leading-relaxed">{report.description}</p>
+                                <h3 className="font-bold text-gray-900 group-hover:text-purple-700 transition-colors text-base mb-0.5">{report.title}</h3>
+                                <p className="text-xs text-gray-500 leading-relaxed">{report.description}</p>
                             </div>
                             
                             <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-purple-500 transform group-hover:translate-x-1 transition-all" />
@@ -361,14 +358,14 @@ export default function ReportsPage() {
 
                 {/* Super Admin - Department Overview Table */}
                 {user?.role === 'super_admin' && stats.departmentStats && stats.departmentStats.length > 0 && (
-                    <Card className="border-0 shadow-lg bg-white overflow-hidden rounded-2xl">
-                        <CardHeader className="bg-gray-50 border-b border-gray-100 py-4">
-                            <CardTitle className="text-lg flex items-center gap-2 text-gray-800">
+                    <div className="shadow-lg bg-white overflow-hidden rounded-2xl">
+                        <div className="bg-gray-50 border-b border-gray-100 py-4 px-6">
+                            <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-800">
                                 <Building2 className="w-5 h-5 text-gray-500" />
                                 Department Performance
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-0">
+                            </h3>
+                        </div>
+                        <div>
                             <div className="overflow-x-auto">
                                 <table className="w-full">
                                     <thead className="bg-gray-50/50">
@@ -418,8 +415,8 @@ export default function ReportsPage() {
                                     </tbody>
                                 </table>
                             </div>
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </div>
                 )}
             </main>
         </div>

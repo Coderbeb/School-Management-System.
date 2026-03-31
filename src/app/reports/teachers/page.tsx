@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 import { Search, X, Users, BookOpen, TrendingUp, Filter, ChevronRight, FileDown, ArrowLeft, ChevronDown, CheckCircle, AlertCircle, Eye, GraduationCap, FileText, FileSpreadsheet, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Navbar } from '@/components/ui/Navbar';
@@ -725,10 +725,10 @@ export default function TeacherReportPage() {
                             <div className="flex items-center gap-2 mb-2">
                                 <span className="text-indigo-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                             </div>
-                            <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                            <h1 className="text-2xl font-bold mb-2 flex items-center gap-3">
                                 Teacher Reports <span className="inline-block animate-bounce">👨‍🏫</span>
                             </h1>
-                            <p className="text-indigo-100 text-lg max-w-xl">
+                            <p className="text-indigo-100 text-sm max-w-xl">
                                 Analyze teacher attendance, track variations, and view <span className="font-semibold text-white">individual performance details</span>.
                             </p>
                         </div>
@@ -822,8 +822,8 @@ export default function TeacherReportPage() {
                 <div className="w-full">
                     {/* Report Data */}
                     <div className="lg:col-span-3">
-                        <Card className="border-0 shadow-sm border-gray-100 bg-white overflow-hidden">
-                            <CardContent className="p-0">
+                        <div className="shadow-sm border-gray-100 bg-white overflow-hidden rounded-2xl">
+                            <div className="p-0">
                                 {loading ? (
                                     <div className="p-12 text-center">
                                         <div className="animate-spin w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full mx-auto mb-4"></div>
@@ -955,8 +955,8 @@ export default function TeacherReportPage() {
                                         </div>
                                     </>
                                 )}
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

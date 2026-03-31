@@ -61,6 +61,7 @@ export default function AttendancePage() {
     const [departments, setDepartments] = useState<Department[]>([]);
     const [teacherDepartmentIds, setTeacherDepartmentIds] = useState<string[]>([]); // All teacher's dept IDs for filtering
     const [primaryDeptType, setPrimaryDeptType] = useState<string>('regular'); // Primary dept type for batch year calc
+    const [batchConfig, setBatchConfig] = useState<Record<string, Record<string, number>>>({}); // Saved batch mappings from settings
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
     // Selection States
@@ -125,12 +126,80 @@ export default function AttendancePage() {
         fetchTeacherDepartments(token, parsedUser.id);
         fetchTeacherSubjects(token, parsedUser.id);
         fetchHolidays(token);
+        fetchBatchConfig(token);
+        // Preload all student enrollment data for offline use
+        prefetchAllStudentData(token, parsedUser.id);
         setLoading(false);
     }, [router]);
 
+    // ========================
+    // OFFLINE CACHE HELPERS
+    // ========================
+    const CACHE_KEYS = {
+        ENROLLMENTS: 'offline_all_enrollments',
+        DEPARTMENTS: 'offline_departments',
+        SUBJECTS: 'offline_subjects',
+        HOLIDAYS: 'offline_holidays',
+    };
+
+    const cacheToStorage = (key: string, data: any) => {
+        try {
+            localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }));
+        } catch { /* storage full, silently fail */ }
+    };
+
+    const getFromCache = <T,>(key: string): T | null => {
+        try {
+            const raw = localStorage.getItem(key);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return parsed.data as T;
+        } catch { return null; }
+    };
+
+    // Prefetch ALL student-subject enrollments for all teacher's subjects
+    const prefetchAllStudentData = async (token: string, teacherId: string) => {
+        try {
+            // First get teacher's subjects (may already be cached by fetchTeacherSubjects)
+            const tsRes = await fetch(`/api/teacher-subjects?teacherId=${teacherId}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!tsRes.ok) return;
+            const tsData = await tsRes.json();
+            const assignments = tsData.assignments || [];
+
+            // Fetch enrollments for each subject
+            const allEnrollments: any[] = [];
+            for (const subject of assignments) {
+                try {
+                    const res = await fetch(`/api/student-subjects?subjectId=${subject.subjectId}`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        // Tag each enrollment with which subject it came from
+                        (data.enrollments || []).forEach((e: any) => {
+                            allEnrollments.push({ ...e, _fromSubjectId: subject.subjectId });
+                        });
+                    }
+                } catch { /* skip individual failures */ }
+            }
+
+            // Cache all enrollments
+            cacheToStorage(CACHE_KEYS.ENROLLMENTS, allEnrollments);
+        } catch (err) {
+            console.error('Error prefetching student data:', err);
+        }
+    };
+
+    const applyDepartments = (allDepts: Department[]) => {
+        setDepartments(allDepts);
+        setTeacherDepartmentIds(allDepts.map(d => d.id));
+        setPrimaryDeptType(allDepts[0]?.deptType || 'regular');
+    };
+
     const fetchTeacherDepartments = async (token: string, teacherId: string) => {
         try {
-            // Get departments the teacher is assigned to
             const res = await fetch(`/api/teachers`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -140,13 +209,10 @@ export default function AttendancePage() {
             }
             const data = await res.json();
 
-            // Find the current teacher in the list
             const teacher = data.teachers?.find((t: any) => t.id === teacherId);
             if (teacher) {
-                // Build departments array from primary + additional
                 const allDepts: Department[] = [];
 
-                // Add primary department if exists
                 if (teacher.department_id && teacher.department_name) {
                     allDepts.push({
                         id: teacher.department_id,
@@ -156,10 +222,8 @@ export default function AttendancePage() {
                     });
                 }
 
-                // Add additional departments
                 if (teacher.additional_departments && Array.isArray(teacher.additional_departments)) {
                     teacher.additional_departments.forEach((dept: any) => {
-                        // Avoid duplicates
                         if (!allDepts.find(d => d.id === dept.id)) {
                             allDepts.push({
                                 id: dept.id,
@@ -171,17 +235,23 @@ export default function AttendancePage() {
                     });
                 }
 
-                // Always populate departments state to allow stream checking
-                setDepartments(allDepts);
-
-                // Always store all department IDs for student filtering
-                setTeacherDepartmentIds(allDepts.map(d => d.id));
-                // Store primary dept type for batch year calculation
-                setPrimaryDeptType(allDepts[0]?.deptType || 'regular');
+                applyDepartments(allDepts);
+                cacheToStorage(CACHE_KEYS.DEPARTMENTS, allDepts);
             }
         } catch (err) {
             console.error('Error fetching departments:', err);
+            // Offline fallback: load from cache
+            const cached = getFromCache<Department[]>(CACHE_KEYS.DEPARTMENTS);
+            if (cached) applyDepartments(cached);
         }
+    };
+
+    const applySubjects = (assignments: Subject[]) => {
+        setSubjects(assignments);
+        const semesterSet = new Set<number>();
+        assignments.forEach((s: Subject) => s.subjectSemesters.forEach((sem: number) => semesterSet.add(sem)));
+        const semesters = Array.from(semesterSet).sort((a, b) => a - b);
+        setAvailableSemesters(semesters);
     };
 
     const fetchTeacherSubjects = async (token: string, teacherId: string) => {
@@ -195,16 +265,13 @@ export default function AttendancePage() {
             }
             const data = await res.json();
             const assignments = data.assignments || [];
-            setSubjects(assignments);
-
-            // Extract unique semesters from all assignments (each has semesters array)
-            const semesterSet = new Set<number>();
-            assignments.forEach((s: Subject) => s.subjectSemesters.forEach((sem: number) => semesterSet.add(sem)));
-            const semesters = Array.from(semesterSet).sort((a, b) => a - b);
-            setAvailableSemesters(semesters);
-
+            applySubjects(assignments);
+            cacheToStorage(CACHE_KEYS.SUBJECTS, assignments);
         } catch (err) {
             console.error('Error fetching subjects:', err);
+            // Offline fallback: load from cache
+            const cached = getFromCache<Subject[]>(CACHE_KEYS.SUBJECTS);
+            if (cached) applySubjects(cached);
         }
     };
 
@@ -218,10 +285,51 @@ export default function AttendancePage() {
                 return;
             }
             const data = await res.json();
-            setHolidays(data.holidays || []);
+            const holidayList = data.holidays || [];
+            setHolidays(holidayList);
+            cacheToStorage(CACHE_KEYS.HOLIDAYS, holidayList);
         } catch (err) {
             console.error('Error fetching holidays:', err);
+            // Offline fallback
+            const cached = getFromCache<Holiday[]>(CACHE_KEYS.HOLIDAYS);
+            if (cached) setHolidays(cached);
         }
+    };
+
+    // Fetch batch config (saved semester-to-batch mappings)
+    const fetchBatchConfig = async (token: string) => {
+        try {
+            const res = await fetch('/api/settings/batch-config', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setBatchConfig(data.mappings || {});
+            }
+        } catch (err) {
+            console.error('Error fetching batch config:', err);
+        }
+    };
+
+    // Helper: get batch label for a semester using saved config or fallback to date-calc
+    const getBatchLabel = (sem: number, deptType: string): string => {
+        // 1. Check saved config first
+        const savedMappings = batchConfig[deptType];
+        if (savedMappings && savedMappings[sem.toString()]) {
+            const batchStart = savedMappings[sem.toString()];
+            const duration = (deptType === 'vocational' || deptType === 'pg') ? 3 : 4;
+            const batchEnd = (batchStart + duration) % 100;
+            return `${batchStart}-${String(batchEnd).padStart(2, '0')}`;
+        }
+
+        // 2. Fallback to dynamic calculation
+        const now = new Date();
+        const academicStartYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+        const yearOffset = Math.floor((sem - 1) / 2);
+        const batchStart = academicStartYear - yearOffset;
+        const duration = (deptType === 'vocational' || deptType === 'pg') ? 3 : 4;
+        const batchEnd = (batchStart + duration) % 100;
+        return `${batchStart}-${String(batchEnd).padStart(2, '0')}`;
     };
 
     // Check if selected date is a holiday
@@ -299,18 +407,63 @@ export default function AttendancePage() {
     }, [selectedSubjectId, selectedDate, selectedDepartmentId, selectedSemester]);
 
 
+    // Shared function to filter enrollments into a student map
+    const filterEnrollmentsToStudents = (
+        enrollments: any[],
+        semesterSubjectIds: string[]
+    ): Map<string, Student> => {
+        const allStudentsMap = new Map<string, Student>();
+
+        enrollments.forEach((e: any) => {
+            // Only include enrollments from subjects in this semester
+            const enrollmentSubjectId = e._fromSubjectId || e.subjectId;
+            if (!semesterSubjectIds.includes(enrollmentSubjectId)) return;
+
+            const studentDeptId = e.studentDepartmentId;
+            const studentSemester = e.studentCurrentSemester;
+
+            // Filter by semester
+            if (selectedSemester && studentSemester !== parseInt(selectedSemester)) return;
+
+            // Filter by department
+            let matchesDepartment = false;
+            if (selectedDepartmentId) {
+                matchesDepartment = studentDeptId === selectedDepartmentId;
+            } else if (teacherDepartmentIds.length > 0) {
+                matchesDepartment = teacherDepartmentIds.includes(studentDeptId);
+            } else {
+                matchesDepartment = true;
+            }
+
+            if (matchesDepartment && !allStudentsMap.has(e.studentId)) {
+                allStudentsMap.set(e.studentId, {
+                    id: e.studentId,
+                    student_custom_id: e.studentCustomId,
+                    roll_number: e.studentRollNumber || e.studentId.slice(-4),
+                    first_name: e.studentName?.split(' ')[0] || 'Unknown',
+                    last_name: e.studentName?.split(' ').slice(1).join(' ') || '',
+                    attendance: undefined
+                });
+            }
+        });
+
+        return allStudentsMap;
+    };
+
     const fetchStudentsForSubject = async (subjectId: string) => {
         const token = localStorage.getItem('token');
         if (!token || !subjectId) return;
 
         setLoading(true);
+        const semesterSubjects = subjectsToUse.filter(s => s.subjectSemesters.includes(parseInt(selectedSemester)));
+        const semesterSubjectIds = semesterSubjects.map(s => s.subjectId);
+
+        let enrolledStudents: Student[] = [];
+        let usedCache = false;
+
         try {
-            // Get all subjects for the selected semester (not just one)
-            const semesterSubjects = subjectsToUse.filter(s => s.subjectSemesters.includes(parseInt(selectedSemester)));
-
-            // Fetch students from ALL subjects for this semester and merge them
+            // Try fetching from network
             const allStudentsMap = new Map<string, Student>();
-
             for (const subject of semesterSubjects) {
                 const res = await fetch(`/api/student-subjects?subjectId=${subject.subjectId}`, {
                     headers: { Authorization: `Bearer ${token}` },
@@ -320,32 +473,19 @@ export default function AttendancePage() {
                     return;
                 }
                 const data = await res.json();
-
                 (data.enrollments || []).forEach((e: any) => {
-                    // Only add if student's department matches the selected/teacher's department
-                    // AND student's current semester matches the selected semester
-                    // AND not already in the map (deduplicate by student ID)
+                    const tagged = { ...e, _fromSubjectId: subject.subjectId };
                     const studentDeptId = e.studentDepartmentId;
                     const studentSemester = e.studentCurrentSemester;
-
-                    // Filter by semester - only show students in the selected semester
-                    if (selectedSemester && studentSemester !== parseInt(selectedSemester)) {
-                        return;
-                    }
-
-                    // If specific department is selected, filter by that; otherwise filter by all teacher's departments
+                    if (selectedSemester && studentSemester !== parseInt(selectedSemester)) return;
                     let matchesDepartment = false;
                     if (selectedDepartmentId) {
-                        // Specific department selected - filter by that department only
                         matchesDepartment = studentDeptId === selectedDepartmentId;
                     } else if (teacherDepartmentIds.length > 0) {
-                        // No specific selection - filter by all teacher's departments
                         matchesDepartment = teacherDepartmentIds.includes(studentDeptId);
                     } else {
-                        // No department info (shouldn't happen) - allow all
                         matchesDepartment = true;
                     }
-
                     if (matchesDepartment && !allStudentsMap.has(e.studentId)) {
                         allStudentsMap.set(e.studentId, {
                             id: e.studentId,
@@ -358,10 +498,21 @@ export default function AttendancePage() {
                     }
                 });
             }
+            enrolledStudents = Array.from(allStudentsMap.values());
+        } catch (err) {
+            // OFFLINE FALLBACK: Use cached enrollment data
+            console.warn('Network failed, using cached student data');
+            usedCache = true;
+            const cachedEnrollments = getFromCache<any[]>(CACHE_KEYS.ENROLLMENTS);
+            if (cachedEnrollments) {
+                const studentMap = filterEnrollmentsToStudents(cachedEnrollments, semesterSubjectIds);
+                enrolledStudents = Array.from(studentMap.values());
+            }
+        }
 
-            const enrolledStudents = Array.from(allStudentsMap.values());
-
-            // Fetch existing attendance for this date and subject
+        // Fetch existing attendance (SW will serve from cache if offline)
+        let existingAttendance: any[] = [];
+        try {
             const attRes = await fetch(`/api/attendance?subjectId=${subjectId}&date=${selectedDate}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -370,67 +521,56 @@ export default function AttendancePage() {
                 return;
             }
             const attData = await attRes.json();
-            const existingAttendance = attData.records || [];
-
-            // NEW: Fetch current teacher's lecture number and total lectures for today
-            if (user) {
-                try {
-                    const lectureInfoRes = await fetch(
-                        `/api/attendance?subjectId=${subjectId}&date=${selectedDate}&detailed=true`,
-                        { headers: { Authorization: `Bearer ${token}` } }
-                    );
-                    if (lectureInfoRes.ok) {
-                        const lectureData = await lectureInfoRes.json();
-                        const records = lectureData.detailedRecords || [];
-
-                        // Find teacher's lecture number
-                        const teacherRecord = records.find((r: any) => r.teacher_id === user.id);
-                        if (teacherRecord) {
-                            setCurrentLectureNumber(teacherRecord.lecture_number);
-                        } else {
-                            setCurrentLectureNumber(null); // Not yet marked
-                        }
-
-                        // Count total unique lectures for today
-                        const uniqueLectures = new Set(records.map((r: any) => r.lecture_number));
-                        setTotalLecturesToday(uniqueLectures.size);
-                    }
-                } catch (err) {
-                    console.error('Error fetching lecture info:', err);
-                }
-            }
-
-            // FILTER: Only show attendance marked by THIS teacher (not other teachers)
-            // Filter existingAttendance to only include records from current teacher
-            const teacherAttendance = user ? existingAttendance.filter((r: any) =>
-                r.teacher_id === user.id
-            ) : existingAttendance;
-
-            // Merge existing attendance into students
-            const studentsWithAttendance = enrolledStudents.map((student: Student) => {
-                // API returns snake_case (student_id, status) from database
-                const record = teacherAttendance.find((r: any) =>
-                    (r.student_id === student.id) || (r.studentId === student.id)
-                );
-                return {
-                    ...student,
-                    attendance: record ? (record.status as 'present' | 'absent') : 'absent'
-                };
-            });
-
-            // Sort students by roll number
-            // Sort students by roll number (natural sort for correct numeric ordering)
-            studentsWithAttendance.sort((a, b) =>
-                String(a.roll_number || '').localeCompare(String(b.roll_number || ''), undefined, { numeric: true, sensitivity: 'base' })
-            );
-
-            setStudents(studentsWithAttendance);
-
-            // Fetch history for these students
-            fetchAttendanceHistory(studentsWithAttendance, subjectId);
+            existingAttendance = attData.records || [];
         } catch (err) {
-            console.error('Error fetching students:', err);
+            console.warn('Could not fetch attendance records (offline)');
         }
+
+        // Fetch lecture info (non-critical, skip gracefully if offline)
+        if (user) {
+            try {
+                const lectureInfoRes = await fetch(
+                    `/api/attendance?subjectId=${subjectId}&date=${selectedDate}&detailed=true`,
+                    { headers: { Authorization: `Bearer ${token}` } }
+                );
+                if (lectureInfoRes.ok) {
+                    const lectureData = await lectureInfoRes.json();
+                    const records = lectureData.detailedRecords || [];
+                    const teacherRecord = records.find((r: any) => r.teacher_id === user.id);
+                    setCurrentLectureNumber(teacherRecord ? teacherRecord.lecture_number : null);
+                    const uniqueLectures = new Set(records.map((r: any) => r.lecture_number));
+                    setTotalLecturesToday(uniqueLectures.size);
+                }
+            } catch (err) {
+                // Offline - skip lecture info
+            }
+        }
+
+        // Filter to this teacher's attendance only
+        const teacherAttendance = user ? existingAttendance.filter((r: any) =>
+            r.teacher_id === user.id
+        ) : existingAttendance;
+
+        // Merge attendance into students
+        const studentsWithAttendance = enrolledStudents.map((student: Student) => {
+            const record = teacherAttendance.find((r: any) =>
+                (r.student_id === student.id) || (r.studentId === student.id)
+            );
+            return {
+                ...student,
+                attendance: record ? (record.status as 'present' | 'absent') : 'absent'
+            };
+        });
+
+        // Sort by roll number
+        studentsWithAttendance.sort((a, b) =>
+            String(a.roll_number || '').localeCompare(String(b.roll_number || ''), undefined, { numeric: true, sensitivity: 'base' })
+        );
+
+        setStudents(studentsWithAttendance);
+
+        // Fetch history (non-critical, skip gracefully if offline)
+        fetchAttendanceHistory(studentsWithAttendance, subjectId);
         setLoading(false);
     };
 
@@ -440,23 +580,31 @@ export default function AttendancePage() {
         studentsRef.current = students;
     }, [students]);
 
-    // Fetch attendance history for a list of students
+    // Fetch attendance history for a list of students (with offline cache)
     const fetchAttendanceHistory = async (studentList: Student[], subjectId: string) => {
         const token = localStorage.getItem('token');
         if (!token || studentList.length === 0) return;
 
+        const historyCacheKey = `offline_history_${subjectId}`;
+
         try {
             const studentIds = studentList.map(s => s.id).join(',');
-            const res = await fetch(`/api/attendance/history?studentIds=${studentIds}&subjectId=${subjectId}`, {
+            const res = await fetch(`/api/attendance/history?studentIds=${studentIds}&subjectId=${subjectId}&currentDate=${selectedDate}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
             if (res.ok) {
                 const data = await res.json();
-                setAttendanceHistory(data.history || {});
+                const history = data.history || {};
+                setAttendanceHistory(history);
+                // Cache history for offline
+                cacheToStorage(historyCacheKey, history);
             }
         } catch (err) {
-            console.error('Error fetching history:', err);
+            console.warn('History fetch failed, using cache');
+            // Offline fallback
+            const cached = getFromCache<Record<string, { status: string; date: string }[]>>(historyCacheKey);
+            if (cached) setAttendanceHistory(cached);
         }
     };
 
@@ -502,7 +650,9 @@ export default function AttendancePage() {
                     return;
                 }
 
-                pendingChangesRef.current = false;
+                if (res.ok) {
+                    pendingChangesRef.current = false;
+                }
             } catch (err) {
                 console.error('Auto-save error:', err);
                 // Queue for offline sync
@@ -524,8 +674,9 @@ export default function AttendancePage() {
                         console.error('Failed to queue offline:', queueErr);
                     }
                 }
+            } finally {
+                setAutoSaving(false);
             }
-            setAutoSaving(false);
         }, 1500);
     }, [selectedSubjectId, selectedDate]);
 
@@ -635,8 +786,9 @@ export default function AttendancePage() {
             } catch (queueErr) {
                 setMessage('❌ Network error — could not save');
             }
+        } finally {
+            setSaving(false);
         }
-        setSaving(false);
     };
 
     // Cleanup timer on unmount
@@ -783,22 +935,11 @@ export default function AttendancePage() {
                                 >
                                     <option value="">Select Semester</option>
                                     {(departments.length > 1 && selectedDepartmentId ? filteredSemesters : availableSemesters).map(sem => {
-                                        // Calculate batch year label
-                                        // Determine dept type: use selected department or first/only department
                                         const activeDept = selectedDepartmentId
                                             ? departments.find(d => d.id === selectedDepartmentId)
                                             : departments[0] || null;
                                         const deptType = activeDept?.deptType || primaryDeptType;
-                                        // Current academic year start (e.g. 2025 from July 2025)
-                                        const now = new Date();
-                                        const academicStartYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
-                                        // Batch start year: semester 1-2 = current year, 3-4 = year-1, etc.
-                                        const yearOffset = Math.floor((sem - 1) / 2);
-                                        const batchStart = academicStartYear - yearOffset;
-                                        // Program duration: vocational/pg = 3yr, regular = 4yr (NEP)
-                                        const duration = (deptType === 'vocational' || deptType === 'pg') ? 3 : 4;
-                                        const batchEnd = (batchStart + duration) % 100; // last 2 digits
-                                        const batchLabel = `${batchStart}-${String(batchEnd).padStart(2, '0')}`;
+                                        const batchLabel = getBatchLabel(sem, deptType);
                                         return (
                                             <option key={sem} value={sem}>Sem {sem} ({batchLabel})</option>
                                         );
@@ -1030,13 +1171,7 @@ export default function AttendancePage() {
                                                 ? departments.find(d => d.id === selectedDepartmentId)
                                                 : departments[0] || null;
                                             const deptType = activeDept?.deptType || primaryDeptType;
-                                            const now = new Date();
-                                            const academicStartYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
-                                            const yearOffset = Math.floor((sem - 1) / 2);
-                                            const batchStart = academicStartYear - yearOffset;
-                                            const duration = (deptType === 'vocational' || deptType === 'pg') ? 3 : 4;
-                                            const batchEnd = (batchStart + duration) % 100;
-                                            const batchLabel = `${batchStart}-${String(batchEnd).padStart(2, '0')}`;
+                                            const batchLabel = getBatchLabel(sem, deptType);
                                             return (
                                                 <option key={sem} value={sem}>
                                                     Sem {sem} ({batchLabel})

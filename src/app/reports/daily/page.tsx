@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 import { Calendar, Users, UserCheck, UserX, ArrowLeft, Filter, Search, ChevronDown, CheckCircle, XCircle, AlertCircle, FileText, FileSpreadsheet, FileDown, ChevronRight, CalendarDays } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Navbar } from '@/components/ui/Navbar';
@@ -22,6 +22,7 @@ interface Department {
     id: string;
     name: string;
     code: string;
+    deptType?: string;
 }
 
 interface Subject {
@@ -55,6 +56,7 @@ export default function DailyReportPage() {
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
     const [selectedSemester, setSelectedSemester] = useState('');
     const [selectedSubjectId, setSelectedSubjectId] = useState('');
+    const [selectedStream, setSelectedStream] = useState('all');
     const [records, setRecords] = useState<AttendanceRecord[]>([]);
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -87,7 +89,7 @@ export default function DailyReportPage() {
         if (token && user) {
             fetchDailyReport(token);
         }
-    }, [selectedDate, selectedDepartmentId, selectedSemester, selectedSubjectId, user]);
+    }, [selectedDate, selectedDepartmentId, selectedSemester, selectedSubjectId, selectedStream, user]);
 
     // Fetch subjects when semester changes
     useEffect(() => {
@@ -124,20 +126,23 @@ export default function DailyReportPage() {
                     allDepts.push({
                         id: teacher.department_id,
                         name: teacher.department_name,
-                        code: teacher.department_code || ''
+                        code: teacher.department_code || '',
+                        deptType: teacher.department_dept_type || 'regular'
                     });
                 }
                 // Add additional departments
                 if (teacher.departments && Array.isArray(teacher.departments)) {
                     teacher.departments.forEach((dept: any) => {
                         if (!allDepts.find(d => d.id === dept.id)) {
-                            allDepts.push({ id: dept.id, name: dept.name, code: dept.code || '' });
+                            allDepts.push({ id: dept.id, name: dept.name, code: dept.code || '', deptType: dept.dept_type || 'regular' });
                         }
                     });
                 }
-                // Only set if more than 1 department
+                // Set departments (show filter if more than 1)
                 if (allDepts.length > 1) {
                     setDepartments(allDepts);
+                } else {
+                    setDepartments(allDepts); // Still store for stream detection
                 }
             }
         } catch (err) {
@@ -176,6 +181,9 @@ export default function DailyReportPage() {
             }
             if (selectedSubjectId) {
                 url += `&subjectId=${selectedSubjectId}`;
+            }
+            if (selectedStream && selectedStream !== 'all') {
+                url += `&stream=${selectedStream}`;
             }
 
             const res = await fetch(url, {
@@ -234,6 +242,9 @@ export default function DailyReportPage() {
             if (selectedSubjectId) {
                 url += `&subjectId=${selectedSubjectId}`;
             }
+            if (selectedStream && selectedStream !== 'all') {
+                url += `&stream=${selectedStream}`;
+            }
 
             const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -247,17 +258,26 @@ export default function DailyReportPage() {
             const data = await res.json();
             const detailedRecords = data.detailedRecords || [];
 
-            if (detailedRecords.length === 0) {
+            // Filter by stream if selected
+            let filteredRecords = detailedRecords;
+            if (selectedStream !== 'all') {
+                filteredRecords = detailedRecords.filter((r: any) => 
+                    r.studentCustomId && r.studentCustomId.toUpperCase().startsWith(selectedStream)
+                );
+            }
+
+            if (filteredRecords.length === 0) {
                 alert('No attendance records found for the selected date and filters.');
                 return;
             }
 
-            const headers = ['S.No', 'Student ID', 'Roll Number', 'Student Name', 'Subject Code', 'Subject Name', 'Lecture', 'Status'];
-            const rows = detailedRecords.map((r: any, index: number) => [
+            const headers = ['S.No', 'Student ID', 'Roll Number', 'Student Name', 'Department', 'Subject Code', 'Subject Name', 'Lecture', 'Status'];
+            const rows = filteredRecords.map((r: any, index: number) => [
                 (index + 1).toString(),
-                r.studentId,
+                r.studentCustomId || r.rollNumber,
                 r.rollNumber,
                 r.studentName,
+                r.departmentCode || '',
                 r.subjectCode,
                 r.subjectName,
                 `Lecture ${r.lectureNumber}`,
@@ -280,13 +300,15 @@ export default function DailyReportPage() {
                 link.click();
                 document.body.removeChild(link);
             } else if (format === 'excel') {
-                const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+                const headers = ['S.No', 'Student ID', 'Roll Number', 'Student Name', 'Department', 'Subject Code', 'Subject Name', 'Lecture', 'Status'];
+            const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
                 // Set column widths
                 worksheet['!cols'] = [
                     { wch: 5 },  // S.No
-                    { wch: 15 }, // Student ID
-                    { wch: 15 }, // Roll Number
+                    { wch: 18 }, // Student ID (custom)
+                    { wch: 12 }, // Roll Number
                     { wch: 25 }, // Student Name
+                    { wch: 10 }, // Department
                     { wch: 12 }, // Subject Code
                     { wch: 30 }, // Subject Name
                     { wch: 10 }, // Lecture
@@ -297,10 +319,10 @@ export default function DailyReportPage() {
                 XLSX.writeFile(workbook, `${filename}.xlsx`);
             } else if (format === 'pdf') {
                 // Group students by status for summary
-                const presentCount = detailedRecords.filter((r: any) => r.status === 'present').length;
-                const absentCount = detailedRecords.filter((r: any) => r.status === 'absent').length;
-                const lateCount = detailedRecords.filter((r: any) => r.status === 'late').length;
-                const totalEntries = detailedRecords.length;
+            const presentCount = filteredRecords.filter((r: any) => r.status === 'present').length;
+                const absentCount = filteredRecords.filter((r: any) => r.status === 'absent').length;
+                const lateCount = filteredRecords.filter((r: any) => r.status === 'late').length;
+                const totalEntries = filteredRecords.length;
                 const attendancePercentage = totalEntries > 0 ? Math.round((presentCount / totalEntries) * 100) : 0;
 
                 const printContent = `
@@ -354,6 +376,7 @@ export default function DailyReportPage() {
             <strong>Filters Applied:</strong> 
             Subject: ${getSelectedSubjectName()} | 
             Semester: ${selectedSemester || 'All'} | 
+            Stream: ${selectedStream === 'all' ? 'All' : selectedStream} | 
             Department: ${selectedDepartmentId ? departments.find(d => d.id === selectedDepartmentId)?.name || 'Selected' : 'All'}
         </div>
         <div class="summary-cards">
@@ -378,16 +401,16 @@ export default function DailyReportPage() {
                 <div class="summary-label">Attendance</div>
             </div>
         </div>
-        <div class="section-title">Student-wise Attendance Details (${detailedRecords.length} records)</div>
+        <div class="section-title">Student-wise Attendance Details (${filteredRecords.length} records)</div>
         <table>
             <thead>
                 <tr>${headers.map((h: string) => `<th>${h}</th>`).join('')}</tr>
             </thead>
             <tbody>
                 ${rows.map((row: string[]) => {
-                    const status = row[7].toLowerCase();
+                    const status = row[8].toLowerCase();
                     const statusClass = status === 'present' ? 'status-present' : status === 'absent' ? 'status-absent' : 'status-late';
-                    return `<tr>${row.map((cell: string, i: number) => i === 7 ? `<td><span class="${statusClass}">${cell}</span></td>` : `<td>${cell}</td>`).join('')}</tr>`;
+                    return `<tr>${row.map((cell: string, i: number) => i === 8 ? `<td><span class="${statusClass}">${cell}</span></td>` : `<td>${cell}</td>`).join('')}</tr>`;
                 }).join('')}
             </tbody>
         </table>
@@ -437,10 +460,10 @@ export default function DailyReportPage() {
                             <div className="flex items-center gap-2 mb-2">
                                 <span className="text-blue-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                             </div>
-                            <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-                                Daily Report <span className="inline-block animate-wave">📅</span>
+                            <h1 className="text-2xl font-bold mb-2 flex items-center gap-3">
+                                Daily Report <span className="inline-block animate-wave">📊</span>
                             </h1>
-                            <p className="text-blue-100 text-lg max-w-xl">
+                            <p className="text-blue-100 text-sm max-w-xl">
                                 View attendance records by date, analyze daily trends, and <span className="font-semibold text-white">generate insights</span>.
                             </p>
                         </div>
@@ -503,12 +526,12 @@ export default function DailyReportPage() {
                         {/* Total Card */}
                         <div className="group relative bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:border-blue-100 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
                             <div className="flex justify-between items-start mb-2">
-                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Total Students</p>
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Total Entries</p>
                                 <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
                                     <Users className="w-4 h-4" />
                                 </div>
                             </div>
-                            <h3 className="text-3xl font-black text-gray-900">{totals.students}</h3>
+                            <h3 className="text-2xl font-bold text-gray-900">{totals.students}</h3>
                         </div>
 
                         {/* Present Card */}
@@ -519,7 +542,7 @@ export default function DailyReportPage() {
                                     <UserCheck className="w-4 h-4" />
                                 </div>
                             </div>
-                            <h3 className="text-3xl font-black text-emerald-600">{totals.present}</h3>
+                            <h3 className="text-2xl font-bold text-emerald-600">{totals.present}</h3>
                         </div>
 
                         {/* Absent Card */}
@@ -530,7 +553,7 @@ export default function DailyReportPage() {
                                     <UserX className="w-4 h-4" />
                                 </div>
                             </div>
-                            <h3 className="text-3xl font-black text-rose-600">{totals.absent}</h3>
+                            <h3 className="text-2xl font-bold text-rose-600">{totals.absent}</h3>
                         </div>
 
                         {/* Average Card */}
@@ -541,7 +564,7 @@ export default function DailyReportPage() {
                                     <CheckCircle className="w-4 h-4" />
                                 </div>
                             </div>
-                            <h3 className={`text-3xl font-black ${avgPercentage >= 75 ? 'text-emerald-600' : 'text-orange-600'}`}>{avgPercentage}%</h3>
+                            <h3 className={`text-2xl font-bold ${avgPercentage >= 75 ? 'text-emerald-600' : 'text-orange-600'}`}>{avgPercentage}%</h3>
                         </div>
                     </div>
                 </div>
@@ -552,7 +575,7 @@ export default function DailyReportPage() {
                         <Filter className="w-4 h-4 text-gray-500" />
                         <h3 className="text-sm font-bold text-gray-700">Advanced Filters</h3>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end">
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end">
                         {/* Department Filter */}
                         {(user?.role === 'super_admin' || departments.length > 1) && (
                             <div className="w-full">
@@ -560,7 +583,7 @@ export default function DailyReportPage() {
                                 <div className="relative">
                                     <select
                                         value={selectedDepartmentId}
-                                        onChange={(e) => setSelectedDepartmentId(e.target.value)}
+                                        onChange={(e) => { setSelectedDepartmentId(e.target.value); setSelectedStream('all'); }}
                                         className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-blue-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium"
                                     >
                                         <option value="">All Departments</option>
@@ -591,8 +614,34 @@ export default function DailyReportPage() {
                             </div>
                         </div>
 
+                        {/* Stream Filter (only for IT department) */}
+                        {(() => {
+                            const activeDept = selectedDepartmentId 
+                                ? departments.find(d => d.id === selectedDepartmentId) 
+                                : departments.length === 1 ? departments[0] : null;
+                            const showStream = activeDept && activeDept.code?.toUpperCase() === 'IT';
+                            if (!showStream) return null;
+                            return (
+                                <div className="w-full">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Stream</label>
+                                    <div className="relative">
+                                        <select
+                                            value={selectedStream}
+                                            onChange={(e) => setSelectedStream(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-blue-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium"
+                                        >
+                                            <option value="all">All Streams</option>
+                                            <option value="BCA">BCA</option>
+                                            <option value="BSCIT">BSc IT</option>
+                                        </select>
+                                        <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
                         {/* Subject Filter */}
-                        <div className="w-full md:col-span-2 lg:col-span-1">
+                        <div className="w-full">
                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Subject</label>
                             <div className="relative">
                                 <select
@@ -620,6 +669,7 @@ export default function DailyReportPage() {
                                     setSelectedSemester('');
                                     setSelectedDepartmentId('');
                                     setSelectedSubjectId('');
+                                    setSelectedStream('all');
                                 }}
                             >
                                 Reset Filters
@@ -631,8 +681,8 @@ export default function DailyReportPage() {
                 <div className="w-full">
                     {/* Report Data */}
                     <div className="lg:col-span-3">
-                        <Card className="border-0 shadow-sm border-gray-100 bg-white overflow-hidden">
-                            <CardContent className="p-0">
+                        <div className="shadow-sm border border-gray-100 bg-white overflow-hidden rounded-2xl">
+                            <div className="p-0">
                                 {loading ? (
                                     <div className="p-12 text-center">
                                         <div className="animate-spin w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full mx-auto mb-4"></div>
@@ -729,8 +779,8 @@ export default function DailyReportPage() {
                                         </div>
                                     </>
                                 )}
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </main>

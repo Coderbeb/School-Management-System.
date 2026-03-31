@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Users, Calendar, TrendingUp, BookOpen, Clock, ChevronRight } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
@@ -155,10 +154,10 @@ export default function MyPerformancePage() {
                         <div className="flex items-center gap-2 mb-2">
                             <span className="text-indigo-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                         </div>
-                        <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                        <h1 className="text-2xl font-bold mb-2 flex items-center gap-3">
                             My Performance <span className="inline-block animate-bounce">📈</span>
                         </h1>
-                        <p className="text-indigo-100 text-lg max-w-xl">
+                        <p className="text-indigo-100 text-sm max-w-xl">
                             Track your teaching statistics, attendance trends, and <span className="font-semibold text-white">subject-wise performance</span>.
                         </p>
                     </div>
@@ -186,72 +185,72 @@ export default function MyPerformancePage() {
 
                         {/* Summary Stats */}
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
-                                <CardContent className="p-5 md:p-6 relative">
+                            <div className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow rounded-xl">
+                                <div className="p-5">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Total Sessions</p>
-                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.summary.totalSessions}</p>
+                                            <p className="text-gray-500 text-xs uppercase tracking-wide font-bold">Total Sessions</p>
+                                            <p className="text-gray-900 text-2xl font-bold mt-1">{data.summary.totalSessions}</p>
                                         </div>
-                                        <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
-                                            <Calendar className="w-5 h-5 md:w-6 md:h-6" />
+                                        <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                                            <Calendar className="w-5 h-5" />
                                         </div>
                                     </div>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
 
-                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
-                                <CardContent className="p-5 md:p-6 relative">
+                            <div className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow rounded-xl">
+                                <div className="p-5">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Students</p>
-                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.summary.totalStudents}</p>
+                                            <p className="text-gray-500 text-xs uppercase tracking-wide font-bold">Students</p>
+                                            <p className="text-gray-900 text-2xl font-bold mt-1">{data.summary.totalStudents}</p>
                                         </div>
-                                        <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
-                                            <Users className="w-5 h-5 md:w-6 md:h-6" />
+                                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                                            <Users className="w-5 h-5" />
                                         </div>
                                     </div>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
 
-                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
-                                <CardContent className="p-5 md:p-6 relative">
+                            <div className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow rounded-xl">
+                                <div className="p-5">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Avg Attendance</p>
-                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.summary.averageAttendance}%</p>
+                                            <p className="text-gray-500 text-xs uppercase tracking-wide font-bold">Avg Attendance</p>
+                                            <p className="text-gray-900 text-2xl font-bold mt-1">{data.summary.averageAttendance}%</p>
                                         </div>
-                                        <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl">
-                                            <TrendingUp className="w-5 h-5 md:w-6 md:h-6" />
+                                        <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
+                                            <TrendingUp className="w-5 h-5" />
                                         </div>
                                     </div>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
 
-                            <Card className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow">
-                                <CardContent className="p-5 md:p-6 relative">
+                            <div className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow rounded-xl">
+                                <div className="p-5">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-gray-500 text-xs md:text-sm uppercase tracking-wide font-medium">Subjects</p>
-                                            <p className="text-gray-900 text-3xl md:text-4xl font-bold mt-2">{data.subjects.length}</p>
+                                            <p className="text-gray-500 text-xs uppercase tracking-wide font-bold">Subjects</p>
+                                            <p className="text-gray-900 text-2xl font-bold mt-1">{data.subjects.length}</p>
                                         </div>
-                                        <div className="p-2.5 bg-orange-50 text-orange-600 rounded-xl">
-                                            <BookOpen className="w-5 h-5 md:w-6 md:h-6" />
+                                        <div className="p-2 bg-orange-50 text-orange-600 rounded-lg">
+                                            <BookOpen className="w-5 h-5" />
                                         </div>
                                     </div>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Subject-wise Performance */}
-                        <Card className="border-0 shadow-md bg-white">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
+                        <div className="shadow-md bg-white rounded-2xl">
+                            <div className="p-5 border-b border-gray-100">
+                                <h3 className="font-semibold text-base flex items-center gap-2">
                                     <BookOpen className="w-5 h-5" />
                                     Subject-wise Performance
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
+                                </h3>
+                            </div>
+                            <div className="p-5">
                                 {data.subjects.length === 0 ? (
                                     <p className="text-gray-500 text-center py-4">No subjects assigned yet.</p>
                                 ) : (
@@ -281,18 +280,18 @@ export default function MyPerformancePage() {
                                         ))}
                                     </div>
                                 )}
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
 
                         {/* Monthly Trend */}
-                        <Card className="border-0 shadow-md bg-white">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
+                        <div className="shadow-md bg-white rounded-2xl">
+                            <div className="p-5 border-b border-gray-100">
+                                <h3 className="font-semibold text-base flex items-center gap-2">
                                     <Clock className="w-5 h-5" />
                                     Monthly Trend (Last 6 Months)
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
+                                </h3>
+                            </div>
+                            <div className="p-5">
                                 {data.monthlyTrend.length === 0 ? (
                                     <p className="text-gray-500 text-center py-4">No attendance data recorded yet.</p>
                                 ) : (
@@ -310,21 +309,21 @@ export default function MyPerformancePage() {
                                         ))}
                                     </div>
                                 )}
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
 
                         {/* Quick Tips - Only show if no data */}
                         {data.summary.totalSessions === 0 && (
-                            <Card className="bg-blue-50 border-blue-200">
-                                <CardContent className="p-4">
+                            <div className="bg-blue-50 border border-blue-200 rounded-xl">
+                                <div className="p-4">
                                     <h3 className="font-semibold text-blue-900 mb-2">💡 Getting Started</h3>
                                     <ul className="text-sm text-blue-800 space-y-1">
                                         <li>• Go to Attendance section to mark your first class</li>
                                         <li>• Your performance stats will appear here after marking attendance</li>
                                         <li>• Track your monthly progress and subject-wise performance</li>
                                     </ul>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
                         )}
                     </main>
                 )}
