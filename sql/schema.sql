@@ -133,3 +133,10 @@ CREATE TABLE IF NOT EXISTS user_departments (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, department_id)
 );
+
+-- Indexes for performance (from multi-teacher migration)
+CREATE INDEX IF NOT EXISTS idx_attendance_teacher_date 
+ON attendance_records(teacher_id, date);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_subject_student_date 
+ON attendance_records(subject_id, student_id, date);
