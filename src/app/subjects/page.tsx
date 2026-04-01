@@ -28,6 +28,7 @@ import { PageSkeleton } from '@/components/ui/PageSkeleton';
 interface Subject {
     id: string;
     code: string;
+    paperCode?: string;
     name: string;
     semesters: number[];
     degreeType: string;
@@ -36,6 +37,7 @@ interface Subject {
 
 interface GroupedSubject {
     code: string;
+    paperCode?: string;
     name: string;
     degreeTypes: string[];
     credits: number;
@@ -70,7 +72,7 @@ export default function SubjectsPage() {
 
     // Form data - with deptType and degreeType for degree selection
     const [formData, setFormData] = useState({
-        code: '', name: '', credits: '3', deptType: 'regular', degreeType: 'ba'
+        code: '', paperCode: '', name: '', credits: '3', deptType: 'regular', degreeType: 'ba'
     });
     const [selectedSemesters, setSelectedSemesters] = useState<number[]>([1]);
     const [selectedDegreeTypes, setSelectedDegreeTypes] = useState<string[]>(['it']); // For multi-select degree types (vocational)
@@ -169,6 +171,7 @@ export default function SubjectsPage() {
             } else {
                 groups.set(key, {
                     code: subject.code,
+                    paperCode: subject.paperCode,
                     name: subject.name,
                     degreeTypes: [subject.degreeType],
                     credits: subject.credits,
@@ -189,7 +192,8 @@ export default function SubjectsPage() {
         return groupedSubjects.filter(group => {
             const matchesSearch =
                 group.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                group.code.toLowerCase().includes(searchTerm.toLowerCase());
+                group.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (group.paperCode && group.paperCode.toLowerCase().includes(searchTerm.toLowerCase()));
             // Check if any of the group's degree types match the filter
             const matchesDegreeType = !filterDegreeType || group.degreeTypes.includes(filterDegreeType);
             const matchesSem = !filterSemester || group.semesters.includes(parseInt(filterSemester));
@@ -210,6 +214,7 @@ export default function SubjectsPage() {
 
         setFormData({
             code: group.code,
+            paperCode: group.paperCode || '',
             name: group.name,
             credits: group.credits.toString(),
             deptType: getDeptTypeFromDegreeType(primaryDegreeType),
@@ -254,7 +259,7 @@ export default function SubjectsPage() {
     const resetForm = () => {
         const defaultDeptType = hodDeptInfo?.deptType || 'regular';
         const defaultDegreeType = hodDeptInfo?.degreeType || getDefaultDegreeType(defaultDeptType);
-        setFormData({ code: '', name: '', credits: '3', deptType: defaultDeptType, degreeType: defaultDegreeType });
+        setFormData({ code: '', paperCode: '', name: '', credits: '3', deptType: defaultDeptType, degreeType: defaultDegreeType });
         setSelectedSemesters([1]);
         setSelectedDegreeTypes([defaultDegreeType]);
         setEditingGroup(null);
@@ -323,6 +328,7 @@ export default function SubjectsPage() {
                             oldDegreeType: dt,
                             newDegreeType: dt,
                             code: formData.code,
+                            paperCode: formData.paperCode,
                             name: formData.name,
                             credits: formData.credits,
                             semesters: selectedSemesters
@@ -348,6 +354,7 @@ export default function SubjectsPage() {
                         },
                         body: JSON.stringify({
                             code: formData.code,
+                            paperCode: formData.paperCode,
                             name: formData.name,
                             credits: formData.credits,
                             degreeTypes: addedTypes,
@@ -371,6 +378,7 @@ export default function SubjectsPage() {
                     },
                     body: JSON.stringify({
                         code: formData.code,
+                        paperCode: formData.paperCode,
                         name: formData.name,
                         credits: formData.credits,
                         degreeTypes: degreeTypesToSend,
@@ -428,6 +436,7 @@ export default function SubjectsPage() {
     const normalizeData = (data: any[]) => {
         const keyMap: { [key: string]: string } = {
             'code': 'code', 'subject code': 'code', 'subject_code': 'code', 'code*': 'code', 'subjectcode': 'code',
+            'paper code': 'paper_code', 'paper_code': 'paper_code', 'papercode': 'paper_code',
             'name': 'name', 'subject name': 'name', 'subject_name': 'name', 'name*': 'name', 'subjectname': 'name', 'title': 'name',
             'degree type': 'degree_type', 'degree_type': 'degree_type', 'degreetype': 'degree_type', 'degree_type*': 'degree_type', 'degree': 'degree_type', 'type': 'degree_type',
             'semesters': 'semesters', 'semester': 'semesters', 'sem': 'semesters', 'semesters*': 'semesters',
@@ -497,14 +506,14 @@ export default function SubjectsPage() {
     };
 
     const downloadTemplate = () => {
-        const headers = ['code*', 'name*', 'degree_type*', 'semesters', 'credits'];
+        const headers = ['code*', 'paper_code', 'name*', 'degree_type*', 'semesters', 'credits'];
         const dummyData = [
-            ['ENG101', 'English Literature', 'ba', '1,2,3,4,5', '4'],
-            ['MATH101', 'Mathematics', 'bsc', '1,2,3', '4'],
-            ['ACC101', 'Accountancy', 'bcom', '1,2,3,4,5,6', '3'],
-            ['PROG101', 'Programming in C', 'it,bba', '1,2', '4'],
-            ['EVS101', 'Environmental Studies', 'ba,bsc,bcom', '1', '2'],
-            ['MGT101', 'Management Principles', 'bba', '1,2,3', '3']
+            ['ENG101', '', 'English Literature', 'ba', '1,2,3,4,5', '4'],
+            ['MATH101', 'PC-MATH-101', 'Mathematics', 'bsc', '1,2,3', '4'],
+            ['ACC101', '', 'Accountancy', 'bcom', '1,2,3,4,5,6', '3'],
+            ['PROG101', 'BCA-PROG', 'Programming in C', 'it,bba', '1,2', '4'],
+            ['EVS101', '', 'Environmental Studies', 'ba,bsc,bcom', '1', '2'],
+            ['MGT101', '', 'Management Principles', 'bba', '1,2,3', '3']
         ];
 
         const csvContent = [
@@ -715,6 +724,7 @@ export default function SubjectsPage() {
                                     <tr>
                                         <th className="px-4 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">S.No.</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject Info</th>
+                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Paper Code</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Degree</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Semesters</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Credits</th>
@@ -735,6 +745,9 @@ export default function SubjectsPage() {
                                                         <div className="text-xs text-gray-500 font-mono mt-0.5">{group.code}</div>
                                                     </div>
                                                 </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-600 font-mono">
+                                                {group.paperCode || '-'}
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-wrap gap-1">
@@ -892,15 +905,24 @@ export default function SubjectsPage() {
                         </CardHeader>
                         <CardContent>
                             <form onSubmit={handleSubmit} className="space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-3 gap-4">
                                     <div>
-                                        <Label htmlFor="code">Code *</Label>
+                                        <Label htmlFor="code">Subject Code *</Label>
                                         <Input
                                             id="code"
                                             value={formData.code}
                                             onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                                            placeholder="e.g. CS101"
+                                            placeholder="Unique (e.g. CS101)"
                                             required
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="paperCode">Paper Code</Label>
+                                        <Input
+                                            id="paperCode"
+                                            value={formData.paperCode}
+                                            onChange={(e) => setFormData({ ...formData, paperCode: e.target.value })}
+                                            placeholder="Optional"
                                         />
                                     </div>
                                     <div>

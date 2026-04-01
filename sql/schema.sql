@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS students (
 CREATE TABLE IF NOT EXISTS subjects (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     code VARCHAR(20) NOT NULL,
+    paper_code VARCHAR(20),
     name VARCHAR(200) NOT NULL,
     degree_type VARCHAR(20) NOT NULL CHECK (degree_type IN ('ba', 'bsc', 'bcom', 'it', 'bba', 'mcom')),
     credits INTEGER NOT NULL DEFAULT 3,
@@ -134,9 +135,31 @@ CREATE TABLE IF NOT EXISTS user_departments (
     UNIQUE(user_id, department_id)
 );
 
--- Indexes for performance (from multi-teacher migration)
-CREATE INDEX IF NOT EXISTS idx_attendance_teacher_date 
-ON attendance_records(teacher_id, date);
+-- Application Settings
+CREATE TABLE IF NOT EXISTS application_settings (
+    key VARCHAR(100) PRIMARY KEY,
+    value JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-CREATE INDEX IF NOT EXISTS idx_attendance_subject_student_date 
-ON attendance_records(subject_id, student_id, date);
+-- ============================================================
+-- Performance Indexes
+-- ============================================================
+
+-- Students table
+CREATE INDEX IF NOT EXISTS idx_students_department_id ON students(department_id);
+CREATE INDEX IF NOT EXISTS idx_students_current_semester ON students(current_semester);
+CREATE INDEX IF NOT EXISTS idx_students_roll_number ON students(roll_number);
+
+-- Student-subjects table
+CREATE INDEX IF NOT EXISTS idx_student_subjects_subject_id ON student_subjects(subject_id);
+
+-- Attendance records table
+CREATE INDEX IF NOT EXISTS idx_attendance_teacher_date ON attendance_records(teacher_id, date);
+CREATE INDEX IF NOT EXISTS idx_attendance_subject_date ON attendance_records(subject_id, date);
+CREATE INDEX IF NOT EXISTS idx_attendance_student_id ON attendance_records(student_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_subject_student_date ON attendance_records(subject_id, student_id, date);
+
+-- Teacher-subjects table
+CREATE INDEX IF NOT EXISTS idx_teacher_subjects_teacher_id ON teacher_subjects(teacher_id);
+CREATE INDEX IF NOT EXISTS idx_teacher_subjects_subject_id ON teacher_subjects(subject_id);

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Menu, GraduationCap, ArrowLeft, LogOut, Lock } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
-import { ChangePasswordModal } from './ChangePasswordModal';
+import { ProfileModal } from './ProfileModal';
 import { getInitials } from '@/lib/utils';
 
 interface User {
@@ -21,7 +21,7 @@ interface NavbarProps {
 export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: NavbarProps) {
     const router = useRouter();
     const pathname = usePathname();
-    const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [showProfileModal, setShowProfileModal] = useState(false);
 
     return (
         <>
@@ -59,7 +59,7 @@ export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: Navb
                         {user && (
                             <div 
                                 className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-1.5 pr-2 rounded-full transition-colors"
-                                onClick={onMenuClick}
+                                onClick={() => setShowProfileModal(true)}
                             >
                                 <div className="hidden sm:flex flex-col items-end mr-1">
                                     <span className="text-sm font-bold text-gray-900 leading-none">
@@ -79,12 +79,16 @@ export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: Navb
                     </div>
                 </div>
 
-            </header >
+            </header>
 
-            <ChangePasswordModal
-                isOpen={showPasswordModal}
-                onClose={() => setShowPasswordModal(false)}
-            />
+            {user && (
+                <ProfileModal
+                    isOpen={showProfileModal}
+                    onClose={() => setShowProfileModal(false)}
+                    user={user as any}
+                    onLogout={onLogout}
+                />
+            )}
         </>
     );
 }

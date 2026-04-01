@@ -55,6 +55,7 @@ interface StudentDetail {
         id: string;
         name: string;
         code: string;
+        paperCode?: string | null;
         totalClasses: number;
         attended: number;
         attendance: number;
@@ -153,13 +154,34 @@ function StudentReportContent() {
         }
     }, [selectedDepartmentId, selectedSemester, user]);
 
+    const getCachedDepartments = () => {
+        try {
+            const lCache = localStorage.getItem('offline_departments');
+            if (lCache) {
+                const parsed = JSON.parse(lCache);
+                if (parsed.data && Array.isArray(parsed.data)) return parsed.data;
+            }
+            const sCache = sessionStorage.getItem('cache_departments');
+            if (sCache) {
+                const parsed = JSON.parse(sCache);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch { /* ignore */ }
+        return null;
+    };
+
     const fetchDepartments = async (token: string) => {
+        const cached = getCachedDepartments();
+        if (cached && cached.length > 0) setDepartments(cached);
+
         try {
             const res = await fetch('/api/departments', {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
-            setDepartments(data.departments || []);
+            const depts = data.departments || [];
+            setDepartments(depts);
+            try { sessionStorage.setItem('cache_departments', JSON.stringify(depts)); } catch {}
         } catch (err) {
             console.error('Error fetching departments:', err);
         }
@@ -183,29 +205,23 @@ function StudentReportContent() {
 
     // Fetch departments for teachers (from their profile + multi-department assignments)
     const fetchTeacherDepartments = async (token: string, teacherId: string) => {
+        const cached = getCachedDepartments();
+        if (cached && cached.length > 0) setDepartments(cached);
+
         try {
-            const res = await fetch('/api/teachers', {
+            const res = await fetch('/api/me/departments', {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
-            const teacher = data.teachers?.find((t: any) => t.id === teacherId);
-            if (teacher) {
-                const allDepts: Department[] = [];
-                if (teacher.department_id && teacher.department_name) {
-                    allDepts.push({
-                        id: teacher.department_id,
-                        name: teacher.department_name,
-                        code: teacher.department_code || ''
-                    });
-                }
-                if (teacher.departments && Array.isArray(teacher.departments)) {
-                    teacher.departments.forEach((dept: any) => {
-                        if (!allDepts.find(d => d.id === dept.id)) {
-                            allDepts.push({ id: dept.id, name: dept.name, code: dept.code || '' });
-                        }
-                    });
-                }
-                setDepartments(allDepts);
+            const depts = data.departments || [];
+            if (depts.length > 0) {
+                setDepartments(depts);
+                try {
+                    localStorage.setItem('offline_departments', JSON.stringify({
+                        timestamp: Date.now(),
+                        data: depts
+                    }));
+                } catch { /* ignore */ }
             }
         } catch (err) {
             console.error('Error fetching teacher departments:', err);
@@ -633,7 +649,7 @@ function StudentReportContent() {
                     ${subjects.map(sub => `
                         <tr>
                             <td style="font-weight: 600;">${sub.name}</td>
-                            <td style="color: var(--text-sub); font-size: 11px;">${sub.code}</td>
+                            <td style="color: var(--text-sub); font-size: 11px;">${sub.paperCode || sub.code}</td>
                             <td class="cell-center">${sub.totalClasses}</td>
                             <td class="cell-center">${sub.attended}</td>
                             <td class="cell-center">
@@ -906,9 +922,9 @@ function StudentReportContent() {
                             <Filter className="w-4 h-4 text-purple-500" />
                             <h3 className="text-sm font-bold text-gray-700">Search & Filters</h3>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 items-end">
                             {/* Search */}
-                            <div className="w-full">
+                            <div className="w-full col-span-2 lg:col-span-1">
                                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Search Student</label>
                                 <div className="relative">
                                     <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
@@ -1341,7 +1357,7 @@ function StudentReportContent() {
                                                             <tr key={sub.id} className="bg-white hover:bg-gray-50/50">
                                                                 <td className="px-4 py-3">
                                                                     <div className="font-medium text-gray-900">{sub.name}</div>
-                                                                    <div className="text-xs text-gray-500 font-mono">{sub.code}</div>
+                                                                    <div className="text-xs text-gray-500 font-mono">{sub.paperCode || sub.code}</div>
                                                                 </td>
                                                                 <td className="px-4 py-3 text-center text-gray-600">{sub.totalClasses}</td>
                                                                 <td className="px-4 py-3 text-center text-gray-600">{sub.attended}</td>

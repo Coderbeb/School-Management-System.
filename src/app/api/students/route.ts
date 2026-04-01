@@ -30,7 +30,10 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
         }
 
-        let queryText = `SELECT s.*, d.name as department_name, d.code as department_code 
+        let queryText = `SELECT s.id, s.roll_number, s.first_name, s.last_name, s.email,
+                 s.current_semester, s.department_id, s.student_id, s.batch_year,
+                 s.smart_card_id, s.created_at, s.updated_at,
+                 d.name as department_name, d.code as department_code 
              FROM students s 
              LEFT JOIN departments d ON s.department_id = d.id`;
         const params: string[] = [];

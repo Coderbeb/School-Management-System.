@@ -22,6 +22,7 @@ interface SubjectData {
     subject_id: string;
     subject_name: string;
     subject_code: string;
+    subject_paper_code: string | null;
     semester: string;
     total_records: string;
     present_count: string;
@@ -53,6 +54,7 @@ export async function GET(request: NextRequest) {
         const month = searchParams.get('month') || getISTMonthStr();
         const departmentId = searchParams.get('departmentId');
         const semester = searchParams.get('semester');
+        const stream = searchParams.get('stream');
         const [year, monthNum] = month.split('-');
 
         // Build role-based filter
@@ -81,6 +83,14 @@ export async function GET(request: NextRequest) {
                 SELECT id FROM students WHERE current_semester = $${params.length + 1}
             )`);
             params.push(parseInt(semester));
+        }
+
+        // Stream filter
+        if (stream && stream !== 'all') {
+            filters.push(`ar.student_id IN (
+                SELECT id FROM students WHERE UPPER(student_id) LIKE $${params.length + 1}
+            )`);
+            params.push(`${stream.toUpperCase()}%`);
         }
 
         const filterClause = filters.length > 0 ? 'AND ' + filters.join(' AND ') : '';
@@ -123,6 +133,7 @@ export async function GET(request: NextRequest) {
                 sub.id as subject_id,
                 sub.name as subject_name,
                 sub.code as subject_code,
+                sub.paper_code as subject_paper_code,
                 COALESCE(
                     (SELECT string_agg(ss.semester::text, ', ' ORDER BY ss.semester)
                      FROM subject_semesters ss WHERE ss.subject_id = sub.id),
@@ -136,7 +147,7 @@ export async function GET(request: NextRequest) {
             WHERE EXTRACT(YEAR FROM ar.date) = $1 
               AND EXTRACT(MONTH FROM ar.date) = $2
               ${filterClause}
-            GROUP BY sub.id, sub.name, sub.code
+            GROUP BY sub.id, sub.name, sub.code, sub.paper_code
             ORDER BY sub.name`,
             params
         );
@@ -192,6 +203,7 @@ export async function GET(request: NextRequest) {
                     id: s.subject_id,
                     name: s.subject_name,
                     code: s.subject_code,
+                    paperCode: s.subject_paper_code || null,
                     semester: s.semester,
                     totalRecords: total,
                     present,

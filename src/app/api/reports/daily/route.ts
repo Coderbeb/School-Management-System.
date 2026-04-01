@@ -18,6 +18,7 @@ interface DetailedRecord {
     last_name: string;
     department_code: string;
     subject_code: string;
+    subject_paper_code: string | null;
     subject_name: string;
     lecture_number: number;
     status: string;
@@ -146,6 +147,7 @@ export async function GET(request: NextRequest) {
                     s.last_name,
                     d.code as department_code,
                     sub.code as subject_code,
+                    sub.paper_code as subject_paper_code,
                     sub.name as subject_name,
                     ar.lecture_number,
                     ar.status
@@ -167,6 +169,7 @@ export async function GET(request: NextRequest) {
                 studentName: `${d.first_name} ${d.last_name}`,
                 departmentCode: d.department_code || '',
                 subjectCode: d.subject_code,
+                subjectPaperCode: d.subject_paper_code || null,
                 subjectName: d.subject_name,
                 lectureNumber: d.lecture_number,
                 status: d.status

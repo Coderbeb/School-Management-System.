@@ -46,7 +46,7 @@ interface Teacher {
     department_name?: string;
     department_code?: string;
     departments?: DepartmentInfo[];
-    subjects?: { assignmentId: string; subjectId: string; code: string; name: string; semesters: number[]; }[];
+    subjects?: { assignmentId: string; subjectId: string; code: string; paperCode?: string | null; name: string; semesters: number[]; }[];
 }
 
 interface Department {
@@ -59,6 +59,7 @@ interface Department {
 interface Subject {
     id: string;
     code: string;
+    paperCode?: string | null;
     name: string;
     degreeType: string;
     semesters: number[];
@@ -66,6 +67,7 @@ interface Subject {
 
 interface GroupedSubject {
     code: string;
+    paperCode?: string | null;
     name: string;
     degreeType: string;
     semesters: number[];
@@ -129,6 +131,7 @@ export default function TeachersPage() {
             } else {
                 groups.set(key, {
                     code: subject.code,
+                    paperCode: subject.paperCode || null,
                     name: subject.name,
                     degreeType: subject.degreeType,
                     semesters: [...subject.semesters]
@@ -1126,7 +1129,7 @@ export default function TeachersPage() {
                                                         />
                                                         <div>
                                                             <div className="text-sm font-medium text-gray-900">{group.name}</div>
-                                                            <div className="text-xs text-gray-500">{group.code} • Sem {group.semesters.join(', ')}</div>
+                                                            <div className="text-xs text-gray-500">{group.paperCode || group.code} • Sem {group.semesters.join(', ')}</div>
                                                         </div>
                                                     </div>
                                                 </label>

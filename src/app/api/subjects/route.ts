@@ -7,6 +7,7 @@ interface SubjectRow {
     code: string;
     name: string;
     degree_type: string;
+    paper_code: string | null;
     credits: number;
     created_at: string;
     semesters: number[] | null;
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
         const { role, departmentId } = payload;
 
         let queryStr = `
-            SELECT s.id, s.code, s.name, s.degree_type, s.credits, s.created_at,
+            SELECT s.id, s.code, s.paper_code, s.name, s.degree_type, s.credits, s.created_at,
                    COALESCE(
                        (SELECT array_agg(ss.semester ORDER BY ss.semester)
                         FROM subject_semesters ss WHERE ss.subject_id = s.id),
@@ -95,6 +96,7 @@ export async function GET(request: NextRequest) {
             subjects: subjects.map(s => ({
                 id: s.id,
                 code: s.code,
+                paperCode: s.paper_code || '',
                 name: s.name,
                 degreeType: s.degree_type,
                 semesters: s.semesters || [],
@@ -128,6 +130,7 @@ export async function POST(request: NextRequest) {
 
         const body = await request.json();
         const code = body.code?.trim();
+        const paperCode = body.paperCode?.trim() || null;
         const name = body.name?.trim();
         const degreeType = body.degreeType;
         const degreeTypes = body.degreeTypes;
@@ -167,18 +170,18 @@ export async function POST(request: NextRequest) {
             if (existing.length > 0) {
                 // Subject exists, just add new semesters
                 subjectId = existing[0].id;
-                // Update name/credits if changed
+                // Update name/credits/paperCode if changed
                 await query(
-                    'UPDATE subjects SET name = $1, credits = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
-                    [name, credits || 3, subjectId]
+                    'UPDATE subjects SET name = $1, paper_code = $2, credits = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4',
+                    [name, paperCode, credits || 3, subjectId]
                 );
             } else {
                 // Create new subject
                 const result = await query<{ id: string }>(
-                    `INSERT INTO subjects (code, name, degree_type, credits)
-                     VALUES ($1, $2, $3, $4)
+                    `INSERT INTO subjects (code, paper_code, name, degree_type, credits)
+                     VALUES ($1, $2, $3, $4, $5)
                      RETURNING id`,
-                    [code, name, dt, credits || 3]
+                    [code, paperCode, name, dt, credits || 3]
                 );
                 subjectId = result[0].id;
             }
@@ -225,7 +228,7 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
-        const { id, code, name, semesters, credits, oldCode, oldDegreeType, newDegreeType, degreeType } = await request.json();
+        const { id, code, paperCode, name, semesters, credits, oldCode, oldDegreeType, newDegreeType, degreeType } = await request.json();
 
         if (!id && !oldCode) {
             return NextResponse.json({ error: 'Subject ID or code required' }, { status: 400 });
@@ -308,6 +311,7 @@ export async function PUT(request: NextRequest) {
         let paramCount = 1;
 
         if (code) { updateFields.push(`code = $${++paramCount}`); params.push(code); }
+        if (paperCode !== undefined) { updateFields.push(`paper_code = $${++paramCount}`); params.push(paperCode?.trim() || null); }
         if (name) { updateFields.push(`name = $${++paramCount}`); params.push(name); }
         if (credits) { updateFields.push(`credits = $${++paramCount}`); params.push(parseInt(credits)); }
         if (degreeTypeChanged) { updateFields.push(`degree_type = $${++paramCount}`); params.push(targetDegreeType); }

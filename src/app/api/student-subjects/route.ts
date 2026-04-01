@@ -13,6 +13,7 @@ interface StudentSubjectRow {
     student_custom_id?: string;
     subject_id: string;
     subject_code: string;
+    subject_paper_code?: string | null;
     subject_name: string;
     academic_year: string;
     enrolled_at: string;
@@ -35,29 +36,35 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url);
         const studentId = searchParams.get('studentId');
         const subjectId = searchParams.get('subjectId');
+        const subjectIds = searchParams.get('subjectIds'); // comma-separated batch param
         const academicYear = searchParams.get('academicYear');
 
         let queryStr = `
-            SELECT ss.*, 
+            SELECT ss.id, ss.student_id, ss.subject_id, ss.academic_year, ss.enrolled_at, 
                    st.roll_number as student_roll_number,
                    st.first_name as student_first_name, st.last_name as student_last_name,
                    st.department_id as student_department_id,
                    st.current_semester as student_current_semester,
                    st.student_id as student_custom_id,
-                   s.code as subject_code, s.name as subject_name
+                   s.code as subject_code, s.paper_code as subject_paper_code, s.name as subject_name
             FROM student_subjects ss
             JOIN students st ON st.id = ss.student_id
             JOIN subjects s ON s.id = ss.subject_id
             WHERE 1=1
         `;
-        const params: string[] = [];
+        const params: (string | string[])[] = [];
 
         if (studentId) {
             params.push(studentId);
             queryStr += ` AND ss.student_id = $${params.length}`;
         }
 
-        if (subjectId) {
+        // Batch: comma-separated subjectIds (e.g., ?subjectIds=id1,id2,id3)
+        if (subjectIds) {
+            const ids = subjectIds.split(',').map(id => id.trim()).filter(Boolean);
+            params.push(ids);
+            queryStr += ` AND ss.subject_id = ANY($${params.length}::uuid[])`;
+        } else if (subjectId) {
             params.push(subjectId);
             queryStr += ` AND ss.subject_id = $${params.length}`;
         }
@@ -82,6 +89,7 @@ export async function GET(request: NextRequest) {
                 studentCustomId: e.student_custom_id,
                 subjectId: e.subject_id,
                 subjectCode: e.subject_code,
+                subjectPaperCode: e.subject_paper_code || null,
                 subjectName: e.subject_name,
                 academicYear: e.academic_year,
                 enrolledAt: e.enrolled_at

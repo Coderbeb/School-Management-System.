@@ -22,7 +22,7 @@ function collectSubjectEnrollments(
     }
 
     const crossDegreeFields = ['minor', 'mdc', 'vac', 'aec', 'ge1', 'ge2', 'generic1', 'generic2'];
-    ['core1', 'core2', 'major_subject', 'major', 'minor', 'mdc', 'vac', 'aec', 'aecc',
+    ['core1', 'core2', 'core3', 'major_subject', 'major', 'minor', 'mdc', 'vac', 'aec', 'aecc',
         'ge1', 'ge2', 'generic1', 'generic2'].forEach(col => {
             if (student[col] && typeof student[col] === 'string' && student[col].trim()) {
                 const isCrossDegree = crossDegreeFields.includes(col);
@@ -138,6 +138,9 @@ export async function POST(req: Request) {
 
         // Collect existing students that need UPDATE
         const updateBatch: any[] = [];
+        
+        // Collect existing student ids that need their subjects wiped before re-insert
+        const existingStudentsToSync: string[] = [];
 
         // Process each student
         for (let i = 0; i < students.length; i++) {
@@ -228,6 +231,7 @@ export async function POST(req: Request) {
 
                     // Use existing ID for subject enrollments
                     const studentIdForEnrollments = existingStudent.id;
+                    existingStudentsToSync.push(studentIdForEnrollments);
                     collectSubjectEnrollments(student, parsed, studentIdForEnrollments, finalSemester, finalDegreeType, allSubjects, enrollmentBatch);
 
                     // Prevent re-processing within the batch
@@ -308,6 +312,14 @@ export async function POST(req: Request) {
                     department_id = $5, current_semester = $6, batch_year = $7, updated_at = CURRENT_TIMESTAMP
                  WHERE id = $8`,
                 [s.finalRollNumber, s.firstName, s.lastName, s.email, s.deptId, s.finalSemester, s.batchYear, s.existingId]
+            );
+        }
+
+        // Clear old subjects for existing students to ensure a full sync
+        if (existingStudentsToSync.length > 0) {
+            await client.query(
+                `DELETE FROM student_subjects WHERE student_id = ANY($1) AND academic_year = $2`,
+                [existingStudentsToSync, academicYear]
             );
         }
 

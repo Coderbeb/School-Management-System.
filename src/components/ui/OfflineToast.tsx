@@ -50,7 +50,7 @@ export function OfflineToast({ toasts, onRemove }: OfflineToastProps) {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-[90vw] max-w-sm pointer-events-none">
+    <div className="fixed top-20 right-4 z-[100] flex flex-col gap-2 w-[90vw] max-w-sm sm:w-auto pointer-events-none">
       {toasts.map((toast) => {
         const config = toastConfig[toast.type];
         const Icon = config.icon;

@@ -17,6 +17,7 @@ interface SubjectStats {
     subject_id: string;
     subject_name: string;
     subject_code: string;
+    subject_paper_code: string | null;
     total_classes: string;
     attended: string;
     attendance_pct: string;
@@ -121,6 +122,7 @@ export async function GET(
                 s.id as subject_id,
                 s.name as subject_name,
                 s.code as subject_code,
+                s.paper_code as subject_paper_code,
                 COUNT(ar.id) as total_classes,
                 COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as attended,
                 COALESCE(
@@ -136,7 +138,7 @@ export async function GET(
              ${subjectJoinClause}
              LEFT JOIN attendance_records ar ON ar.subject_id = s.id AND ar.student_id = $1 ${dateFilter}
              WHERE ss.student_id = $1
-             GROUP BY s.id, s.name, s.code
+             GROUP BY s.id, s.name, s.code, s.paper_code
              ORDER BY s.name`,
             subjectStatsParams
         );
@@ -227,6 +229,7 @@ export async function GET(
                 id: s.subject_id,
                 name: s.subject_name,
                 code: s.subject_code,
+                paperCode: s.subject_paper_code || null,
                 totalClasses: parseInt(s.total_classes) || 0,
                 attended: parseInt(s.attended) || 0,
                 attendance: Math.round(parseFloat(s.attendance_pct) || 0)

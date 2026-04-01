@@ -44,7 +44,7 @@ export async function POST(req: Request) {
         await client.query('BEGIN');
 
         // Collect batches
-        const subjectInsertBatch: { code: string; name: string; dt: string; credits: number }[] = [];
+        const subjectInsertBatch: { code: string; paperCode: string | null; name: string; dt: string; credits: number }[] = [];
         const semesterInsertBatch: { subjectKey: string; sem: number }[] = [];
         // Track which subjects need semester additions (for existing subjects)
         const existingSubjectSemesters: { subjectId: string; sem: number }[] = [];
@@ -59,6 +59,7 @@ export async function POST(req: Request) {
                 }
 
                 const code = subject.code.trim().toUpperCase();
+                const paperCode = subject.paper_code?.trim() || subject.paperCode?.trim() || subject['paper code']?.trim() || null;
                 const name = subject.name.trim();
                 const credits = subject.credits ? parseInt(subject.credits) : 3;
 
@@ -104,7 +105,7 @@ export async function POST(req: Request) {
                         }
                     } else {
                         // New subject
-                        subjectInsertBatch.push({ code, name, dt, credits });
+                        subjectInsertBatch.push({ code, paperCode, name, dt, credits });
                         existingMap.set(subjectKey, `pending_${subjectKey}`);
                         for (const sem of semesters) {
                             semesterInsertBatch.push({ subjectKey, sem });
@@ -136,16 +137,16 @@ export async function POST(req: Request) {
             for (let i = 0; i < subjectInsertBatch.length; i += CHUNK_SIZE) {
                 const chunk = subjectInsertBatch.slice(i, i + CHUNK_SIZE);
                 const values: string[] = [];
-                const params: (string | number)[] = [];
+                const params: (string | number | null)[] = [];
                 chunk.forEach((s, idx) => {
-                    const offset = idx * 4;
-                    values.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4})`);
-                    params.push(s.code, s.name, s.dt, s.credits);
+                    const offset = idx * 5;
+                    values.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5})`);
+                    params.push(s.code, s.paperCode, s.name, s.dt, s.credits);
                 });
                 const result = await client.query(
-                    `INSERT INTO subjects (code, name, degree_type, credits)
+                    `INSERT INTO subjects (code, paper_code, name, degree_type, credits)
                      VALUES ${values.join(', ')}
-                     ON CONFLICT (code, degree_type) DO UPDATE SET name = EXCLUDED.name
+                     ON CONFLICT (code, degree_type) DO UPDATE SET name = EXCLUDED.name, paper_code = coalesce(EXCLUDED.paper_code, subjects.paper_code)
                      RETURNING id, code, degree_type`,
                     params
                 );

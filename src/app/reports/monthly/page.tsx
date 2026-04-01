@@ -48,6 +48,7 @@ interface SubjectStat {
     id: string;
     name: string;
     code: string;
+    paperCode?: string | null;
     semester: string;
     totalRecords: number;
     present: number;
@@ -63,6 +64,7 @@ export default function MonthlyReportPage() {
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
     const [selectedSemester, setSelectedSemester] = useState('');
+    const [selectedStream, setSelectedStream] = useState('all');
     const [stats, setStats] = useState<MonthlyStats | null>(null);
     const [dailyBreakdown, setDailyBreakdown] = useState<DailyBreakdown[]>([]);
     const [subjectStats, setSubjectStats] = useState<SubjectStat[]>([]);
@@ -101,46 +103,59 @@ export default function MonthlyReportPage() {
         if (token && user) {
             fetchMonthlyReport(token);
         }
-    }, [selectedMonth, selectedDepartmentId, selectedSemester, user]);
+    }, [selectedMonth, selectedDepartmentId, selectedSemester, selectedStream, user]);
+
+    const getCachedDepartments = () => {
+        try {
+            const lCache = localStorage.getItem('offline_departments');
+            if (lCache) {
+                const parsed = JSON.parse(lCache);
+                if (parsed.data && Array.isArray(parsed.data)) return parsed.data;
+            }
+            const sCache = sessionStorage.getItem('cache_departments');
+            if (sCache) {
+                const parsed = JSON.parse(sCache);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch { /* ignore */ }
+        return null;
+    };
 
     const fetchDepartments = async (token: string) => {
+        const cached = getCachedDepartments();
+        if (cached && cached.length > 0) setDepartments(cached);
+
         try {
             const res = await fetch('/api/departments', {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
-            setDepartments(data.departments || []);
+            const depts = data.departments || [];
+            setDepartments(depts);
+            try { sessionStorage.setItem('cache_departments', JSON.stringify(depts)); } catch {}
         } catch (err) {
             console.error('Error fetching departments:', err);
         }
     };
 
     const fetchTeacherDepartments = async (token: string, teacherId: string) => {
+        const cached = getCachedDepartments();
+        if (cached && cached.length > 0) setDepartments(cached);
+
         try {
-            const res = await fetch('/api/teachers', {
+            const res = await fetch('/api/me/departments', {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
-            const teacher = data.teachers?.find((t: any) => t.id === teacherId);
-            if (teacher) {
-                const allDepts: Department[] = [];
-                if (teacher.department_id && teacher.department_name) {
-                    allDepts.push({
-                        id: teacher.department_id,
-                        name: teacher.department_name,
-                        code: teacher.department_code || ''
-                    });
-                }
-                if (teacher.departments && Array.isArray(teacher.departments)) {
-                    teacher.departments.forEach((dept: any) => {
-                        if (!allDepts.find(d => d.id === dept.id)) {
-                            allDepts.push({ id: dept.id, name: dept.name, code: dept.code || '' });
-                        }
-                    });
-                }
-                if (allDepts.length > 1) {
-                    setDepartments(allDepts);
-                }
+            const depts = data.departments || [];
+            if (depts.length > 0) {
+                setDepartments(depts);
+                try {
+                    localStorage.setItem('offline_departments', JSON.stringify({
+                        timestamp: Date.now(),
+                        data: depts
+                    }));
+                } catch { /* ignore */ }
             }
         } catch (err) {
             console.error('Error fetching teacher departments:', err);
@@ -153,6 +168,7 @@ export default function MonthlyReportPage() {
             let url = `/api/reports/monthly?month=${selectedMonth}`;
             if (selectedDepartmentId) url += `&departmentId=${selectedDepartmentId}`;
             if (selectedSemester) url += `&semester=${selectedSemester}`;
+            if (selectedStream && selectedStream !== 'all') url += `&stream=${selectedStream}`;
 
             const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -254,10 +270,10 @@ export default function MonthlyReportPage() {
                 downloadPDF(headers, rows, filename, 'Daily Attendance Breakdown');
             }
         } else {
-            const headers = ['Subject', 'Code', 'Semester', 'Total', 'Present', 'Absent', 'Attendance %'];
+            const headers = ['Subject', 'Paper / Subject Code', 'Semester', 'Total', 'Present', 'Absent', 'Attendance %'];
             const rows = subjectStats.map(s => [
                 s.name,
-                s.code,
+                s.paperCode || s.code,
                 s.semester || '-',
                 s.totalRecords.toString(),
                 s.present.toString(),
@@ -439,7 +455,7 @@ export default function MonthlyReportPage() {
                             <Filter className="w-4 h-4 text-emerald-500" />
                             <h3 className="text-sm font-bold text-gray-700">Advanced Filters</h3>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 items-end">
                             <div className="w-full">
                                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Month</label>
                                 <input
@@ -486,6 +502,31 @@ export default function MonthlyReportPage() {
                                 </div>
                             </div>
 
+                            {(() => {
+                                const activeDept = selectedDepartmentId
+                                    ? departments.find(d => d.id === selectedDepartmentId)
+                                    : departments.length === 1 ? departments[0] : null;
+                                const showStream = activeDept && activeDept.code?.toUpperCase() === 'IT';
+                                if (!showStream) return null;
+                                return (
+                                    <div className="w-full">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Stream</label>
+                                        <div className="relative">
+                                            <select
+                                                value={selectedStream}
+                                                onChange={(e) => setSelectedStream(e.target.value)}
+                                                className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-emerald-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
+                                            >
+                                                <option value="all">All Streams</option>
+                                                <option value="BCA">BCA</option>
+                                                <option value="BSCIT">BSc IT</option>
+                                            </select>
+                                            <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             <div className="w-full lg:w-auto">
                                 <Button 
                                     variant="outline"
@@ -493,6 +534,7 @@ export default function MonthlyReportPage() {
                                     onClick={() => {
                                         setSelectedSemester('');
                                         setSelectedDepartmentId('');
+                                        setSelectedStream('all');
                                         setSelectedMonth(new Date().toISOString().slice(0, 7));
                                     }}
                                 >
@@ -808,7 +850,7 @@ export default function MonthlyReportPage() {
                                                                     <tr key={sub.id} className={`hover:bg-gray-50/50 transition-colors ${getRowBg(sub.percentage)}`}>
                                                                         <td className="px-6 py-4 whitespace-nowrap">
                                                                             <div className="text-sm font-medium text-gray-900">{sub.name}</div>
-                                                                            <div className="text-xs text-gray-500 font-mono bg-gray-100 px-1.5 py-0.5 rounded inline-block mt-0.5">{sub.code}</div>
+                                                                            <div className="text-xs text-gray-500 font-mono bg-gray-100 px-1.5 py-0.5 rounded inline-block mt-0.5">{sub.paperCode || sub.code}</div>
                                                                         </td>
                                                                         <td className="px-6 py-4 whitespace-nowrap text-center">
                                                                             <span className="px-2 py-0.5 bg-purple-100 rounded-full text-xs text-purple-600 font-medium">
@@ -842,7 +884,7 @@ export default function MonthlyReportPage() {
                                                                     <div>
                                                                         <div className="font-semibold text-gray-900 text-sm">{sub.name}</div>
                                                                         <div className="flex items-center gap-2 mt-1">
-                                                                            <span className="text-xs text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded">{sub.code}</span>
+                                                                            <span className="text-xs text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded">{sub.paperCode || sub.code}</span>
                                                                             <span className="px-2 py-0.5 bg-purple-100 rounded-full text-xs text-purple-600 font-medium">Sem {sub.semester || '-'}</span>
                                                                         </div>
                                                                     </div>

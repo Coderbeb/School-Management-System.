@@ -73,58 +73,53 @@ export async function POST(request: NextRequest) {
             assignedLectureNumber = (parseInt(maxLecture[0]?.max_lecture || '0')) + 1;
         }
 
-        // Insert or update attendance records with assigned lecture number
-        let savedCount = 0;
-        for (const record of records) {
-            try {
-                const recordSubjectId = record.subjectId || batchSubjectId;
-                const recordDate = record.date || batchDate;
+        // === OPTIMIZED: Checks done ONCE per batch, not per record ===
 
-                if (!recordSubjectId || !recordDate) {
-                    continue;
-                }
+        // 1. Prevent Future Dates (check ONCE)
+        const now = new Date();
+        const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+        const todayStr = istTime.toISOString().split('T')[0];
 
-                // 1. Prevent Future Dates
-                const now = new Date();
-                // Convert current UTC time to IST by adding 5.5 hours (server runs in UTC online)
-                const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
-                const todayStr = istTime.toISOString().split('T')[0];
-
-                if (recordDate > todayStr) {
-                    console.warn(`Attempted to mark attendance for future date: ${recordDate} (Today IST: ${todayStr})`);
-                    continue; // Skip future dates
-                }
-
-                // 2. Verify Teacher Assignment (Security)
-                // Check if this teacher is actually assigned to this subject
-                // (Optimization: In a real app, cache this lookup or do it once per batch. 
-                // For safety/simplicity here, we check per record/subject)
-                const assignmentCheck = await query(
-                    'SELECT 1 FROM teacher_subjects WHERE teacher_id = $1 AND subject_id = $2',
-                    [payload.userId, recordSubjectId]
-                );
-
-                if (assignmentCheck.length === 0) {
-                    // Start of workaround for HODs: HODs might default to having access if it matches their dept?
-                    // User prompt implies strict "Fix". Assuming HODs should assign themselves subjects too.
-                    // But if this blocks legitimate HOD usage, we might need a fallback.
-                    // For now, strict 'teacher_subjects' check is the correct behavior for "fixing code".
-                    console.warn(`User ${payload.userId} not assigned to subject ${recordSubjectId}`);
-                    continue; // Skip unauthorized subjects
-                }
-
-                await query(
-                    `INSERT INTO attendance_records (subject_id, student_id, teacher_id, date, lecture_number, status)
-                     VALUES ($1, $2, $3, $4, $5, $6)
-                     ON CONFLICT (subject_id, student_id, teacher_id, date, lecture_number) 
-                     DO UPDATE SET status = EXCLUDED.status`,
-                    [recordSubjectId, record.studentId, payload.userId, recordDate, assignedLectureNumber, record.status]
-                );
-                savedCount++;
-            } catch (err) {
-                console.error('Error saving record:', err);
-            }
+        if (batchDate > todayStr) {
+            return NextResponse.json({ error: `Cannot mark attendance for future date: ${batchDate}` }, { status: 400 });
         }
+
+        // 2. Verify Teacher Assignment ONCE (not per record)
+        const assignmentCheck = await query(
+            'SELECT 1 FROM teacher_subjects WHERE teacher_id = $1 AND subject_id = $2',
+            [payload.userId, batchSubjectId]
+        );
+
+        if (assignmentCheck.length === 0) {
+            console.warn(`User ${payload.userId} not assigned to subject ${batchSubjectId}`);
+            return NextResponse.json({ error: 'Not assigned to this subject' }, { status: 403 });
+        }
+
+        // 3. Batch INSERT using unnest() — 1 query instead of N
+        const subjectIds: string[] = [];
+        const studentIds: string[] = [];
+        const statuses: string[] = [];
+
+        for (const record of records) {
+            if (!record.studentId || !record.status) continue;
+            subjectIds.push(record.subjectId || batchSubjectId);
+            studentIds.push(record.studentId);
+            statuses.push(record.status);
+        }
+
+        if (subjectIds.length === 0) {
+            return NextResponse.json({ error: 'No valid attendance records' }, { status: 400 });
+        }
+
+        const result = await query(
+            `INSERT INTO attendance_records (subject_id, student_id, teacher_id, date, lecture_number, status)
+             SELECT unnest($1::uuid[]), unnest($2::uuid[]), $3, $4, $5, unnest($6::text[])
+             ON CONFLICT (subject_id, student_id, teacher_id, date, lecture_number)
+             DO UPDATE SET status = EXCLUDED.status`,
+            [subjectIds, studentIds, payload.userId, batchDate, assignedLectureNumber, statuses]
+        );
+
+        const savedCount = subjectIds.length;
 
         return NextResponse.json({
             message: `Saved ${savedCount} attendance records`,

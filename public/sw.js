@@ -1,6 +1,6 @@
-const CACHE_NAME = 'ysm-attendance-v3';
-const STATIC_CACHE = 'ysm-static-v3';
-const API_CACHE = 'ysm-api-v3';
+const CACHE_NAME = 'ysm-attendance-v5';
+const STATIC_CACHE = 'ysm-static-v5';
+const API_CACHE = 'ysm-api-v5';
 const OFFLINE_QUEUE_STORE = 'offline-attendance-queue';
 
 // Static assets to pre-cache on install
@@ -117,7 +117,57 @@ async function networkFirstWithCache(request, cacheName) {
     return networkResponse;
   } catch (err) {
     // Network failed, try cache
-    const cachedResponse = await caches.match(request);
+    let cachedResponse = await caches.match(request);
+
+    // --- OFFLINE MERGE LOGIC FOR ATTENDANCE ---
+    if (cachedResponse && request.url.includes('/api/attendance') && request.method === 'GET') {
+      try {
+        const urlObj = new URL(request.url);
+        if (urlObj.pathname === '/api/attendance') {
+          const subjectId = urlObj.searchParams.get('subjectId');
+          const date = urlObj.searchParams.get('date');
+          
+          if (subjectId && date) {
+            const offlineItems = await getAllFromQueue();
+            const pendingUpdates = offlineItems.filter(item => 
+              item.body && 
+              item.body.subjectId === subjectId && 
+              item.body.date === date
+            );
+            
+            if (pendingUpdates.length > 0) {
+              const cachedData = await cachedResponse.clone().json();
+              
+              if (cachedData.records && Array.isArray(cachedData.records)) {
+                // Map the latest offline status for each student
+                const latestStatusMap = {};
+                pendingUpdates.forEach(update => {
+                  if (update.body.records) {
+                    update.body.records.forEach(r => {
+                      latestStatusMap[r.studentId] = r.status;
+                    });
+                  }
+                });
+                
+                // Overwrite the loaded cache rendering visually with our unsynced local changes
+                cachedData.records = cachedData.records.map(record => ({
+                  ...record,
+                  status: latestStatusMap[record.student_id] || record.status
+                }));
+                
+                return new Response(JSON.stringify(cachedData), {
+                  status: 200,
+                  headers: { 'Content-Type': 'application/json' }
+                });
+              }
+            }
+          }
+        }
+      } catch (mergeErr) {
+        console.warn('SW: Merge error', mergeErr);
+      }
+    }
+
     if (cachedResponse) {
       return cachedResponse;
     }

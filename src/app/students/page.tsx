@@ -103,12 +103,13 @@ export default function StudentsPage() {
         aec: string;
         core1: string;
         core2: string;
+        core3: string;
         generic1: string;
         generic2: string;
         aecc: string;
     }>({
         major: '', minor: '', mdc: '', vac: '', aec: '',
-        core1: '', core2: '', generic1: '', generic2: '', aecc: ''
+        core1: '', core2: '', core3: '', generic1: '', generic2: '', aecc: ''
     });
 
     // Filter States
@@ -116,6 +117,8 @@ export default function StudentsPage() {
     const [filterDeptType, setFilterDeptType] = useState('');
     const [filterDepartmentId, setFilterDepartmentId] = useState('');
     const [filterSemester, setFilterSemester] = useState('');
+    const [filterStream, setFilterStream] = useState('all');
+    const [availableStreams, setAvailableStreams] = useState<string[]>([]);
 
 
     // Import States
@@ -147,8 +150,14 @@ export default function StudentsPage() {
                 setStudents(JSON.parse(cachedStudents));
                 setLoading(false);
             }
-            const cachedDepts = sessionStorage.getItem('cache_departments');
-            if (cachedDepts) setDepartments(JSON.parse(cachedDepts));
+            const lCache = localStorage.getItem('offline_departments');
+            if (lCache) {
+                const parsed = JSON.parse(lCache);
+                if (parsed.data && Array.isArray(parsed.data)) setDepartments(parsed.data);
+            } else {
+                const cachedDepts = sessionStorage.getItem('cache_departments');
+                if (cachedDepts) setDepartments(JSON.parse(cachedDepts));
+            }
             const cachedSubjects = sessionStorage.getItem('cache_subjects');
             if (cachedSubjects) setSubjects(JSON.parse(cachedSubjects));
         } catch { /* ignore cache errors */ }
@@ -158,6 +167,24 @@ export default function StudentsPage() {
         fetchSubjects(token);
         fetchBatchConfig(token);
     }, [router]);
+
+    useEffect(() => {
+        let activeDepts = departments;
+        if (filterDepartmentId) {
+            activeDepts = departments.filter(d => d.id === filterDepartmentId);
+        } else if (user?.departmentId) {
+            activeDepts = departments.filter(d => d.id === user.departmentId);
+        }
+
+        const hasIT = activeDepts.some(d => d.code && d.code.toUpperCase() === 'IT');
+        
+        if (hasIT) {
+            setAvailableStreams(['BCA', 'BSCIT']);
+        } else {
+            setAvailableStreams([]);
+        }
+        setFilterStream('all');
+    }, [departments, filterDepartmentId, user]);
 
     const safeJson = async (res: Response) => {
         const contentType = res.headers.get('content-type');
@@ -289,23 +316,52 @@ export default function StudentsPage() {
                             mdc: enrolledIds[2] || '',
                             vac: enrolledIds[3] || '',
                             aec: enrolledIds[4] || '',
-                            core1: '', core2: '', generic1: '', generic2: '', aecc: ''
+                            core1: '', core2: '', core3: '', generic1: '', generic2: '', aecc: ''
                         });
                     } else if (deptType === 'vocational') {
+                        let core1 = '', core2 = '', core3 = '', generic1 = '', generic2 = '', aecc = '';
+                        const unassignedIds: string[] = [];
+
+                        data.enrollments.forEach((s: any) => {
+                            const name = (s.subjectName || '').toLowerCase();
+                            const code = (s.subjectCode || '').toLowerCase();
+                            
+                            if (code.includes('aecc') || code.includes('sec') || name.includes('environmental') || name.includes('communication') || name.includes('aecc')) {
+                                if (!aecc) aecc = s.subjectId; else unassignedIds.push(s.subjectId);
+                            } else if (code.includes('ge') || name.includes('generic')) {
+                                if (!generic1) generic1 = s.subjectId;
+                                else if (!generic2) generic2 = s.subjectId;
+                                else unassignedIds.push(s.subjectId);
+                            } else if (code.includes('c') || name.includes('core')) {
+                                if (!core1) core1 = s.subjectId;
+                                else if (!core2) core2 = s.subjectId;
+                                else if (!core3) core3 = s.subjectId;
+                                else unassignedIds.push(s.subjectId);
+                            } else {
+                                unassignedIds.push(s.subjectId);
+                            }
+                        });
+
+                        // Fallback: sequentially fill any empty slots to ensure no subject is lost from the UI
+                        unassignedIds.forEach(id => {
+                            if (!core1) core1 = id;
+                            else if (!core2) core2 = id;
+                            else if (!generic1) generic1 = id;
+                            else if (!generic2) generic2 = id;
+                            else if (!aecc) aecc = id;
+                            else if (!core3) core3 = id;
+                        });
+
                         setSubjectSelections({
                             major: '', minor: '', mdc: '', vac: '', aec: '',
-                            core1: enrolledIds[0] || '',
-                            core2: enrolledIds[1] || '',
-                            generic1: enrolledIds[2] || '',
-                            generic2: enrolledIds[3] || '',
-                            aecc: enrolledIds[4] || ''
+                            core1, core2, core3, generic1, generic2, aecc
                         });
                     }
                 } else {
                     setSelectedSubjects([]);
                     setSubjectSelections({
                         major: '', minor: '', mdc: '', vac: '', aec: '',
-                        core1: '', core2: '', generic1: '', generic2: '', aecc: ''
+                        core1: '', core2: '', core3: '', generic1: '', generic2: '', aecc: ''
                     });
                 }
             }
@@ -333,7 +389,7 @@ export default function StudentsPage() {
         setSelectedSubjects([]);
         setSubjectSelections({
             major: '', minor: '', mdc: '', vac: '', aec: '',
-            core1: '', core2: '', generic1: '', generic2: '', aecc: ''
+            core1: '', core2: '', core3: '', generic1: '', generic2: '', aecc: ''
         });
         setParsedInfo(null);
         setError('');
@@ -696,9 +752,10 @@ export default function StudentsPage() {
             if (subjectSelections.vac) ids.push(subjectSelections.vac);
             if (subjectSelections.aec) ids.push(subjectSelections.aec);
         } else if (deptType === 'vocational') {
-            // Vocational: core1, core2, generic1, generic2, aecc
+            // Vocational: core1, core2, core3, generic1, generic2, aecc
             if (subjectSelections.core1) ids.push(subjectSelections.core1);
             if (subjectSelections.core2) ids.push(subjectSelections.core2);
+            if (subjectSelections.core3) ids.push(subjectSelections.core3);
             if (subjectSelections.generic1) ids.push(subjectSelections.generic1);
             if (subjectSelections.generic2) ids.push(subjectSelections.generic2);
             if (subjectSelections.aecc) ids.push(subjectSelections.aecc);
@@ -725,6 +782,7 @@ export default function StudentsPage() {
         } else if (deptType === 'vocational') {
             if (field === 'core1' ? value : newSelections.core1) ids.push(field === 'core1' ? value : newSelections.core1);
             if (field === 'core2' ? value : newSelections.core2) ids.push(field === 'core2' ? value : newSelections.core2);
+            if (field === 'core3' ? value : newSelections.core3) ids.push(field === 'core3' ? value : newSelections.core3);
             if (field === 'generic1' ? value : newSelections.generic1) ids.push(field === 'generic1' ? value : newSelections.generic1);
             if (field === 'generic2' ? value : newSelections.generic2) ids.push(field === 'generic2' ? value : newSelections.generic2);
             if (field === 'aecc' ? value : newSelections.aecc) ids.push(field === 'aecc' ? value : newSelections.aecc);
@@ -747,6 +805,7 @@ export default function StudentsPage() {
         } else if (deptType === 'vocational') {
             if (currentField !== 'core1' && subjectSelections.core1) excluded.push(subjectSelections.core1);
             if (currentField !== 'core2' && subjectSelections.core2) excluded.push(subjectSelections.core2);
+            if (currentField !== 'core3' && subjectSelections.core3) excluded.push(subjectSelections.core3);
             if (currentField !== 'generic1' && subjectSelections.generic1) excluded.push(subjectSelections.generic1);
             if (currentField !== 'generic2' && subjectSelections.generic2) excluded.push(subjectSelections.generic2);
             if (currentField !== 'aecc' && subjectSelections.aecc) excluded.push(subjectSelections.aecc);
@@ -765,9 +824,22 @@ export default function StudentsPage() {
         setError('');
 
         if (file.name.endsWith('.csv')) {
+            const seenMap = new Map<string, number>();
             Papa.parse(file, {
                 header: true,
                 skipEmptyLines: true,
+                transformHeader: (header) => {
+                    const h = header.trim();
+                    const cleanLower = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    if (cleanLower.startsWith('core') || cleanLower.startsWith('generic') || cleanLower.startsWith('ge')) {
+                        if (/\d$/.test(cleanLower)) return h;
+                        const key = cleanLower.replace(/\d+/g, '');
+                        const count = (seenMap.get(key) || 0) + 1;
+                        seenMap.set(key, count);
+                        return `${h}${count}`;
+                    }
+                    return h;
+                },
                 complete: (results) => setPreviewData(results.data.slice(0, 5)),
                 error: () => setError('Failed to parse CSV file')
             });
@@ -845,9 +917,10 @@ export default function StudentsPage() {
             'vac': 'vac', 'vac subject': 'vac',
             'aec': 'aec', 'aec subject': 'aec',
             // Subject columns - Vocational
-            'core1': 'core1', 'core 1': 'core1', 'core1*': 'core1',
+            'core': 'core1', 'core1': 'core1', 'core 1': 'core1', 'core1*': 'core1',
             'core2': 'core2', 'core 2': 'core2', 'core2*': 'core2',
-            'ge1': 'generic1', 'ge 1': 'generic1',
+            'core3': 'core3', 'core 3': 'core3',
+            'generic': 'generic1', 'ge1': 'generic1', 'ge 1': 'generic1',
             'ge2': 'generic2', 'ge 2': 'generic2',
             'generic1': 'generic1', 'generic 1': 'generic1', 'generic1*': 'generic1',
             'generic2': 'generic2', 'generic 2': 'generic2', 'generic2*': 'generic2',
@@ -919,9 +992,22 @@ export default function StudentsPage() {
         };
 
         if (importFile.name.endsWith('.csv')) {
+            const seenMap = new Map<string, number>();
             Papa.parse(importFile, {
                 header: true,
                 skipEmptyLines: true,
+                transformHeader: (header) => {
+                    const h = header.trim();
+                    const cleanLower = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    if (cleanLower.startsWith('core') || cleanLower.startsWith('generic') || cleanLower.startsWith('ge')) {
+                        if (/\d$/.test(cleanLower)) return h;
+                        const key = cleanLower.replace(/\d+/g, '');
+                        const count = (seenMap.get(key) || 0) + 1;
+                        seenMap.set(key, count);
+                        return `${h}${count}`;
+                    }
+                    return h;
+                },
                 complete: (results) => processImport(results.data)
             });
         } else {
@@ -952,7 +1038,10 @@ export default function StudentsPage() {
         const matchesDept = !filterDepartmentId || student.department_id === filterDepartmentId;
         const matchesSem = !filterSemester || student.current_semester.toString() === filterSemester;
 
-        return matchesSearch && matchesDept && matchesSem;
+        const matchesStream = filterStream === 'all' || 
+            (student.student_id ? student.student_id.toUpperCase().startsWith(filterStream) : false);
+
+        return matchesSearch && matchesDept && matchesSem && matchesStream;
     }).sort((a, b) =>
         String(a.roll_number || '').localeCompare(String(b.roll_number || ''), undefined, { numeric: true, sensitivity: 'base' })
     );
@@ -1064,6 +1153,21 @@ export default function StudentsPage() {
                             </select>
                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                         </div>
+                        {availableStreams.length > 0 && (
+                            <div className="relative w-full">
+                                <select
+                                    className="w-full bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none cursor-pointer"
+                                    value={filterStream}
+                                    onChange={(e) => setFilterStream(e.target.value)}
+                                >
+                                    <option value="all">All Streams</option>
+                                    {availableStreams.map(stream => (
+                                        <option key={stream} value={stream}>{stream}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                            </div>
+                        )}
                     </div>
 
                     {/* Search Bar */}
@@ -1540,6 +1644,25 @@ export default function StudentsPage() {
                                                                 <option value="">Select Core Paper 2</option>
                                                                 {getFilteredSubjects()
                                                                     .filter(s => !getExcludedIds('core2').includes(s.id))
+                                                                    .map(s => (
+                                                                        <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
+                                                                    ))}
+                                                            </select>
+                                                        </div>
+
+                                                        {/* Core Paper 3 (NOT MANDATORY) */}
+                                                        <div>
+                                                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                                Core Paper 3 (NOT MANDATORY)
+                                                            </label>
+                                                            <select
+                                                                className="w-full p-2 border border-gray-200 rounded-xl bg-white text-sm"
+                                                                value={subjectSelections.core3}
+                                                                onChange={(e) => updateSubjectSelection('core3', e.target.value)}
+                                                            >
+                                                                <option value="">Select Core Paper 3</option>
+                                                                {getFilteredSubjects()
+                                                                    .filter(s => !getExcludedIds('core3').includes(s.id))
                                                                     .map(s => (
                                                                         <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
                                                                     ))}

@@ -9,6 +9,7 @@ interface TeacherSubjectRow {
     teacher_last_name: string;
     subject_id: string;
     subject_code: string;
+    subject_paper_code: string | null;
     subject_name: string;
     academic_year: string;
     created_at: string;
@@ -34,9 +35,9 @@ export async function GET(request: NextRequest) {
         const academicYear = searchParams.get('academicYear');
 
         let queryStr = `
-            SELECT ts.*, 
+            SELECT ts.id, ts.teacher_id, ts.subject_id, ts.academic_year, ts.created_at, 
                    u.first_name as teacher_first_name, u.last_name as teacher_last_name,
-                   s.code as subject_code, s.name as subject_name,
+                   s.code as subject_code, s.paper_code as subject_paper_code, s.name as subject_name,
                    s.degree_type,
                    COALESCE(
                        (SELECT array_agg(ss.semester ORDER BY ss.semester)
@@ -76,6 +77,7 @@ export async function GET(request: NextRequest) {
                 teacherName: `${a.teacher_first_name} ${a.teacher_last_name}`,
                 subjectId: a.subject_id,
                 subjectCode: a.subject_code,
+                subjectPaperCode: a.subject_paper_code || null,
                 subjectName: a.subject_name,
                 subjectSemesters: a.subject_semesters || [],
                 academicYear: a.academic_year,

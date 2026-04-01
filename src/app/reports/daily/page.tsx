@@ -99,13 +99,34 @@ export default function DailyReportPage() {
         }
     }, [selectedSemester]);
 
+    const getCachedDepartments = () => {
+        try {
+            const lCache = localStorage.getItem('offline_departments');
+            if (lCache) {
+                const parsed = JSON.parse(lCache);
+                if (parsed.data && Array.isArray(parsed.data)) return parsed.data;
+            }
+            const sCache = sessionStorage.getItem('cache_departments');
+            if (sCache) {
+                const parsed = JSON.parse(sCache);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch { /* ignore */ }
+        return null;
+    };
+
     const fetchDepartments = async (token: string) => {
+        const cached = getCachedDepartments();
+        if (cached && cached.length > 0) setDepartments(cached);
+
         try {
             const res = await fetch('/api/departments', {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
-            setDepartments(data.departments || []);
+            const depts = data.departments || [];
+            setDepartments(depts);
+            try { sessionStorage.setItem('cache_departments', JSON.stringify(depts)); } catch {}
         } catch (err) {
             console.error('Error fetching departments:', err);
         }
@@ -113,37 +134,23 @@ export default function DailyReportPage() {
 
     // Fetch departments for teachers (based on their assignments)
     const fetchTeacherDepartments = async (token: string, teacherId: string) => {
+        const cached = getCachedDepartments();
+        if (cached && cached.length > 0) setDepartments(cached);
+
         try {
-            const res = await fetch('/api/teachers', {
+            const res = await fetch('/api/me/departments', {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
-            const teacher = data.teachers?.find((t: any) => t.id === teacherId);
-            if (teacher) {
-                const allDepts: Department[] = [];
-                // Add primary department
-                if (teacher.department_id && teacher.department_name) {
-                    allDepts.push({
-                        id: teacher.department_id,
-                        name: teacher.department_name,
-                        code: teacher.department_code || '',
-                        deptType: teacher.department_dept_type || 'regular'
-                    });
-                }
-                // Add additional departments
-                if (teacher.departments && Array.isArray(teacher.departments)) {
-                    teacher.departments.forEach((dept: any) => {
-                        if (!allDepts.find(d => d.id === dept.id)) {
-                            allDepts.push({ id: dept.id, name: dept.name, code: dept.code || '', deptType: dept.dept_type || 'regular' });
-                        }
-                    });
-                }
-                // Set departments (show filter if more than 1)
-                if (allDepts.length > 1) {
-                    setDepartments(allDepts);
-                } else {
-                    setDepartments(allDepts); // Still store for stream detection
-                }
+            const depts = data.departments || [];
+            if (depts.length > 0) {
+                setDepartments(depts);
+                try {
+                    localStorage.setItem('offline_departments', JSON.stringify({
+                        timestamp: Date.now(),
+                        data: depts
+                    }));
+                } catch { /* ignore */ }
             }
         } catch (err) {
             console.error('Error fetching teacher departments:', err);
@@ -271,14 +278,14 @@ export default function DailyReportPage() {
                 return;
             }
 
-            const headers = ['S.No', 'Student ID', 'Roll Number', 'Student Name', 'Department', 'Subject Code', 'Subject Name', 'Lecture', 'Status'];
+            const headers = ['S.No', 'Student ID', 'Roll Number', 'Student Name', 'Department', 'Paper/Subject Code', 'Subject Name', 'Lecture', 'Status'];
             const rows = filteredRecords.map((r: any, index: number) => [
                 (index + 1).toString(),
                 r.studentCustomId || r.rollNumber,
                 r.rollNumber,
                 r.studentName,
                 r.departmentCode || '',
-                r.subjectCode,
+                r.subjectPaperCode || r.subjectCode,
                 r.subjectName,
                 `Lecture ${r.lectureNumber}`,
                 r.status.charAt(0).toUpperCase() + r.status.slice(1)
@@ -300,7 +307,7 @@ export default function DailyReportPage() {
                 link.click();
                 document.body.removeChild(link);
             } else if (format === 'excel') {
-                const headers = ['S.No', 'Student ID', 'Roll Number', 'Student Name', 'Department', 'Subject Code', 'Subject Name', 'Lecture', 'Status'];
+                const headers = ['S.No', 'Student ID', 'Roll Number', 'Student Name', 'Department', 'Paper/Subject Code', 'Subject Name', 'Lecture', 'Status'];
             const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
                 // Set column widths
                 worksheet['!cols'] = [
@@ -575,7 +582,7 @@ export default function DailyReportPage() {
                         <Filter className="w-4 h-4 text-gray-500" />
                         <h3 className="text-sm font-bold text-gray-700">Advanced Filters</h3>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 items-end">
                         {/* Department Filter */}
                         {(user?.role === 'super_admin' || departments.length > 1) && (
                             <div className="w-full">

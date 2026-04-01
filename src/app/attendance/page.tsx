@@ -32,6 +32,7 @@ interface Subject {
     id: string;
     subjectId: string;
     subjectCode: string;
+    subjectPaperCode?: string | null;
     subjectName: string;
     subjectSemesters: number[];
     academicYear: string;
@@ -123,12 +124,10 @@ export default function AttendancePage() {
         }
 
         setUser(parsedUser);
-        fetchTeacherDepartments(token, parsedUser.id);
+        fetchTeacherDepartments(token);
         fetchTeacherSubjects(token, parsedUser.id);
         fetchHolidays(token);
         fetchBatchConfig(token);
-        // Preload all student enrollment data for offline use
-        prefetchAllStudentData(token, parsedUser.id);
         setLoading(false);
     }, [router]);
 
@@ -157,40 +156,7 @@ export default function AttendancePage() {
         } catch { return null; }
     };
 
-    // Prefetch ALL student-subject enrollments for all teacher's subjects
-    const prefetchAllStudentData = async (token: string, teacherId: string) => {
-        try {
-            // First get teacher's subjects (may already be cached by fetchTeacherSubjects)
-            const tsRes = await fetch(`/api/teacher-subjects?teacherId=${teacherId}`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (!tsRes.ok) return;
-            const tsData = await tsRes.json();
-            const assignments = tsData.assignments || [];
-
-            // Fetch enrollments for each subject
-            const allEnrollments: any[] = [];
-            for (const subject of assignments) {
-                try {
-                    const res = await fetch(`/api/student-subjects?subjectId=${subject.subjectId}`, {
-                        headers: { Authorization: `Bearer ${token}` },
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        // Tag each enrollment with which subject it came from
-                        (data.enrollments || []).forEach((e: any) => {
-                            allEnrollments.push({ ...e, _fromSubjectId: subject.subjectId });
-                        });
-                    }
-                } catch { /* skip individual failures */ }
-            }
-
-            // Cache all enrollments
-            cacheToStorage(CACHE_KEYS.ENROLLMENTS, allEnrollments);
-        } catch (err) {
-            console.error('Error prefetching student data:', err);
-        }
-    };
+    // (prefetchAllStudentData removed — session cache + batch fetch replaces it)
 
     const applyDepartments = (allDepts: Department[]) => {
         setDepartments(allDepts);
@@ -198,9 +164,16 @@ export default function AttendancePage() {
         setPrimaryDeptType(allDepts[0]?.deptType || 'regular');
     };
 
-    const fetchTeacherDepartments = async (token: string, teacherId: string) => {
+    const fetchTeacherDepartments = async (token: string) => {
+        // --- INSTANT LOAD: Check cache first (stale-while-revalidate) ---
+        const cached = getFromCache<Department[]>(CACHE_KEYS.DEPARTMENTS);
+        if (cached && cached.length > 0) {
+            applyDepartments(cached);
+        }
+
         try {
-            const res = await fetch(`/api/teachers`, {
+            // Lightweight endpoint — returns only this user's departments
+            const res = await fetch(`/api/me/departments`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
@@ -208,41 +181,23 @@ export default function AttendancePage() {
                 return;
             }
             const data = await res.json();
+            const allDepts: Department[] = (data.departments || []).map((d: any) => ({
+                id: d.id,
+                name: d.name,
+                code: d.code || '',
+                deptType: d.deptType || 'regular'
+            }));
 
-            const teacher = data.teachers?.find((t: any) => t.id === teacherId);
-            if (teacher) {
-                const allDepts: Department[] = [];
-
-                if (teacher.department_id && teacher.department_name) {
-                    allDepts.push({
-                        id: teacher.department_id,
-                        name: teacher.department_name,
-                        code: teacher.department_code || '',
-                        deptType: teacher.department_dept_type || 'regular'
-                    });
-                }
-
-                if (teacher.additional_departments && Array.isArray(teacher.additional_departments)) {
-                    teacher.additional_departments.forEach((dept: any) => {
-                        if (!allDepts.find(d => d.id === dept.id)) {
-                            allDepts.push({
-                                id: dept.id,
-                                name: dept.name,
-                                code: dept.code || '',
-                                deptType: dept.dept_type || 'regular'
-                            });
-                        }
-                    });
-                }
-
-                applyDepartments(allDepts);
-                cacheToStorage(CACHE_KEYS.DEPARTMENTS, allDepts);
-            }
+            // Update with fresh data
+            applyDepartments(allDepts);
+            cacheToStorage(CACHE_KEYS.DEPARTMENTS, allDepts);
         } catch (err) {
             console.error('Error fetching departments:', err);
-            // Offline fallback: load from cache
-            const cached = getFromCache<Department[]>(CACHE_KEYS.DEPARTMENTS);
-            if (cached) applyDepartments(cached);
+            // Offline fallback: already loaded from cache above, but we can retry if needed
+            if (!cached) {
+                const fallback = getFromCache<Department[]>(CACHE_KEYS.DEPARTMENTS);
+                if (fallback) applyDepartments(fallback);
+            }
         }
     };
 
@@ -255,6 +210,12 @@ export default function AttendancePage() {
     };
 
     const fetchTeacherSubjects = async (token: string, teacherId: string) => {
+        // --- INSTANT LOAD: Check cache first (stale-while-revalidate) ---
+        const cached = getFromCache<Subject[]>(CACHE_KEYS.SUBJECTS);
+        if (cached && cached.length > 0) {
+            applySubjects(cached);
+        }
+
         try {
             const res = await fetch(`/api/teacher-subjects?teacherId=${teacherId}`, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -265,13 +226,17 @@ export default function AttendancePage() {
             }
             const data = await res.json();
             const assignments = data.assignments || [];
+            
+            // Update with fresh data
             applySubjects(assignments);
             cacheToStorage(CACHE_KEYS.SUBJECTS, assignments);
         } catch (err) {
             console.error('Error fetching subjects:', err);
-            // Offline fallback: load from cache
-            const cached = getFromCache<Subject[]>(CACHE_KEYS.SUBJECTS);
-            if (cached) applySubjects(cached);
+            // Offline fallback: already loaded from cache above, but we can retry if needed
+            if (!cached) {
+                const fallback = getFromCache<Subject[]>(CACHE_KEYS.SUBJECTS);
+                if (fallback) applySubjects(fallback);
+            }
         }
     };
 
@@ -459,50 +424,50 @@ export default function AttendancePage() {
         const semesterSubjectIds = semesterSubjects.map(s => s.subjectId);
 
         let enrolledStudents: Student[] = [];
-        let usedCache = false;
 
         try {
-            // Try fetching from network
-            const allStudentsMap = new Map<string, Student>();
-            for (const subject of semesterSubjects) {
-                const res = await fetch(`/api/student-subjects?subjectId=${subject.subjectId}`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (res.status === 401) {
-                    router.replace('/login');
-                    return;
-                }
-                const data = await res.json();
-                (data.enrollments || []).forEach((e: any) => {
-                    const tagged = { ...e, _fromSubjectId: subject.subjectId };
-                    const studentDeptId = e.studentDepartmentId;
-                    const studentSemester = e.studentCurrentSemester;
-                    if (selectedSemester && studentSemester !== parseInt(selectedSemester)) return;
-                    let matchesDepartment = false;
-                    if (selectedDepartmentId) {
-                        matchesDepartment = studentDeptId === selectedDepartmentId;
-                    } else if (teacherDepartmentIds.length > 0) {
-                        matchesDepartment = teacherDepartmentIds.includes(studentDeptId);
-                    } else {
-                        matchesDepartment = true;
-                    }
-                    if (matchesDepartment && !allStudentsMap.has(e.studentId)) {
-                        allStudentsMap.set(e.studentId, {
-                            id: e.studentId,
-                            student_custom_id: e.studentCustomId,
-                            roll_number: e.studentRollNumber || e.studentId.slice(-4),
-                            first_name: e.studentName?.split(' ')[0] || 'Unknown',
-                            last_name: e.studentName?.split(' ').slice(1).join(' ') || '',
-                            attendance: undefined
-                        });
-                    }
-                });
+            // === BATCH FETCH: 1 call instead of N (Always fresh data) ===
+            const batchIds = semesterSubjectIds.join(',');
+            const res = await fetch(`/api/student-subjects?subjectIds=${batchIds}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.status === 401) {
+                router.replace('/login');
+                return;
             }
+            const data = await res.json();
+            const allStudentsMap = new Map<string, Student>();
+
+            (data.enrollments || []).forEach((e: any) => {
+                const studentDeptId = e.studentDepartmentId;
+                const studentSemester = e.studentCurrentSemester;
+                if (selectedSemester && studentSemester !== parseInt(selectedSemester)) return;
+                let matchesDepartment = false;
+                if (selectedDepartmentId) {
+                    matchesDepartment = studentDeptId === selectedDepartmentId;
+                } else if (teacherDepartmentIds.length > 0) {
+                    matchesDepartment = teacherDepartmentIds.includes(studentDeptId);
+                } else {
+                    matchesDepartment = true;
+                }
+                if (matchesDepartment && !allStudentsMap.has(e.studentId)) {
+                    allStudentsMap.set(e.studentId, {
+                        id: e.studentId,
+                        student_custom_id: e.studentCustomId,
+                        roll_number: e.studentRollNumber || e.studentId.slice(-4),
+                        first_name: e.studentName?.split(' ')[0] || 'Unknown',
+                        last_name: e.studentName?.split(' ').slice(1).join(' ') || '',
+                        attendance: undefined
+                    });
+                }
+            });
             enrolledStudents = Array.from(allStudentsMap.values());
+
+            // Save to localStorage ONLY for offline fallback
+            cacheToStorage(CACHE_KEYS.ENROLLMENTS, data.enrollments || []);
         } catch (err) {
             // OFFLINE FALLBACK: Use cached enrollment data
             console.warn('Network failed, using cached student data');
-            usedCache = true;
             const cachedEnrollments = getFromCache<any[]>(CACHE_KEYS.ENROLLMENTS);
             if (cachedEnrollments) {
                 const studentMap = filterEnrollmentsToStudents(cachedEnrollments, semesterSubjectIds);
@@ -1199,7 +1164,7 @@ export default function AttendancePage() {
                                     <label className="block text-xs text-gray-500 mb-1">Subject</label>
                                     <div className="p-2 bg-gray-100 rounded border text-sm text-gray-700 font-medium truncate">
                                         {currentSubject ? (
-                                            <>{currentSubject.subjectName} ({currentSubject.subjectCode})</>
+                                            <>{currentSubject.subjectName} ({currentSubject.subjectPaperCode || currentSubject.subjectCode})</>
                                         ) : (
                                             <span className="text-gray-400">Select semester...</span>
                                         )}
