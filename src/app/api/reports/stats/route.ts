@@ -85,134 +85,173 @@ export async function GET(request: NextRequest) {
         }
         // super_admin: no filter, sees everything
 
+        // Run all queries in parallel to improve performance
+        const promises: Promise<void>[] = [];
+
         // Get total students
         let totalStudents = 0;
-        try {
-            const studentQuery = `SELECT COUNT(*) as count FROM students s WHERE 1=1 ${studentFilter}`;
-            const studentCount = await queryOne<CountResult>(studentQuery, studentParams);
-            totalStudents = parseInt(studentCount?.count || '0');
-        } catch {
-            // Table might not exist
-        }
+        promises.push((async () => {
+            try {
+                const studentQuery = `SELECT COUNT(*) as count FROM students s WHERE 1=1 ${studentFilter}`;
+                const studentCount = await queryOne<CountResult>(studentQuery, studentParams);
+                totalStudents = parseInt(studentCount?.count || '0');
+            } catch {
+                // Table might not exist
+            }
+        })());
 
         // Get total subjects
         let totalSubjects = 0;
-        try {
-            const subjectQuery = `SELECT COUNT(*) as count FROM subjects ${subjectFilter}`;
-            const subjectCount = await queryOne<CountResult>(subjectQuery, subjectParams);
-            totalSubjects = parseInt(subjectCount?.count || '0');
-        } catch {
-            // Table might not exist
-        }
+        promises.push((async () => {
+            try {
+                const subjectQuery = `SELECT COUNT(*) as count FROM subjects ${subjectFilter}`;
+                const subjectCount = await queryOne<CountResult>(subjectQuery, subjectParams);
+                totalSubjects = parseInt(subjectCount?.count || '0');
+            } catch {
+                // Table might not exist
+            }
+        })());
 
-        // Get total lectures (distinct date + subject + lecture_number)
+        // Get total lectures (distinct date + subject + semester + lecture_number)
         let totalLectures = 0;
-        try {
-            const lectureQuery = `SELECT COUNT(DISTINCT ar.date::text || ar.subject_id::text || ar.lecture_number::text) as count 
-                FROM attendance_records ar WHERE 1=1 ${attendanceFilter}`;
-            const lectureCount = await queryOne<CountResult>(lectureQuery, attendanceParams);
-            totalLectures = parseInt(lectureCount?.count || '0');
-        } catch (err) {
-            console.error('Error counting lectures:', err);
-        }
+        let workingDays = 0;
+        let todaySessions = 0;
+        promises.push((async () => {
+            try {
+                // Get IST today
+                const now = new Date();
+                const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+                const todayStr = istTime.toISOString().split('T')[0];
+
+                const lectureQuery = `SELECT 
+                    COUNT(DISTINCT ar.date::text || ar.subject_id::text || COALESCE(ar.semester::text, '0') || ar.lecture_number::text) as count,
+                    COUNT(DISTINCT ar.date) as working_days
+                    FROM attendance_records ar WHERE 1=1 ${attendanceFilter}`;
+                const lectureCount = await queryOne<CountResult & { working_days: string }>(lectureQuery, attendanceParams);
+                totalLectures = parseInt(lectureCount?.count || '0');
+                workingDays = parseInt(lectureCount?.working_days || '0');
+
+                // Today's sessions
+                const todayParams = [...attendanceParams, todayStr];
+                const todayDateIdx = todayParams.length;
+                const tQuery = `SELECT 
+                    COUNT(DISTINCT ar.subject_id::text || COALESCE(ar.semester::text, '0') || ar.lecture_number::text) as count
+                    FROM attendance_records ar WHERE ar.date = $${todayDateIdx} ${attendanceFilter}`;
+                const tCount = await queryOne<CountResult>(tQuery, todayParams);
+                todaySessions = parseInt(tCount?.count || '0');
+            } catch (err) {
+                console.error('Error counting lectures:', err);
+            }
+        })());
 
         // Calculate actual average attendance from attendance_records
         let averageAttendance = 0;
-        try {
-            const statsQuery = `SELECT 
-                    COUNT(*) as total,
-                    COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as present
-                 FROM attendance_records ar WHERE 1=1 ${attendanceFilter}`;
-            const stats = await queryOne<AttendanceStats>(statsQuery, attendanceParams);
-            if (stats && parseInt(stats.total) > 0) {
-                averageAttendance = Math.round((parseInt(stats.present) / parseInt(stats.total)) * 100);
+        promises.push((async () => {
+            try {
+                const statsQuery = `SELECT 
+                        COUNT(*) as total,
+                        COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as present
+                     FROM attendance_records ar WHERE 1=1 ${attendanceFilter}`;
+                const stats = await queryOne<AttendanceStats>(statsQuery, attendanceParams);
+                if (stats && parseInt(stats.total) > 0) {
+                    averageAttendance = Math.round((parseInt(stats.present) / parseInt(stats.total)) * 100);
+                }
+            } catch {
+                // Table might not exist
             }
-        } catch {
-            // Table might not exist
-        }
+        })());
 
         // For HOD and Super Admin: Get low attendance and warning counts
         let lowAttendanceCount = 0;
         let warningAttendanceCount = 0;
 
         if (role === 'hod' || role === 'super_admin') {
-            try {
-                // Get student-wise attendance percentages
-                let studentAttendanceQuery = `
-                    SELECT 
-                        s.id,
-                        COALESCE(
-                            ROUND(
-                                COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
-                                NULLIF(COUNT(ar.id), 0),
-                                1
-                            ),
-                            0
-                        ) as attendance_pct
-                    FROM students s
-                    LEFT JOIN attendance_records ar ON ar.student_id = s.id
-                    WHERE 1=1 ${studentFilter}
-                    GROUP BY s.id
-                    HAVING COUNT(ar.id) > 0
-                `;
-                
-                const studentStats = await query<StudentAttendanceStatus>(studentAttendanceQuery, studentParams);
-                
-                for (const student of studentStats) {
-                    const pct = parseFloat(student.attendance_pct);
-                    if (pct < 60) {
-                        lowAttendanceCount++;
-                    } else if (pct < 75) {
-                        warningAttendanceCount++;
+            promises.push((async () => {
+                try {
+                    // Get student-wise attendance percentages
+                    let studentAttendanceQuery = `
+                        SELECT 
+                            s.id,
+                            COALESCE(
+                                ROUND(
+                                    COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
+                                    NULLIF(COUNT(ar.id), 0),
+                                    1
+                                ),
+                                0
+                            ) as attendance_pct
+                        FROM students s
+                        LEFT JOIN attendance_records ar ON ar.student_id = s.id
+                        WHERE 1=1 ${studentFilter}
+                        GROUP BY s.id
+                        HAVING COUNT(ar.id) > 0
+                    `;
+                    
+                    const studentStats = await query<StudentAttendanceStatus>(studentAttendanceQuery, studentParams);
+                    
+                    for (const student of studentStats) {
+                        const pct = parseFloat(student.attendance_pct);
+                        if (pct < 60) {
+                            lowAttendanceCount++;
+                        } else if (pct < 75) {
+                            warningAttendanceCount++;
+                        }
                     }
+                } catch (err) {
+                    console.error('Error getting attendance counts:', err);
                 }
-            } catch (err) {
-                console.error('Error getting attendance counts:', err);
-            }
+            })());
         }
 
         // For Super Admin: Get department-wise stats
         let departmentStats: { departmentId: string; departmentName: string; totalStudents: number; avgAttendance: number }[] = [];
 
         if (role === 'super_admin') {
-            try {
-                const deptQuery = `
-                    SELECT 
-                        d.id as department_id,
-                        d.name as department_name,
-                        COUNT(DISTINCT s.id) as total_students,
-                        COALESCE(
-                            ROUND(
-                                COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
-                                NULLIF(COUNT(ar.id), 0),
-                                1
-                            ),
-                            0
-                        ) as avg_attendance
-                    FROM departments d
-                    LEFT JOIN students s ON s.department_id = d.id
-                    LEFT JOIN attendance_records ar ON ar.student_id = s.id
-                    GROUP BY d.id, d.name
-                    ORDER BY d.name
-                `;
-                
-                const deptStats = await query<DepartmentStats>(deptQuery, []);
-                departmentStats = deptStats.map(d => ({
-                    departmentId: d.department_id,
-                    departmentName: d.department_name,
-                    totalStudents: parseInt(d.total_students) || 0,
-                    avgAttendance: Math.round(parseFloat(d.avg_attendance) || 0)
-                }));
-            } catch (err) {
-                console.error('Error getting department stats:', err);
-            }
+            promises.push((async () => {
+                try {
+                    const deptQuery = `
+                        SELECT 
+                            d.id as department_id,
+                            d.name as department_name,
+                            COUNT(DISTINCT s.id) as total_students,
+                            COALESCE(
+                                ROUND(
+                                    COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
+                                    NULLIF(COUNT(ar.id), 0),
+                                    1
+                                ),
+                                0
+                            ) as avg_attendance
+                        FROM departments d
+                        LEFT JOIN students s ON s.department_id = d.id
+                        LEFT JOIN attendance_records ar ON ar.student_id = s.id
+                        GROUP BY d.id, d.name
+                        ORDER BY d.name
+                    `;
+                    
+                    const deptStats = await query<DepartmentStats>(deptQuery, []);
+                    departmentStats = deptStats.map(d => ({
+                        departmentId: d.department_id,
+                        departmentName: d.department_name,
+                        totalStudents: parseInt(d.total_students) || 0,
+                        avgAttendance: Math.round(parseFloat(d.avg_attendance) || 0)
+                    }));
+                } catch (err) {
+                    console.error('Error getting department stats:', err);
+                }
+            })());
         }
+
+        // Wait for all queries to complete
+        await Promise.all(promises);
 
         return NextResponse.json({
             stats: {
                 totalStudents,
                 totalSubjects,
                 totalSessions: totalLectures,
+                todaySessions,
+                workingDays,
                 averageAttendance,
                 // Role-specific data
                 ...(role === 'hod' || role === 'super_admin' ? {

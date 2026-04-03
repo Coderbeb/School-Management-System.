@@ -1135,7 +1135,7 @@ export default function StudentsPage() {
                                         {departments
                                             .filter(dept => !filterDeptType || dept.dept_type === filterDeptType)
                                             .map((dept) => (
-                                                <option key={dept.id} value={dept.id}>{dept.name} ({dept.degree_type.toUpperCase()})</option>
+                                                <option key={dept.id} value={dept.id}>{dept.name} ({(dept.degree_type || '').toUpperCase()})</option>
                                             ))}
                                     </select>
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />

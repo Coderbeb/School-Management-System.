@@ -90,8 +90,8 @@ CREATE TABLE IF NOT EXISTS student_subjects (
 );
 
 -- Attendance Records (Per-lecture attendance)
--- UPDATED: Unique constraint now includes teacher_id to support multiple teachers
--- marking attendance independently for the same subject/date/lecture
+-- Unique constraint includes teacher_id and semester to support multiple teachers
+-- and same subject taught across different semesters
 CREATE TABLE IF NOT EXISTS attendance_records (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     subject_id UUID REFERENCES subjects(id) ON DELETE CASCADE,
@@ -99,10 +99,11 @@ CREATE TABLE IF NOT EXISTS attendance_records (
     teacher_id UUID REFERENCES users(id),
     date DATE NOT NULL,
     lecture_number INTEGER NOT NULL DEFAULT 1,
+    semester INTEGER DEFAULT 1,
     status VARCHAR(20) NOT NULL CHECK (status IN ('present', 'absent', 'late', 'excused')),
     remarks VARCHAR(255),
     recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(subject_id, student_id, teacher_id, date, lecture_number)
+    CONSTRAINT attendance_records_unique_with_semester UNIQUE(subject_id, student_id, teacher_id, date, lecture_number, semester)
 );
 
 -- Holidays Table
@@ -159,6 +160,8 @@ CREATE INDEX IF NOT EXISTS idx_attendance_teacher_date ON attendance_records(tea
 CREATE INDEX IF NOT EXISTS idx_attendance_subject_date ON attendance_records(subject_id, date);
 CREATE INDEX IF NOT EXISTS idx_attendance_student_id ON attendance_records(student_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_subject_student_date ON attendance_records(subject_id, student_id, date);
+CREATE INDEX IF NOT EXISTS idx_attendance_semester ON attendance_records(semester);
+CREATE INDEX IF NOT EXISTS idx_attendance_session_count ON attendance_records(date, subject_id, semester, lecture_number);
 
 -- Teacher-subjects table
 CREATE INDEX IF NOT EXISTS idx_teacher_subjects_teacher_id ON teacher_subjects(teacher_id);

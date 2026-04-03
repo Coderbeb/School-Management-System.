@@ -20,6 +20,8 @@ interface User {
 interface AttendanceStats {
     totalStudents: number;
     totalSessions: number;
+    todaySessions: number;
+    workingDays: number;
     averageAttendance: number;
     todayClasses?: number;
     lowAttendanceCount?: number;
@@ -39,6 +41,8 @@ export default function ReportsPage() {
     const [stats, setStats] = useState<AttendanceStats>({
         totalStudents: 0,
         totalSessions: 0,
+        todaySessions: 0,
+        workingDays: 0,
         averageAttendance: 0,
     });
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -176,8 +180,14 @@ export default function ReportsPage() {
                 icon: Users
             },
             { 
-                label: 'Total Sessions', 
-                value: stats.totalSessions, 
+                label: 'Working Days', 
+                value: stats.workingDays, 
+                gradient: 'from-indigo-500 to-indigo-600',
+                icon: CalendarDays
+            },
+            { 
+                label: "Today's Sessions", 
+                value: stats.todaySessions, 
                 gradient: 'from-purple-500 to-purple-600',
                 icon: BookOpen
             },

@@ -25,6 +25,7 @@ interface SubjectStats {
     department_id: string;
     department_name: string;
     total_sessions: string;
+    working_days: string;
     total_students: string;
     avg_attendance: string;
 }
@@ -120,7 +121,8 @@ export async function GET(
                 ) as semester,
                 (SELECT id FROM departments WHERE degree_type = s.degree_type LIMIT 1) as department_id,
                 (SELECT name FROM departments WHERE degree_type = s.degree_type LIMIT 1) as department_name,
-                COUNT(DISTINCT ar.date || '-' || ar.lecture_number) as total_sessions,
+                COUNT(DISTINCT ar.date || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_sessions,
+                COUNT(DISTINCT ar.date) as working_days,
                 COUNT(DISTINCT ar.student_id) as total_students,
                 COALESCE(
                     ROUND(
@@ -156,7 +158,7 @@ export async function GET(
         const monthlyStats = await query<MonthlyStats>(
             `SELECT 
                 TO_CHAR(ar.date, 'YYYY-MM') as month,
-                COUNT(DISTINCT ar.date || '-' || ar.lecture_number) as sessions,
+                COUNT(DISTINCT ar.date || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as sessions,
                 COALESCE(
                     ROUND(
                         COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
@@ -176,7 +178,8 @@ export async function GET(
         // Overall summary with filters - SIMPLIFIED to directly filter by teacher_id
         const overallStatsQuery = `
             SELECT 
-                COUNT(DISTINCT ar.date || '-' || ar.subject_id || '-' || ar.lecture_number) as total_sessions,
+                COUNT(DISTINCT ar.date || '-' || ar.subject_id || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_sessions,
+                COUNT(DISTINCT ar.date) as working_days,
                 COUNT(DISTINCT ar.student_id) as total_students,
                 COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as present_count,
                 COUNT(CASE WHEN ar.status = 'absent' THEN 1 END) as absent_count,
@@ -193,13 +196,13 @@ export async function GET(
         `;
 
         const overallStatsParams = [teacherId];
-        const overallStats = await query<{ total_sessions: string; total_students: string; present_count: string; absent_count: string; avg_attendance: string }>(
+        const overallStats = await query<{ total_sessions: string; working_days: string; total_students: string; present_count: string; absent_count: string; avg_attendance: string }>(
             overallStatsQuery,
             overallStatsParams
         );
 
         const teacher = teacherInfo[0];
-        const overall = overallStats[0] || { total_sessions: '0', total_students: '0', present_count: '0', absent_count: '0', avg_attendance: '0' };
+        const overall = overallStats[0] || { total_sessions: '0', working_days: '0', total_students: '0', present_count: '0', absent_count: '0', avg_attendance: '0' };
 
         return NextResponse.json({
             teacher: {
@@ -214,6 +217,7 @@ export async function GET(
             },
             summary: {
                 totalSessions: parseInt(overall.total_sessions) || 0,
+                workingDays: parseInt(overall.working_days) || 0,
                 totalStudents: parseInt(overall.total_students) || 0,
                 presentCount: parseInt(overall.present_count) || 0,
                 absentCount: parseInt(overall.absent_count) || 0,
@@ -226,6 +230,7 @@ export async function GET(
                 semester: s.semester,
                 department: s.department_name,
                 sessions: parseInt(s.total_sessions) || 0,
+                workingDays: parseInt(s.working_days) || 0,
                 students: parseInt(s.total_students) || 0,
                 attendance: Math.round(parseFloat(s.avg_attendance) || 0)
             })),

@@ -10,6 +10,7 @@ interface TeacherData {
     department_name: string;
     subject_names: string;
     total_sessions: string;
+    working_days: string;
     avg_attendance: string;
 }
 
@@ -64,7 +65,8 @@ export async function GET(request: NextRequest) {
                     STRING_AGG(DISTINCT s.name, ', ' ORDER BY s.name),
                     ''
                 ) as subject_names,
-                COUNT(DISTINCT ar.date || '-' || ar.subject_id || '-' || ar.lecture_number) as total_sessions,
+                COUNT(DISTINCT ar.date || '-' || ar.subject_id || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_sessions,
+                COUNT(DISTINCT ar.date) as working_days,
                 COALESCE(
                     ROUND(
                         COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
@@ -91,6 +93,7 @@ export async function GET(request: NextRequest) {
             department: t.department_name || 'N/A',
             subjects: t.subject_names || '-',
             totalSessions: parseInt(t.total_sessions) || 0,
+            workingDays: parseInt(t.working_days) || 0,
             averageAttendance: Math.round(parseFloat(t.avg_attendance) || 0)
         }));
 

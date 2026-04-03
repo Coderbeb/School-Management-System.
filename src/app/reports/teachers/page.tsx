@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 
-import { Search, X, Users, BookOpen, TrendingUp, Filter, ChevronRight, FileDown, ArrowLeft, ChevronDown, CheckCircle, AlertCircle, Eye, GraduationCap, FileText, FileSpreadsheet, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Search, X, Users, BookOpen, TrendingUp, Filter, ChevronRight, FileDown, ArrowLeft, ChevronDown, CheckCircle, AlertCircle, Eye, GraduationCap, FileText, FileSpreadsheet, ArrowUpRight, ArrowDownRight, CalendarDays } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
@@ -31,6 +31,7 @@ interface TeacherAttendance {
     department: string;
     subjects: string;
     totalSessions: number;
+    workingDays: number;
     averageAttendance: number;
 }
 
@@ -47,6 +48,7 @@ interface TeacherDetail {
     };
     summary: {
         totalSessions: number;
+        workingDays: number;
         totalStudents: number;
         presentCount: number;
         absentCount: number;
@@ -59,6 +61,7 @@ interface TeacherDetail {
         semester: number;
         department: string;
         sessions: number;
+        workingDays: number;
         students: number;
         attendance: number;
     }[];
@@ -940,6 +943,10 @@ export default function TeacherReportPage() {
 
                                                     <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
                                                         <span className="flex items-center gap-1">
+                                                            <CalendarDays className="w-3 h-3" /> {teacher.workingDays} Days
+                                                        </span>
+                                                        <span className="text-gray-300">|</span>
+                                                        <span className="flex items-center gap-1">
                                                             <BookOpen className="w-3 h-3" /> {teacher.totalSessions} Sessions
                                                         </span>
                                                     </div>
@@ -1008,7 +1015,11 @@ export default function TeacherReportPage() {
                                                 </div>
                                             </div>
 
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6">
+                                                <div className="bg-white p-4 rounded-xl shadow-sm border border-indigo-100 text-center">
+                                                    <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Working Days</div>
+                                                    <div className="text-2xl font-bold text-indigo-600">{selectedTeacher.summary.workingDays}</div>
+                                                </div>
                                                 <div className="bg-white p-4 rounded-xl shadow-sm border border-purple-100 text-center">
                                                     <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Total Sessions</div>
                                                     <div className="text-2xl font-bold text-gray-900">{selectedTeacher.summary.totalSessions}</div>

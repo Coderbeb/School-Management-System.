@@ -9,6 +9,22 @@ const pool = new Pool({
     ...(isLocalhost ? {} : { ssl: { rejectUnauthorized: false } }),
 });
 
+// Auto-migration: runs once on first query
+let migrationDone = false;
+async function ensureMigrations() {
+    if (migrationDone) return;
+    migrationDone = true; // Set immediately to prevent concurrent runs
+    try {
+        const { runMigrations } = await import('./migrate');
+        await runMigrations();
+    } catch (err) {
+        console.error('[DB] Migration error (non-fatal):', err);
+    }
+}
+
+// Trigger migration on pool ready (non-blocking)
+ensureMigrations();
+
 export async function query<T>(text: string, params?: unknown[]): Promise<T[]> {
     const client = await pool.connect();
     try {

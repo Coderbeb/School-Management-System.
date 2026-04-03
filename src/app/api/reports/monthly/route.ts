@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
         const summaryResult = await query<MonthlyData>(
             `SELECT 
                 COUNT(DISTINCT ar.date) as total_days,
-                COUNT(DISTINCT ar.date || '-' || ar.lecture_number) as total_lectures,
+                COUNT(DISTINCT ar.date || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_lectures,
                 COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as present_count,
                 COUNT(CASE WHEN ar.status = 'absent' THEN 1 END) as absent_count,
                 COUNT(*) as total_count

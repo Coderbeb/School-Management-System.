@@ -26,6 +26,12 @@ interface Department {
     dept_type?: 'regular' | 'vocational' | 'pg';
 }
 
+interface SubjectOption {
+    id: string;
+    code: string;
+    name: string;
+}
+
 interface StudentAttendance {
     id: string;
     studentId: string;
@@ -95,6 +101,11 @@ function StudentReportContent() {
     const [showSearch, setShowSearch] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
+    // Page-level subject filter
+    const [availableSubjects, setAvailableSubjects] = useState<SubjectOption[]>([]);
+    const [pageSelectedSubjectIds, setPageSelectedSubjectIds] = useState<Set<string>>(new Set());
+    const [showSubjectFilter, setShowSubjectFilter] = useState(false);
+
     // Sorting state
     const [sortField, setSortField] = useState<'name' | 'rollNumber' | 'totalClasses' | 'attended' | 'percentage'>('rollNumber');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -153,6 +164,38 @@ function StudentReportContent() {
             fetchStudentReport(token);
         }
     }, [selectedDepartmentId, selectedSemester, user]);
+
+    // Fetch subjects when department/semester changes
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (token && user) {
+            fetchSubjects(token);
+        }
+    }, [selectedDepartmentId, selectedSemester, user]);
+
+    const fetchSubjects = async (token: string) => {
+        try {
+            const params = new URLSearchParams();
+            if (selectedSemester) params.append('semester', selectedSemester);
+            let url = '/api/subjects';
+            if (params.toString()) url += '?' + params.toString();
+
+            const res = await fetch(url, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            const subjects: SubjectOption[] = (data.subjects || []).map((s: { id: string; code: string; name: string }) => ({
+                id: s.id,
+                code: s.code,
+                name: s.name,
+            }));
+            setAvailableSubjects(subjects);
+            // Select all by default
+            setPageSelectedSubjectIds(new Set(subjects.map(s => s.id)));
+        } catch (err) {
+            console.error('Error fetching subjects:', err);
+        }
+    };
 
     const getCachedDepartments = () => {
         try {
@@ -304,15 +347,71 @@ function StudentReportContent() {
         setPopupEndDate('');
     };
 
+    // Toggle a subject in the page-level selection
+    const toggleSubjectSelection = (subjectId: string) => {
+        setPageSelectedSubjectIds(prev => {
+            const next = new Set(prev);
+            if (next.has(subjectId)) {
+                next.delete(subjectId);
+            } else {
+                next.add(subjectId);
+            }
+            return next;
+        });
+    };
+
+    // Select all / deselect all subjects at page level
+    const toggleAllSubjects = () => {
+        if (pageSelectedSubjectIds.size === availableSubjects.length) {
+            setPageSelectedSubjectIds(new Set());
+        } else {
+            setPageSelectedSubjectIds(new Set(availableSubjects.map(s => s.id)));
+        }
+    };
+
+    // Get filtered subjects based on page-level selection
+    const getFilteredSubjects = () => {
+        if (!selectedStudent) return [];
+        if (pageSelectedSubjectIds.size === 0 || pageSelectedSubjectIds.size === availableSubjects.length) return selectedStudent.subjects;
+        return selectedStudent.subjects.filter(s => pageSelectedSubjectIds.has(s.id));
+    };
+
+    // Recalculate summary based on page-level selected subjects
+    const getFilteredSummary = () => {
+        if (!selectedStudent) return { totalClasses: 0, attended: 0, attendancePercentage: 0 };
+        const filtered = getFilteredSubjects();
+        const totalClasses = filtered.reduce((sum, s) => sum + s.totalClasses, 0);
+        const attended = filtered.reduce((sum, s) => sum + s.attended, 0);
+        const attendancePercentage = totalClasses > 0 ? Math.round((attended / totalClasses) * 100) : 0;
+        return { totalClasses, attended, attendancePercentage };
+    };
+
     // Download Report Card as PDF
     const downloadReportCard = () => {
         if (!selectedStudent || !user) return;
 
         const student = selectedStudent.student;
-        const summary = selectedStudent.summary;
-        const subjects = selectedStudent.subjects;
+        const subjects = getFilteredSubjects();
+        const summary = getFilteredSummary();
         const dateRange = selectedStudent.dateRange;
         const logoUrl = typeof window !== 'undefined' ? `${window.location.origin}/college-logo.png` : '/college-logo.png';
+
+        // Determine if subject filter is applied
+        const allSubjectsSelected = pageSelectedSubjectIds.size === 0 || pageSelectedSubjectIds.size === availableSubjects.length;
+        const subjectFilterText = allSubjectsSelected
+            ? 'All Subjects'
+            : subjects.map(s => s.name).join(', ');
+
+        // Determine date range text
+        const dateFilterText = dateRange
+            ? `${new Date(dateRange.startDate).toLocaleDateString()} – ${new Date(dateRange.endDate).toLocaleDateString()}`
+            : (popupStartDate && popupEndDate)
+                ? `${new Date(popupStartDate).toLocaleDateString()} – ${new Date(popupEndDate).toLocaleDateString()}`
+                : (popupStartDate)
+                    ? `From ${new Date(popupStartDate).toLocaleDateString()}`
+                    : (popupEndDate)
+                        ? `Until ${new Date(popupEndDate).toLocaleDateString()}`
+                        : 'All Time';
 
         const getStatus = (pct: number) => {
             if (pct >= 75) return { text: 'GOOD STANDING', color: '#16a34a' };
@@ -330,8 +429,8 @@ function StudentReportContent() {
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600;700&display=swap');
         
         :root {
-            --primary: #1e3a8a; /* Royal Navy */
-            --accent: #b45309;  /* Gold/Amber */
+            --primary: #1e3a8a;
+            --accent: #b45309;
             --light: #f8fafc;
             --border: #e2e8f0;
             --text-main: #1e293b;
@@ -344,7 +443,7 @@ function StudentReportContent() {
             font-family: 'Inter', sans-serif; 
             background: #fff; 
             color: var(--text-main); 
-            padding: 20px; /* Compact padding */
+            padding: 20px;
             -webkit-print-color-adjust: exact; 
             print-color-adjust: exact; 
         }
@@ -362,7 +461,6 @@ function StudentReportContent() {
             box-shadow: none;
         }
 
-        /* Decorative Top Bar */
         .top-bar {
             height: 6px;
             background: linear-gradient(90deg, var(--primary) 0%, var(--primary) 85%, var(--accent) 85%, var(--accent) 100%);
@@ -371,7 +469,6 @@ function StudentReportContent() {
         
         .content-padding { padding: 30px; }
 
-        /* Header */
         .header { 
             display: flex; 
             align-items: center; 
@@ -403,7 +500,6 @@ function StudentReportContent() {
             letter-spacing: 0.5px;
         }
 
-        /* Ribbon Badge */
         .badge-container {
             position: absolute;
             top: -30px;
@@ -422,7 +518,6 @@ function StudentReportContent() {
             border-bottom-right-radius: 4px;
         }
         
-        /* Watermark */
         .watermark { 
             position: absolute; 
             top: 50%; 
@@ -435,7 +530,6 @@ function StudentReportContent() {
             filter: grayscale(100%);
         }
         
-        /* Student Details Card */
         .info-card { 
             background: #eff6ff;
             border-left: 4px solid var(--primary);
@@ -469,7 +563,31 @@ function StudentReportContent() {
         .meta-values strong { color: var(--text-main); font-weight: 600; margin-right: 4px; }
         .meta-row { margin-bottom: 2px; }
 
-        /* Stats Grid */
+        /* Filters Applied Banner */
+        .filters-banner {
+            background: #f0f9ff;
+            border: 1px solid #bae6fd;
+            border-radius: 4px;
+            padding: 10px 16px;
+            margin-bottom: 20px;
+            position: relative;
+            z-index: 1;
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        .filter-item {
+            font-size: 10px;
+            color: var(--text-sub);
+        }
+        .filter-item strong {
+            color: #0369a1;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-right: 6px;
+        }
+
         .stats-grid { 
             display: grid; 
             grid-template-columns: repeat(3, 1fr); 
@@ -503,7 +621,6 @@ function StudentReportContent() {
             margin-top: 4px;
         }
         
-        /* Section Header */
         .section-header { 
             display: flex; 
             align-items: center; 
@@ -517,7 +634,6 @@ function StudentReportContent() {
             padding-bottom: 6px;
         }
         
-        /* Table */
         table { 
             width: 100%; 
             border-collapse: collapse; 
@@ -560,7 +676,6 @@ function StudentReportContent() {
         .bg-amber { background: #fef3c7; color: #b45309; }
         .bg-red { background: #fee2e2; color: #991b1b; }
 
-        /* Status Box */
         .conclusion {
             background: #fff;
             border: 1px solid var(--border);
@@ -572,7 +687,6 @@ function StudentReportContent() {
         .conclusion h3 { font-size: 11px; color: var(--accent); text-transform: uppercase; margin-bottom: 4px; }
         .conclusion p { font-size: 11px; line-height: 1.5; color: var(--text-sub); }
 
-        /* Footer */
         .footer { 
             margin-top: 25px; 
             padding-top: 15px; 
@@ -617,6 +731,11 @@ function StudentReportContent() {
                     <div class="meta-row"><strong>Semester:</strong> ${student.semester}</div>
                     <div class="meta-row"><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
                 </div>
+            </div>
+
+            <div class="filters-banner">
+                <div class="filter-item"><strong>Period:</strong> ${dateFilterText}</div>
+                <div class="filter-item"><strong>Subjects:</strong> ${subjectFilterText}</div>
             </div>
 
             <div class="stats-grid">
@@ -996,6 +1115,26 @@ function StudentReportContent() {
                                 </div>
                             </div>
 
+                            {/* Subject Filter Toggle */}
+                            {availableSubjects.length > 0 && (
+                                <div className="w-full">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Subjects</label>
+                                    <button
+                                        onClick={() => setShowSubjectFilter(!showSubjectFilter)}
+                                        className={`w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border rounded-xl text-sm text-left font-medium shadow-sm transition-all cursor-pointer relative ${
+                                            pageSelectedSubjectIds.size < availableSubjects.length && pageSelectedSubjectIds.size > 0
+                                                ? 'border-purple-300 text-purple-700 bg-purple-50/30'
+                                                : 'border-gray-200 hover:border-purple-300 text-gray-700'
+                                        }`}
+                                    >
+                                        {pageSelectedSubjectIds.size === 0 || pageSelectedSubjectIds.size === availableSubjects.length
+                                            ? `All Subjects (${availableSubjects.length})`
+                                            : `${pageSelectedSubjectIds.size} of ${availableSubjects.length} Selected`}
+                                        <ChevronDown className={`w-4 h-4 text-gray-400 absolute right-3 top-3 transition-transform ${showSubjectFilter ? 'rotate-180' : ''}`} />
+                                    </button>
+                                </div>
+                            )}
+
                             {/* Reset Button */}
                             <div className="w-full lg:w-auto">
                                 <Button
@@ -1006,6 +1145,8 @@ function StudentReportContent() {
                                         setSelectedDepartmentId('');
                                         setSelectedStream('all');
                                         setSearchTerm('');
+                                        setPageSelectedSubjectIds(new Set(availableSubjects.map(s => s.id)));
+                                        setShowSubjectFilter(false);
                                         router.push('/reports/students');
                                     }}
                                 >
@@ -1013,6 +1154,55 @@ function StudentReportContent() {
                                 </Button>
                             </div>
                         </div>
+
+                        {/* Subject Multi-Select Chips (Expandable) */}
+                        {showSubjectFilter && availableSubjects.length > 0 && (
+                            <div className="mt-4 pt-4 border-t border-gray-100">
+                                <div className="flex items-center justify-between mb-3">
+                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Select Subjects</span>
+                                    <button
+                                        onClick={toggleAllSubjects}
+                                        className="text-xs font-medium text-purple-600 hover:text-purple-800 transition-colors"
+                                    >
+                                        {pageSelectedSubjectIds.size === availableSubjects.length ? 'Deselect All' : 'Select All'}
+                                    </button>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {availableSubjects.map((sub) => {
+                                        const isSelected = pageSelectedSubjectIds.has(sub.id);
+                                        return (
+                                            <button
+                                                key={sub.id}
+                                                onClick={() => toggleSubjectSelection(sub.id)}
+                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 ${
+                                                    isSelected
+                                                        ? 'bg-purple-100 border-purple-300 text-purple-800 shadow-sm'
+                                                        : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                                                }`}
+                                            >
+                                                <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                                                    isSelected
+                                                        ? 'bg-purple-600 border-purple-600'
+                                                        : 'border-gray-300 bg-white'
+                                                }`}>
+                                                    {isSelected && (
+                                                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                    )}
+                                                </div>
+                                                <span>{sub.code} - {sub.name}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                {pageSelectedSubjectIds.size > 0 && pageSelectedSubjectIds.size < availableSubjects.length && (
+                                    <p className="text-xs text-purple-600 mt-2 font-medium">
+                                        {pageSelectedSubjectIds.size} of {availableSubjects.length} subjects selected — student reports will only show these subjects
+                                    </p>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -1293,47 +1483,63 @@ function StudentReportContent() {
                                                 </div>
                                             </div>
 
+                                            {/* Subject Filter Info */}
+                                            {pageSelectedSubjectIds.size > 0 && pageSelectedSubjectIds.size < availableSubjects.length && getFilteredSubjects().length < selectedStudent.subjects.length && (
+                                                <div className="mt-3 pt-3 border-t border-purple-100">
+                                                    <p className="text-xs text-purple-600 font-medium">
+                                                        📋 Showing {getFilteredSubjects().length} of {selectedStudent.subjects.length} subjects (filtered from page)
+                                                    </p>
+                                                </div>
+                                            )}
+
                                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mt-6">
-                                                <div className="bg-white p-4 rounded-xl shadow-sm border border-purple-100 text-center">
-                                                    <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Total Classes</div>
-                                                    <div className="text-2xl font-bold text-gray-900">{selectedStudent.summary.totalClasses}</div>
-                                                </div>
-                                                <div className="bg-white p-4 rounded-xl shadow-sm border border-emerald-100 text-center">
-                                                    <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Attended</div>
-                                                    <div className="text-2xl font-bold text-emerald-600">{selectedStudent.summary.attended}</div>
-                                                </div>
-                                                <div className={`bg-white p-4 rounded-xl shadow-sm border text-center ${selectedStudent.summary.attendancePercentage >= 75 ? 'border-emerald-100' : 'border-amber-100'
-                                                    }`}>
-                                                    <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Attendance</div>
-                                                    <div className={`text-2xl font-bold ${selectedStudent.summary.attendancePercentage >= 75 ? 'text-emerald-600' :
-                                                            selectedStudent.summary.attendancePercentage >= 60 ? 'text-amber-600' : 'text-red-600'
-                                                        }`}>
-                                                        {selectedStudent.summary.attendancePercentage}%
-                                                    </div>
-                                                </div>
+                                                {(() => {
+                                                    const filteredSummary = getFilteredSummary();
+                                                    return (
+                                                        <>
+                                                            <div className="bg-white p-4 rounded-xl shadow-sm border border-purple-100 text-center">
+                                                                <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Total Classes</div>
+                                                                <div className="text-2xl font-bold text-gray-900">{filteredSummary.totalClasses}</div>
+                                                            </div>
+                                                            <div className="bg-white p-4 rounded-xl shadow-sm border border-emerald-100 text-center">
+                                                                <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Attended</div>
+                                                                <div className="text-2xl font-bold text-emerald-600">{filteredSummary.attended}</div>
+                                                            </div>
+                                                            <div className={`bg-white p-4 rounded-xl shadow-sm border text-center ${filteredSummary.attendancePercentage >= 75 ? 'border-emerald-100' : 'border-amber-100'}`}>
+                                                                <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Attendance</div>
+                                                                <div className={`text-2xl font-bold ${filteredSummary.attendancePercentage >= 75 ? 'text-emerald-600' :
+                                                                        filteredSummary.attendancePercentage >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
+                                                                    {filteredSummary.attendancePercentage}%
+                                                                </div>
+                                                            </div>
+                                                        </>
+                                                    );
+                                                })()}
                                             </div>
                                         </div>
 
                                         {/* Filters for Detail */}
-                                        <div className="bg-gray-50 p-4 rounded-xl flex flex-wrap items-center gap-3 border border-gray-100">
-                                            <span className="text-sm font-medium text-gray-700">Filter Range:</span>
-                                            <Input
-                                                type="date"
-                                                value={popupStartDate}
-                                                onChange={(e) => setPopupStartDate(e.target.value)}
-                                                className="w-auto h-9 bg-white"
-                                            />
-                                            <span className="text-gray-400">-</span>
-                                            <Input
-                                                type="date"
-                                                value={popupEndDate}
-                                                onChange={(e) => setPopupEndDate(e.target.value)}
-                                                className="w-auto h-9 bg-white"
-                                            />
-                                            <Button size="sm" variant="secondary" onClick={applyDateFilter}>Apply</Button>
-                                            {(popupStartDate || popupEndDate) && (
-                                                <Button size="sm" variant="ghost" onClick={clearDateFilter}>Clear</Button>
-                                            )}
+                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                            <div className="flex flex-wrap items-center gap-3">
+                                                <span className="text-sm font-medium text-gray-700">Filter Range:</span>
+                                                <Input
+                                                    type="date"
+                                                    value={popupStartDate}
+                                                    onChange={(e) => setPopupStartDate(e.target.value)}
+                                                    className="w-auto h-9 bg-white"
+                                                />
+                                                <span className="text-gray-400">-</span>
+                                                <Input
+                                                    type="date"
+                                                    value={popupEndDate}
+                                                    onChange={(e) => setPopupEndDate(e.target.value)}
+                                                    className="w-auto h-9 bg-white"
+                                                />
+                                                <Button size="sm" variant="secondary" onClick={applyDateFilter}>Apply</Button>
+                                                {(popupStartDate || popupEndDate) && (
+                                                    <Button size="sm" variant="ghost" onClick={clearDateFilter}>Clear</Button>
+                                                )}
+                                            </div>
                                         </div>
 
                                         {/* Subject Wise List */}
@@ -1353,7 +1559,7 @@ function StudentReportContent() {
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y">
-                                                        {selectedStudent.subjects.map((sub) => (
+                                                        {getFilteredSubjects().map((sub) => (
                                                             <tr key={sub.id} className="bg-white hover:bg-gray-50/50">
                                                                 <td className="px-4 py-3">
                                                                     <div className="font-medium text-gray-900">{sub.name}</div>

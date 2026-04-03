@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Users, Calendar, TrendingUp, BookOpen, Clock, ChevronRight } from 'lucide-react';
+import { Users, Calendar, TrendingUp, BookOpen, Clock, ChevronRight, CalendarDays } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 
@@ -42,6 +42,7 @@ interface PerformanceData {
     };
     summary: {
         totalSessions: number;
+        workingDays: number;
         totalStudents: number;
         presentCount: number;
         absentCount: number;
@@ -184,7 +185,20 @@ export default function MyPerformancePage() {
                         </div>
 
                         {/* Summary Stats */}
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6">
+                            <div className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow rounded-xl">
+                                <div className="p-5">
+                                    <div className="flex items-start justify-between">
+                                        <div>
+                                            <p className="text-gray-500 text-xs uppercase tracking-wide font-bold">Working Days</p>
+                                            <p className="text-gray-900 text-2xl font-bold mt-1">{data.summary.workingDays}</p>
+                                        </div>
+                                        <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                                            <CalendarDays className="w-5 h-5" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                             <div className="border border-gray-100 shadow-sm bg-white overflow-hidden relative group hover:shadow-md transition-shadow rounded-xl">
                                 <div className="p-5">
                                     <div className="flex items-start justify-between">

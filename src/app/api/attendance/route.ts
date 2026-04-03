@@ -95,7 +95,14 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Not assigned to this subject' }, { status: 403 });
         }
 
-        // 3. Batch INSERT using unnest() — 1 query instead of N
+        // 3. Auto-detect semester from first student in batch
+        const firstStudentSemester = await query<{ current_semester: number }>(
+            'SELECT current_semester FROM students WHERE id = $1',
+            [records[0].studentId]
+        );
+        const batchSemester = firstStudentSemester.length > 0 ? firstStudentSemester[0].current_semester : 1;
+
+        // 4. Batch INSERT using unnest() — 1 query instead of N
         const subjectIds: string[] = [];
         const studentIds: string[] = [];
         const statuses: string[] = [];
@@ -112,11 +119,11 @@ export async function POST(request: NextRequest) {
         }
 
         const result = await query(
-            `INSERT INTO attendance_records (subject_id, student_id, teacher_id, date, lecture_number, status)
-             SELECT unnest($1::uuid[]), unnest($2::uuid[]), $3, $4, $5, unnest($6::text[])
-             ON CONFLICT (subject_id, student_id, teacher_id, date, lecture_number)
+            `INSERT INTO attendance_records (subject_id, student_id, teacher_id, date, lecture_number, semester, status)
+             SELECT unnest($1::uuid[]), unnest($2::uuid[]), $3, $4, $5, $6, unnest($7::text[])
+             ON CONFLICT (subject_id, student_id, teacher_id, date, lecture_number, semester)
              DO UPDATE SET status = EXCLUDED.status`,
-            [subjectIds, studentIds, payload.userId, batchDate, assignedLectureNumber, statuses]
+            [subjectIds, studentIds, payload.userId, batchDate, assignedLectureNumber, batchSemester, statuses]
         );
 
         const savedCount = subjectIds.length;
@@ -125,6 +132,7 @@ export async function POST(request: NextRequest) {
             message: `Saved ${savedCount} attendance records`,
             savedCount,
             lectureNumber: assignedLectureNumber,
+            semester: batchSemester,
         });
     } catch (error) {
         console.error('Save attendance error:', error);
