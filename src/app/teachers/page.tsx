@@ -98,6 +98,7 @@ export default function TeachersPage() {
     const [selectedDepartmentIds, setSelectedDepartmentIds] = useState<string[]>([]);
     const [selectedSubjectKeys, setSelectedSubjectKeys] = useState<string[]>([]);
     const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
+    const [enablePasswordUpdate, setEnablePasswordUpdate] = useState(false);
 
     // Search & Filter
     const [searchTerm, setSearchTerm] = useState('');
@@ -152,7 +153,15 @@ export default function TeachersPage() {
         const selectedDegreeTypes = departments
             .filter(d => selectedDepartmentIds.includes(d.id))
             .map(d => d.degree_type);
-        return groupedSubjects.filter(([, g]) => selectedDegreeTypes.includes(g.degreeType));
+        
+        const filtered = groupedSubjects.filter(([, g]) => selectedDegreeTypes.includes(g.degreeType));
+        
+        // Sort according to paper code
+        return filtered.sort(([, a], [, b]) => {
+            const paperA = (a.paperCode || a.code || '').toLowerCase();
+            const paperB = (b.paperCode || b.code || '').toLowerCase();
+            return paperA.localeCompare(paperB, undefined, { numeric: true, sensitivity: 'base' });
+        });
     }, [groupedSubjects, selectedDepartmentIds, departments]);
 
     const [error, setError] = useState('');
@@ -245,6 +254,7 @@ export default function TeachersPage() {
         setSelectedDepartmentIds(defaultDeptIds);
         setSelectedSubjectKeys([]);
         setSelectedTeacherId(null);
+        setEnablePasswordUpdate(false);
         setError('');
         setSuccess('');
     };
@@ -286,6 +296,7 @@ export default function TeachersPage() {
             role: teacher.role,
             password: ''
         });
+        setEnablePasswordUpdate(false);
 
         // Set selected departments
         const deptIds: string[] = [];
@@ -344,6 +355,7 @@ export default function TeachersPage() {
                         lastName: formData.lastName,
                         email: formData.email,
                         role: formData.role,
+                        password: formData.password || undefined,
                         departmentIds: selectedDepartmentIds
                     }),
                 });
@@ -996,20 +1008,40 @@ export default function TeachersPage() {
                                             className="rounded-xl border-gray-200"
                                         />
                                     </div>
-                                    {!selectedTeacherId && (
-                                        <div className="space-y-2">
-                                            <Label htmlFor="password">Password</Label>
-                                            <Input
-                                                id="password"
-                                                type="password"
-                                                value={formData.password || ''}
-                                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                                placeholder="Leave blank for default"
-                                                className="rounded-xl border-gray-200"
-                                            />
-                                            <p className="text-xs text-gray-400">Default: Welcome@123</p>
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            {selectedTeacherId && (
+                                                <input
+                                                    type="checkbox"
+                                                    id="enablePasswordUpdate"
+                                                    checked={enablePasswordUpdate}
+                                                    onChange={(e) => {
+                                                        setEnablePasswordUpdate(e.target.checked);
+                                                        if (!e.target.checked) setFormData({ ...formData, password: '' });
+                                                    }}
+                                                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                                />
+                                            )}
+                                            <Label 
+                                                htmlFor={selectedTeacherId ? "enablePasswordUpdate" : "password"} 
+                                                className={selectedTeacherId ? "cursor-pointer" : ""}
+                                            >
+                                                {selectedTeacherId ? 'Update Password (Optional)' : 'Password'}
+                                            </Label>
                                         </div>
-                                    )}
+                                        <Input
+                                            id="password"
+                                            type="password"
+                                            value={formData.password || ''}
+                                            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                            placeholder={selectedTeacherId ? (enablePasswordUpdate ? "Enter new password" : "Check box to edit") : "Leave blank for default"}
+                                            className="rounded-xl border-gray-200 disabled:opacity-50 disabled:bg-gray-50"
+                                            disabled={selectedTeacherId ? !enablePasswordUpdate : false}
+                                        />
+                                        <p className="text-xs text-gray-400">
+                                            {selectedTeacherId ? "Check the box to enable password update" : "Default: Welcome@123"}
+                                        </p>
+                                    </div>
                                 </div>
 
                                 {isSuperAdmin && (

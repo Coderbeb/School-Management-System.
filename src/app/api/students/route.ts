@@ -70,8 +70,8 @@ export async function POST(request: NextRequest) {
 
         const { studentId, rollNumber, firstName, lastName, email, semester, departmentId } = await request.json();
 
-        if (!studentId || !rollNumber || !firstName || !lastName || !departmentId) {
-            return NextResponse.json({ error: 'Student ID, roll number, first name, last name, and department are required' }, { status: 400 });
+        if (!studentId || !rollNumber || !firstName || !departmentId) {
+            return NextResponse.json({ error: 'Student ID, roll number, first name, and department are required' }, { status: 400 });
         }
 
         // Extract batch_year from the student ID (e.g., BCA2025SC001 → 2025)
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
             `INSERT INTO students (roll_number, roll_number_old, first_name, last_name, email, current_semester, batch_year, department_id, student_id)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              RETURNING *`,
-            [parseInt(rollNumber), rollNumber.toString(), firstName, lastName, email || null, parseInt(semester) || 1, batchYear, departmentId, studentId]
+            [parseInt(rollNumber), rollNumber.toString(), firstName, lastName || '', email || null, parseInt(semester) || 1, batchYear, departmentId, studentId]
         );
 
         return NextResponse.json({ student: students[0] }, { status: 201 });
@@ -189,7 +189,7 @@ export async function PUT(request: NextRequest) {
         if (studentId) { updateFields.push(`student_id = $${++paramCount}`); params.push(studentId); }
         if (rollNumber) { updateFields.push(`roll_number = $${++paramCount}`); params.push(parseInt(rollNumber)); }
         if (firstName) { updateFields.push(`first_name = $${++paramCount}`); params.push(firstName); }
-        if (lastName) { updateFields.push(`last_name = $${++paramCount}`); params.push(lastName); }
+        if (lastName !== undefined) { updateFields.push(`last_name = $${++paramCount}`); params.push(lastName); }
         if (email) { updateFields.push(`email = $${++paramCount}`); params.push(email); }
         if (semester) { updateFields.push(`current_semester = $${++paramCount}`); params.push(parseInt(semester)); }
         if (departmentId) { updateFields.push(`department_id = $${++paramCount}`); params.push(departmentId); }

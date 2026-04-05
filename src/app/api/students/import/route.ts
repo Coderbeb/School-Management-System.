@@ -30,6 +30,7 @@ function collectSubjectEnrollments(
             }
         });
 
+    /*
     if (parsed.courseType === 'vocational' && parsed.geSubjects) {
         const hasGeneric1 = student.generic1 || student.ge1;
         const hasGeneric2 = student.generic2 || student.ge2;
@@ -40,6 +41,7 @@ function collectSubjectEnrollments(
             subjectInputs.push({ value: parsed.geSubjects.ge2, isCrossDegree: true });
         }
     }
+    */
 
     if (subjectInputs.length > 0) {
         const departmentSubjects = allSubjects.filter((s: any) =>

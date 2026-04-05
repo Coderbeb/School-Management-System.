@@ -276,16 +276,16 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
-        const { id, firstName, lastName, email, departmentId, departmentIds, role } = await request.json();
+        const { id, firstName, lastName, email, departmentId, departmentIds, role, password } = await request.json();
 
         if (!id) {
             return NextResponse.json({ error: 'Teacher ID required' }, { status: 400 });
         }
 
         // Support both single departmentId and array of departmentIds
-        const deptIds: string[] = departmentIds || (departmentId ? [departmentId] : []);
-        const primaryDeptId = deptIds.length > 0 ? deptIds[0] : null;
-        const additionalDeptIds = deptIds.slice(1);
+        let deptIds: string[] = departmentIds || (departmentId ? [departmentId] : []);
+        let primaryDeptId = deptIds.length > 0 ? deptIds[0] : null;
+        let additionalDeptIds = deptIds.slice(1);
 
         // HOD restriction check
         if (payload.role === 'hod') {
@@ -303,14 +303,15 @@ export async function PUT(request: NextRequest) {
                     return NextResponse.json({ error: 'Access denied' }, { status: 403 });
                 }
             }
-            // HOD cannot change primary department to another department
-            if (primaryDeptId && primaryDeptId !== payload.departmentId && teacher[0].department_id === payload.departmentId) {
-                return NextResponse.json({ error: 'Cannot move teacher to another department' }, { status: 403 });
-            }
-            // HOD cannot assign multiple departments
-            if (additionalDeptIds.length > 0) {
-                return NextResponse.json({ error: 'Only admin can assign teachers to multiple departments' }, { status: 403 });
-            }
+            
+            // HODs are not allowed to modify teacher departments. Override with existing db values.
+            const currentDepts = await query<{ department_id: string }>('SELECT department_id FROM user_departments WHERE user_id = $1', [id]);
+            deptIds = [];
+            if (teacher[0].department_id) deptIds.push(teacher[0].department_id);
+            deptIds.push(...currentDepts.map(d => d.department_id));
+            
+            primaryDeptId = deptIds.length > 0 ? deptIds[0] : null;
+            additionalDeptIds = deptIds.slice(1);
         }
 
         // Enforce Single HOD Rule (if promoting to HOD)
@@ -339,6 +340,11 @@ export async function PUT(request: NextRequest) {
         if (email) { updateFields.push(`email = $${++paramCount}`); params.push(email); }
         if (primaryDeptId) { updateFields.push(`department_id = $${++paramCount}`); params.push(primaryDeptId); }
         if (role) { updateFields.push(`role = $${++paramCount}`); params.push(role); }
+        if (password) {
+            const passwordHash = await hashPassword(password);
+            updateFields.push(`password_hash = $${++paramCount}`);
+            params.push(passwordHash);
+        }
 
         if (updateFields.length > 0) {
             await query(

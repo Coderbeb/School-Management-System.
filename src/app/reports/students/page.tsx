@@ -158,12 +158,14 @@ function StudentReportContent() {
         router.replace('/login');
     };
 
+    const selectedSubjectsStr = Array.from(pageSelectedSubjectIds).sort().join(',');
+
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (token && user) {
             fetchStudentReport(token);
         }
-    }, [selectedDepartmentId, selectedSemester, user]);
+    }, [selectedDepartmentId, selectedSemester, selectedSubjectsStr, user]);
 
     // Fetch subjects when department/semester changes
     useEffect(() => {
@@ -278,6 +280,11 @@ function StudentReportContent() {
             const params = new URLSearchParams();
             if (selectedDepartmentId) params.append('departmentId', selectedDepartmentId);
             if (selectedSemester) params.append('semester', selectedSemester);
+            
+            if (pageSelectedSubjectIds.size > 0 && availableSubjects.length > 0 && pageSelectedSubjectIds.size < availableSubjects.length) {
+                params.append('subjectIds', Array.from(pageSelectedSubjectIds).join(','));
+            }
+
             if (params.toString()) url += '?' + params.toString();
 
             const res = await fetch(url, {

@@ -98,6 +98,9 @@ export default function AttendancePage() {
     const [currentLectureNumber, setCurrentLectureNumber] = useState<number | null>(null);
     const [totalLecturesToday, setTotalLecturesToday] = useState<number>(0);
 
+    // Ref to track current stream for auto-save (since useCallback captures stale closures)
+    const selectedStreamRef = useRef<string>('all');
+
     // Auto-save timer ref
     const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
     const pendingChangesRef = useRef(false);
@@ -534,6 +537,9 @@ export default function AttendancePage() {
 
         setStudents(studentsWithAttendance);
 
+        // Reset pending changes on fresh load
+        pendingChangesRef.current = false;
+
         // Fetch history (non-critical, skip gracefully if offline)
         fetchAttendanceHistory(studentsWithAttendance, subjectId);
         setLoading(false);
@@ -587,9 +593,16 @@ export default function AttendancePage() {
             const token = localStorage.getItem('token');
             if (!token || !selectedSubjectId) return;
 
-            // Use ref to get latest students state
+            // Use ref to get latest students — send ALL students in the current stream view
             const currentStudents = studentsRef.current;
-            const attendanceData = currentStudents
+            const stream = selectedStreamRef.current;
+
+            // Filter by stream (same logic as displayStudents)
+            const streamStudents = stream === 'all'
+                ? currentStudents
+                : currentStudents.filter(s => s.student_custom_id && s.student_custom_id.toUpperCase().startsWith(stream));
+
+            const attendanceData = streamStudents
                 .filter(s => s.attendance)
                 .map(s => ({ studentId: s.id, status: s.attendance }));
 
@@ -653,11 +666,9 @@ export default function AttendancePage() {
         triggerAutoSave();
     };
 
-    // Toggle attendance: undefined/absent -> present, present -> absent
     const toggleAttendance = (studentId: string) => {
         setStudents(prev => prev.map(s => {
             if (s.id !== studentId) return s;
-            // If not marked or absent, toggle to present; if present, toggle to absent
             const newStatus = s.attendance === 'present' ? 'absent' : 'present';
             return { ...s, attendance: newStatus };
         }));
@@ -687,7 +698,12 @@ export default function AttendancePage() {
         const token = localStorage.getItem('token');
         if (!token || !selectedSubjectId) return;
 
-        const attendanceData = students
+        // Save ALL students visible in the current stream view
+        const streamStudents = selectedStream === 'all'
+            ? students
+            : students.filter(s => s.student_custom_id && s.student_custom_id.toUpperCase().startsWith(selectedStream));
+
+        const attendanceData = streamStudents
             .filter(s => s.attendance)
             .map(s => ({ studentId: s.id, status: s.attendance }));
 
@@ -792,6 +808,11 @@ export default function AttendancePage() {
         return students.filter(s => s.student_custom_id && s.student_custom_id.toUpperCase().startsWith(selectedStream));
     }, [students, selectedStream]);
 
+    // Keep ref in sync for auto-save callback
+    useEffect(() => {
+        selectedStreamRef.current = selectedStream;
+    }, [selectedStream]);
+
     // reset stream when department changes
     useEffect(() => {
         setSelectedStream('all');
@@ -826,30 +847,48 @@ export default function AttendancePage() {
                 {/* Page Header (Sub-header) */}
                 <div className="bg-white shadow-sm z-10 px-4 py-3 border-b border-gray-200">
                     <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
-                            <span className="p-2 rounded-lg bg-emerald-100 text-emerald-600 hidden md:block">
-                                <ClipboardCheck className="w-6 h-6" />
-                            </span>
-                            Mark Attendance
-                            {autoSaving && (
-                                <span className="text-sm font-normal text-blue-500 animate-pulse ml-2">Saving...</span>
-                            )}
-                            {!navigator.onLine && (
-                                <span className="flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-200 ml-2">
-                                    <WifiOff className="w-3 h-3" /> Offline
+                        <div className="flex items-center justify-between w-full md:w-auto">
+                            <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+                                <span className="p-2 rounded-lg bg-emerald-100 text-emerald-600 hidden md:block">
+                                    <ClipboardCheck className="w-6 h-6" />
                                 </span>
-                            )}
-                        </h1>
-                        <div className="flex items-center gap-3">
-                            <Label htmlFor="date" className="whitespace-nowrap text-sm font-medium text-gray-700">Date:</Label>
-                            <input
-                                id="date"
-                                type="date"
-                                value={selectedDate}
-                                onChange={(e) => setSelectedDate(e.target.value)}
-                                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
-                                disabled={user?.role === 'teacher' || user?.role === 'hod'} // Only super_admin can change date? Wait, logic was teacher/hod specific in original code
-                            />
+                                Mark Attendance
+                                {autoSaving && (
+                                    <span className="text-sm font-normal text-blue-500 animate-pulse ml-2 hidden md:inline">Saving...</span>
+                                )}
+                            </h1>
+                            <div className="flex items-center gap-2">
+                                {autoSaving && (
+                                    <span className="text-sm font-normal text-blue-500 animate-pulse md:hidden">Saving...</span>
+                                )}
+                                {!navigator.onLine && (
+                                    <span className="flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-200">
+                                        <WifiOff className="w-3 h-3" /> Offline
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 w-full md:w-auto">
+                            <div className="flex items-center gap-3">
+                                <Label htmlFor="date" className="whitespace-nowrap text-sm font-medium text-gray-700">Date:</Label>
+                                <input
+                                    id="date"
+                                    type="date"
+                                    value={selectedDate}
+                                    onChange={(e) => setSelectedDate(e.target.value)}
+                                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500 w-[140px]"
+                                    disabled={user?.role === 'teacher' || user?.role === 'hod'} 
+                                />
+                            </div>
+                            
+                            {/* Subject display for Mobile */}
+                            <div className="md:hidden flex-1 shrink min-w-0 flex justify-end">
+                                {currentSubject && (
+                                    <span className="text-xs font-semibold bg-gray-100 px-2.5 py-1.5 rounded-lg text-gray-700 block truncate max-w-full border border-gray-200">
+                                        {currentSubject.subjectName} ({currentSubject.subjectPaperCode || currentSubject.subjectCode})
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

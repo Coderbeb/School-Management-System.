@@ -45,20 +45,10 @@ export interface Student {
     updatedAt: Date;
 }
 
-// Regular department subject types
-export type RegularSubjectType = 'major' | 'minor' | 'mdc' | 'vac' | 'aec';
-
-// Vocational department subject types
-export type VocationalSubjectType = 'core1' | 'core2' | 'core3' | 'ge1' | 'ge2' | 'aecc' | 'sec1' | 'dse1' | 'dse2';
-
-// All subject types
-export type SubjectType = RegularSubjectType | VocationalSubjectType;
-
 export interface Subject {
     id: string;
     code: string;
     name: string;
-    subjectType: SubjectType;
     programId: string;
     semester: number;
     credits: number;
