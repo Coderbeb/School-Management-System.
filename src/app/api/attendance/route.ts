@@ -84,6 +84,12 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: `Cannot mark attendance for future date: ${batchDate}` }, { status: 400 });
         }
 
+        // 1.5 Prevent Sunday Attendance
+        const batchDateObj = new Date(batchDate);
+        if (batchDateObj.getUTCDay() === 0) {
+            return NextResponse.json({ error: `Cannot mark attendance on Sunday (Weekend Holiday)` }, { status: 400 });
+        }
+
         // 2. Verify Teacher Assignment ONCE (not per record)
         const assignmentCheck = await query(
             'SELECT 1 FROM teacher_subjects WHERE teacher_id = $1 AND subject_id = $2',

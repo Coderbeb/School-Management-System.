@@ -11,8 +11,8 @@ export async function POST(request: NextRequest) {
 
         const token = authHeader.split(' ')[1];
         const payload = verifyToken(token);
-        if (!payload || payload.role !== 'super_admin') {
-            return NextResponse.json({ error: 'Access denied. Only super admins can import holidays.' }, { status: 403 });
+        if (!payload || !['super_admin', 'hod'].includes(payload.role)) {
+            return NextResponse.json({ error: 'Access denied. You do not have permission to import holidays.' }, { status: 403 });
         }
 
         const { holidays } = await request.json();
@@ -93,6 +93,8 @@ export async function POST(request: NextRequest) {
         try {
             await client.query('BEGIN');
 
+            const departmentId = payload.role === 'hod' ? payload.departmentId : null;
+
             if (validHolidays.length > 0) {
                 const CHUNK_SIZE = 100;
                 for (let i = 0; i < validHolidays.length; i += CHUNK_SIZE) {
@@ -100,15 +102,14 @@ export async function POST(request: NextRequest) {
                     const values: string[] = [];
                     const params: any[] = [];
                     chunk.forEach((h, idx) => {
-                        const offset = idx * 3;
-                        values.push(`($${offset + 1}, $${offset + 2}, $${offset + 3})`);
-                        params.push(h.name, h.date, h.description);
+                        const offset = idx * 4;
+                        values.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4})`);
+                        params.push(h.name, h.date, h.description, departmentId);
                     });
                     
                     await client.query(
-                        `INSERT INTO holidays (name, date, description)
-                         VALUES ${values.join(', ')}
-                         ON CONFLICT (date) DO UPDATE SET name = EXCLUDED.name, description = COALESCE(EXCLUDED.description, holidays.description)`,
+                        `INSERT INTO holidays (name, date, description, department_id)
+                         VALUES ${values.join(', ')}`,
                         params
                     );
                 }

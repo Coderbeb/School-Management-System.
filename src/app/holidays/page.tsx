@@ -18,10 +18,12 @@ interface Holiday {
     name: string;
     date: string;
     description: string | null;
+    department_id: string | null;
 }
 
 interface User {
     role: 'super_admin' | 'hod' | 'teacher';
+    departmentId?: string;
 }
 
 export default function HolidaysPage() {
@@ -281,6 +283,8 @@ export default function HolidaysPage() {
     if (loading) return <PageSkeleton type="holidays" />;
 
     const isSuperAdmin = user?.role === 'super_admin';
+    const isHOD = user?.role === 'hod';
+    const canManageHolidays = isSuperAdmin || isHOD;
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
@@ -311,7 +315,7 @@ export default function HolidaysPage() {
                             {holidays.length} holidays configured
                         </p>
                     </div>
-                    {isSuperAdmin && (
+                    {canManageHolidays && (
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={() => setShowImportModal(true)} className="hidden md:flex">
                                 <FileUp className="w-4 h-4 mr-2" />
@@ -333,7 +337,7 @@ export default function HolidaysPage() {
                     {holidays.length === 0 ? (
                         <Card>
                             <CardContent className="py-8 text-center text-gray-500">
-                                No holidays found. {isSuperAdmin && 'Add your first holiday!'}
+                                No holidays found. {canManageHolidays && 'Add your first holiday!'}
                             </CardContent>
                         </Card>
                     ) : (
@@ -345,7 +349,7 @@ export default function HolidaysPage() {
                                         <th className="px-6 py-3 text-left text-sm font-semibold">Date</th>
                                         <th className="px-6 py-3 text-left text-sm font-semibold">Name</th>
                                         <th className="px-6 py-3 text-left text-sm font-semibold">Description</th>
-                                        {isSuperAdmin && <th className="px-6 py-3 text-left text-sm font-semibold">Actions</th>}
+                                        {canManageHolidays && <th className="px-6 py-3 text-left text-sm font-semibold">Actions</th>}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y">
@@ -358,12 +362,18 @@ export default function HolidaysPage() {
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 font-medium">{holiday.name}</td>
-                                            <td className="px-6 py-4 text-gray-500">{holiday.description || '-'}</td>
-                                            {isSuperAdmin && (
+                                            <td className="px-6 py-4 text-gray-500">
+                                                {holiday.description || '-'}
+                                                {holiday.department_id === null && <span className="ml-2 inline-block px-2 text-xs rounded-full bg-indigo-100 text-indigo-700">Global</span>}
+                                                {holiday.department_id && <span className="ml-2 inline-block px-2 text-xs rounded-full bg-orange-100 text-orange-700">Dept</span>}
+                                            </td>
+                                            {canManageHolidays && (
                                                 <td className="px-6 py-4">
-                                                    <Button variant="outline" size="sm" onClick={() => handleDelete(holiday.id)} className="text-red-500 hover:text-red-700">
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
+                                                    {(isSuperAdmin || (isHOD && holiday.department_id === user?.departmentId)) && (
+                                                        <Button variant="outline" size="sm" onClick={() => handleDelete(holiday.id)} className="text-red-500 hover:text-red-700">
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
                                                 </td>
                                             )}
                                         </tr>
@@ -378,7 +388,7 @@ export default function HolidaysPage() {
                 <main className="md:hidden px-4 py-2 pb-24">
                     {holidays.length === 0 ? (
                         <div className="bg-white rounded-2xl p-8 text-center text-gray-500 shadow-sm">
-                            No holidays found. {isSuperAdmin && 'Add your first holiday!'}
+                            No holidays found. {canManageHolidays && 'Add your first holiday!'}
                         </div>
                     ) : (
                         <div className="space-y-3">
@@ -407,13 +417,17 @@ export default function HolidaysPage() {
                                         </div>
 
                                         {/* Delete Button */}
-                                        {isSuperAdmin && (
-                                            <button
-                                                onClick={() => handleDelete(holiday.id)}
-                                                className="flex-shrink-0 p-2 rounded-lg hover:bg-red-50 transition-colors self-start"
-                                            >
-                                                <Trash2 className="w-4 h-4 text-red-500" />
-                                            </button>
+                                        {canManageHolidays && (
+                                            <div className="flex-shrink-0 self-start">
+                                                {(isSuperAdmin || (isHOD && holiday.department_id === user?.departmentId)) && (
+                                                    <button
+                                                        onClick={() => handleDelete(holiday.id)}
+                                                        className="p-2 rounded-lg hover:bg-red-50 transition-colors"
+                                                    >
+                                                        <Trash2 className="w-4 h-4 text-red-500" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 );
@@ -423,7 +437,7 @@ export default function HolidaysPage() {
                 </main>
 
                 {/* Mobile Floating Buttons */}
-                {isSuperAdmin && (
+                {canManageHolidays && (
                     <div className="md:hidden fixed bottom-6 right-6 flex flex-col gap-3">
                         <button
                             onClick={() => setShowImportModal(true)}

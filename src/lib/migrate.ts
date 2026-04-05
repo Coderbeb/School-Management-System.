@@ -62,8 +62,20 @@ const MIGRATIONS: { name: string; sql: string }[] = [
                 ON attendance_records(date, subject_id, semester, lecture_number);
         `
     },
+    {
+        name: '002_holidays_department_id',
+        sql: `
+            -- Add department_id to holidays for department-specific holidays
+            ALTER TABLE holidays
+            ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE CASCADE;
+
+            -- Drop unique date constraint so multiple departments can have holidays on the same date
+            ALTER TABLE holidays
+            DROP CONSTRAINT IF EXISTS holidays_date_key;
+        `
+    },
     // Add future migrations here as new entries:
-    // { name: '002_next_migration', sql: `...` },
+    // { name: '003_next_migration', sql: `...` },
 ];
 
 export async function runMigrations() {

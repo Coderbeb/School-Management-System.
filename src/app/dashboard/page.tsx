@@ -197,6 +197,16 @@ export default function DashboardPage() {
                     borderColor: 'border-amber-200'
                 },
                 {
+                    id: 'holidays',
+                    title: 'Holidays',
+                    description: 'Manage department holidays & calendar',
+                    href: '/holidays',
+                    iconComponent: <CalendarDays className="w-6 h-6" />,
+                    gradient: 'from-cyan-100 to-sky-100',
+                    textColor: 'text-cyan-700',
+                    borderColor: 'border-cyan-200'
+                },
+                {
                     id: 'reports',
                     title: 'Department Reports',
                     description: 'View detailed analytical insights',

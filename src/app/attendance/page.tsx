@@ -52,6 +52,7 @@ interface Holiday {
     name: string;
     date: string;
     description?: string;
+    department_id: string | null;
 }
 
 export default function AttendancePage() {
@@ -302,12 +303,6 @@ export default function AttendancePage() {
 
     // Check if selected date is a holiday
     useEffect(() => {
-        if (holidays.length === 0) {
-            setIsHoliday(false);
-            setHolidayName('');
-            return;
-        }
-
         // Helper function to normalize date to YYYY-MM-DD in LOCAL timezone
         const normalizeDate = (dateInput: string | Date): string => {
             // Always parse through Date object and extract LOCAL date parts
@@ -322,20 +317,32 @@ export default function AttendancePage() {
         // The selected date is already in YYYY-MM-DD format from the input
         const selectedDateNormalized = selectedDate;
 
+        // Determine currently active department block
+        const activeDeptId = selectedDepartmentId || subjects.find(s => s.subjectId === selectedSubjectId)?.departmentId || teacherDepartmentIds[0];
+
         // Find matching holiday
         const holiday = holidays.find(h => {
             const holidayDateNormalized = normalizeDate(h.date);
-            return holidayDateNormalized === selectedDateNormalized;
+            const isDateMatch = holidayDateNormalized === selectedDateNormalized;
+            const isDeptMatch = !h.department_id || h.department_id === activeDeptId;
+            return isDateMatch && isDeptMatch;
         });
+
+        // Check if Sunday (Using UTC since the date string YYYY-MM-DD is parsed as UTC midnight)
+        const dateObj = new Date(selectedDateNormalized);
+        const isSunday = dateObj.getUTCDay() === 0;
 
         if (holiday) {
             setIsHoliday(true);
             setHolidayName(holiday.name);
+        } else if (isSunday) {
+            setIsHoliday(true);
+            setHolidayName('Sunday (Weekend)');
         } else {
             setIsHoliday(false);
             setHolidayName('');
         }
-    }, [selectedDate, holidays]);
+    }, [selectedDate, holidays, selectedDepartmentId, selectedSubjectId, subjects, teacherDepartmentIds]);
 
     // Filter subjects by department if selected
     const filteredSubjects = selectedDepartmentId

@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
             `SELECT 
                 sub.id,
                 sub.name,
-                sub.code,
+                COALESCE(sub.paper_code, sub.code) as code,
                 COALESCE(
                     (SELECT string_agg(ss2.semester::text, ', ' ORDER BY ss2.semester)
                      FROM subject_semesters ss2 WHERE ss2.subject_id = sub.id),
