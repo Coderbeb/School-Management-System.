@@ -38,6 +38,7 @@ interface Subject {
     academicYear: string;
     departmentId?: string;
     departmentName?: string;
+    degreeType?: string;
 }
 
 interface Department {
@@ -45,6 +46,7 @@ interface Department {
     name: string;
     code: string;
     deptType: string;
+    degreeType?: string;
 }
 
 interface Holiday {
@@ -72,7 +74,6 @@ export default function AttendancePage() {
     const [selectedSubjectId, setSelectedSubjectId] = useState('');
     const [selectedSection, setSelectedSection] = useState(''); // Optional section
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
-    const [selectedStream, setSelectedStream] = useState<string>('all');
 
     const [loading, setLoading] = useState(true);
     // Initialize with local date (IST) to prevent previous day issue in early morning
@@ -99,8 +100,6 @@ export default function AttendancePage() {
     const [currentLectureNumber, setCurrentLectureNumber] = useState<number | null>(null);
     const [totalLecturesToday, setTotalLecturesToday] = useState<number>(0);
 
-    // Ref to track current stream for auto-save (since useCallback captures stale closures)
-    const selectedStreamRef = useRef<string>('all');
 
     // Auto-save timer ref
     const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -189,7 +188,8 @@ export default function AttendancePage() {
                 id: d.id,
                 name: d.name,
                 code: d.code || '',
-                deptType: d.deptType || 'regular'
+                deptType: d.deptType || 'regular',
+                degreeType: d.degreeType
             }));
 
             // Update with fresh data
@@ -206,9 +206,16 @@ export default function AttendancePage() {
     };
 
     const applySubjects = (assignments: Subject[]) => {
-        setSubjects(assignments);
+        // Deduplicate strictly by subject mapping ID to prevent breaking degree mapping
+        // We do NOT deduplicate by code here because different departments might assign 
+        // completely different backend subject records even if they share a paper code
+        const uniqueAssignments = Array.from(
+            new Map(assignments.map((a: any) => [a.subjectId || a.id, a])).values()
+        ) as Subject[];
+
+        setSubjects(uniqueAssignments);
         const semesterSet = new Set<number>();
-        assignments.forEach((s: Subject) => s.subjectSemesters.forEach((sem: number) => semesterSet.add(sem)));
+        uniqueAssignments.forEach((s: Subject) => s.subjectSemesters.forEach((sem: number) => semesterSet.add(sem)));
         const semesters = Array.from(semesterSet).sort((a, b) => a - b);
         setAvailableSemesters(semesters);
     };
@@ -344,9 +351,23 @@ export default function AttendancePage() {
         }
     }, [selectedDate, holidays, selectedDepartmentId, selectedSubjectId, subjects, teacherDepartmentIds]);
 
-    // Filter subjects by department if selected
+    // Filter subjects by matching department degree_type
     const filteredSubjects = selectedDepartmentId
-        ? subjects.filter(s => s.departmentId === selectedDepartmentId)
+        ? subjects.filter(s => {
+              const selectedDept = departments.find(d => d.id === selectedDepartmentId);
+              if (!selectedDept) return true;
+              
+              // Fallback to inferring degree type from code if API cache is stale
+              let expectedDegreeType = selectedDept.degreeType;
+              if (!expectedDegreeType) {
+                  const upperCode = selectedDept.code.toUpperCase();
+                  if (upperCode === 'BCA') expectedDegreeType = 'bca';
+                  else if (upperCode === 'IT') expectedDegreeType = 'it';
+                  else if (upperCode === 'BBA') expectedDegreeType = 'bba';
+              }
+              
+              return expectedDegreeType ? s.degreeType === expectedDegreeType : true;
+          })
         : subjects;
 
     // Get semesters for filtered subjects. If filtering resulted in empty, fall back to all subjects
@@ -429,14 +450,53 @@ export default function AttendancePage() {
         const token = localStorage.getItem('token');
         if (!token || !subjectId) return;
 
-        setLoading(true);
         const semesterSubjects = subjectsToUse.filter(s => s.subjectSemesters.includes(parseInt(selectedSemester)));
         const semesterSubjectIds = semesterSubjects.map(s => s.subjectId);
+
+        let hasValidCache = false;
+        
+        // --- INSTANT LOAD (SWR) ---
+        const cachedEnrollments = getFromCache<any[]>(CACHE_KEYS.ENROLLMENTS);
+        if (cachedEnrollments && cachedEnrollments.length > 0) {
+            const studentMap = filterEnrollmentsToStudents(cachedEnrollments, semesterSubjectIds);
+            const cachedEnrolledStudents = Array.from(studentMap.values());
+            
+            if (cachedEnrolledStudents.length > 0) {
+                 hasValidCache = true;
+                 const attCacheKey = `cache_att_${subjectId}_${selectedDate}`;
+                 const cachedRawAtt = getFromCache<any[]>(attCacheKey);
+                 const cachedAttendance = cachedRawAtt || [];
+                 
+                 const teacherCachedAtt = user ? cachedAttendance.filter((r: any) => r.teacher_id === user.id) : cachedAttendance;
+
+                 const instantRenderData = cachedEnrolledStudents.map((student: Student) => {
+                     const record = teacherCachedAtt.find((r: any) =>
+                         (r.student_id === student.id) || (r.studentId === student.id)
+                     );
+                     return {
+                         ...student,
+                         attendance: record ? (record.status as 'present' | 'absent') : 'absent'
+                     };
+                 });
+                 
+                 instantRenderData.sort((a, b) =>
+                     String(a.roll_number || '').localeCompare(String(b.roll_number || ''), undefined, { numeric: true, sensitivity: 'base' })
+                 );
+                 
+                 setStudents(instantRenderData);
+                 if (loading) setLoading(false);
+            }
+        }
+
+        // Show spinner only if no cache to instantly render
+        if (!hasValidCache) {
+            setLoading(true);
+        }
 
         let enrolledStudents: Student[] = [];
 
         try {
-            // === BATCH FETCH: 1 call instead of N (Always fresh data) ===
+            // === BACKGROUND FETCH: Always fresh data overlay ===
             const batchIds = semesterSubjectIds.join(',');
             const res = await fetch(`/api/student-subjects?subjectIds=${batchIds}`, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -473,20 +533,21 @@ export default function AttendancePage() {
             });
             enrolledStudents = Array.from(allStudentsMap.values());
 
-            // Save to localStorage ONLY for offline fallback
+            // Save to localStorage for instant SWR loads
             cacheToStorage(CACHE_KEYS.ENROLLMENTS, data.enrollments || []);
         } catch (err) {
-            // OFFLINE FALLBACK: Use cached enrollment data
-            console.warn('Network failed, using cached student data');
-            const cachedEnrollments = getFromCache<any[]>(CACHE_KEYS.ENROLLMENTS);
-            if (cachedEnrollments) {
-                const studentMap = filterEnrollmentsToStudents(cachedEnrollments, semesterSubjectIds);
+            console.warn('Network failed, background student fetch canceled');
+            if (hasValidCache) return; // Silent fail if we have cache
+            const cachedFallback = getFromCache<any[]>(CACHE_KEYS.ENROLLMENTS);
+            if (cachedFallback) {
+                const studentMap = filterEnrollmentsToStudents(cachedFallback, semesterSubjectIds);
                 enrolledStudents = Array.from(studentMap.values());
             }
         }
 
-        // Fetch existing attendance (SW will serve from cache if offline)
+        // Fetch existing attendance in background
         let existingAttendance: any[] = [];
+        const attCacheKey = `cache_att_${subjectId}_${selectedDate}`;
         try {
             const attRes = await fetch(`/api/attendance?subjectId=${subjectId}&date=${selectedDate}`, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -497,6 +558,9 @@ export default function AttendancePage() {
             }
             const attData = await attRes.json();
             existingAttendance = attData.records || [];
+            if (existingAttendance.length > 0) {
+                 cacheToStorage(attCacheKey, existingAttendance);
+            }
         } catch (err) {
             console.warn('Could not fetch attendance records (offline)');
         }
@@ -600,16 +664,10 @@ export default function AttendancePage() {
             const token = localStorage.getItem('token');
             if (!token || !selectedSubjectId) return;
 
-            // Use ref to get latest students — send ALL students in the current stream view
+            // Use ref to get latest students
             const currentStudents = studentsRef.current;
-            const stream = selectedStreamRef.current;
 
-            // Filter by stream (same logic as displayStudents)
-            const streamStudents = stream === 'all'
-                ? currentStudents
-                : currentStudents.filter(s => s.student_custom_id && s.student_custom_id.toUpperCase().startsWith(stream));
-
-            const attendanceData = streamStudents
+            const attendanceData = currentStudents
                 .filter(s => s.attendance)
                 .map(s => ({ studentId: s.id, status: s.attendance }));
 
@@ -684,19 +742,13 @@ export default function AttendancePage() {
     };
 
     const markAllPresent = () => {
-        setStudents(prev => prev.map(s => {
-            if (selectedStream !== 'all' && (!s.student_custom_id || !s.student_custom_id.toUpperCase().startsWith(selectedStream))) return s;
-            return { ...s, attendance: 'present' as const };
-        }));
+        setStudents(prev => prev.map(s => ({ ...s, attendance: 'present' as const })));
         setMessage('');
         triggerAutoSave();
     };
 
     const markAllAbsent = () => {
-        setStudents(prev => prev.map(s => {
-            if (selectedStream !== 'all' && (!s.student_custom_id || !s.student_custom_id.toUpperCase().startsWith(selectedStream))) return s;
-            return { ...s, attendance: 'absent' as const };
-        }));
+        setStudents(prev => prev.map(s => ({ ...s, attendance: 'absent' as const })));
         setMessage('');
         triggerAutoSave();
     };
@@ -705,12 +757,7 @@ export default function AttendancePage() {
         const token = localStorage.getItem('token');
         if (!token || !selectedSubjectId) return;
 
-        // Save ALL students visible in the current stream view
-        const streamStudents = selectedStream === 'all'
-            ? students
-            : students.filter(s => s.student_custom_id && s.student_custom_id.toUpperCase().startsWith(selectedStream));
-
-        const attendanceData = streamStudents
+        const attendanceData = students
             .filter(s => s.attendance)
             .map(s => ({ studentId: s.id, status: s.attendance }));
 
@@ -788,42 +835,9 @@ export default function AttendancePage() {
         };
     }, []);
 
-    const [availableStreams, setAvailableStreams] = useState<string[]>([]);
-
-    useEffect(() => {
-        const deptIdsToFetch = selectedDepartmentId 
-            ? [selectedDepartmentId] 
-            : teacherDepartmentIds;
-
-        if (deptIdsToFetch.length === 0) {
-            setAvailableStreams([]);
-            return;
-        }
-
-        const activeDepts = departments.filter(d => deptIdsToFetch.includes(d.id));
-        const hasIT = activeDepts.some(d => d.code.toUpperCase() === 'IT');
-        
-        if (hasIT) {
-            setAvailableStreams(['BCA', 'BSCIT']);
-        } else {
-            setAvailableStreams([]);
-        }
-    }, [selectedDepartmentId, teacherDepartmentIds, departments]);
-
     const displayStudents = useMemo(() => {
-        if (selectedStream === 'all') return students;
-        return students.filter(s => s.student_custom_id && s.student_custom_id.toUpperCase().startsWith(selectedStream));
-    }, [students, selectedStream]);
-
-    // Keep ref in sync for auto-save callback
-    useEffect(() => {
-        selectedStreamRef.current = selectedStream;
-    }, [selectedStream]);
-
-    // reset stream when department changes
-    useEffect(() => {
-        setSelectedStream('all');
-    }, [selectedDepartmentId]);
+        return students;
+    }, [students]);
 
     if (loading && !students.length && !subjects.length) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
@@ -925,19 +939,7 @@ export default function AttendancePage() {
                                         ))}
                                     </select>
                                 )}
-                                {/* Stream filter if multiple */}
-                                {availableStreams.length > 1 && (
-                                    <select
-                                        className="flex-1 px-3 py-2.5 bg-white border rounded-xl text-sm font-medium"
-                                        value={selectedStream}
-                                        onChange={(e) => setSelectedStream(e.target.value)}
-                                    >
-                                        <option value="all">All Streams</option>
-                                        {availableStreams.map(stream => (
-                                            <option key={stream} value={stream}>{stream}</option>
-                                        ))}
-                                    </select>
-                                )}
+
                                 {/* Semester dropdown */}
                                 <select
                                     className={`${departments.length > 1 ? 'flex-1' : 'w-full'} px-3 py-2.5 bg-white border rounded-xl text-sm font-medium`}
@@ -1149,23 +1151,7 @@ export default function AttendancePage() {
                                     </div>
                                 )}
 
-                                {/* Stream Filter */}
-                                {availableStreams.length > 1 && (
-                                    <div className="w-1/2 sm:flex-1 sm:min-w-[120px] px-1 sm:px-0">
-                                        <label htmlFor="stream-select" className="block text-xs text-gray-500 mb-1">Stream</label>
-                                        <select
-                                            id="stream-select"
-                                            className="w-full p-2 border rounded bg-white text-sm"
-                                            value={selectedStream}
-                                            onChange={(e) => setSelectedStream(e.target.value)}
-                                        >
-                                            <option value="all">All Streams</option>
-                                            {availableStreams.map(stream => (
-                                                <option key={stream} value={stream}>{stream}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
+
 
                                 {/* Semester Selection */}
                                 <div className="w-1/2 sm:flex-1 sm:min-w-[120px] pr-1 sm:pr-0">

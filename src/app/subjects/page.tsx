@@ -241,7 +241,8 @@ export default function SubjectsPage() {
             'ba': 'BA',
             'bsc': 'B.Sc',
             'bcom': 'B.Com',
-            'it': 'BCA/IT',
+            'bca': 'BCA',
+            'it': 'BSc IT',
             'bba': 'BBA',
             'mcom': 'M.Com'
         };
@@ -251,7 +252,7 @@ export default function SubjectsPage() {
     // Get default degree type based on course type
     const getDefaultDegreeType = (deptType: string) => {
         if (deptType === 'regular') return 'ba';
-        if (deptType === 'vocational') return 'it';
+        if (deptType === 'vocational') return 'bca'; // Default to bca if unspecified vocational
         if (deptType === 'pg') return 'mcom';
         return 'ba';
     };
@@ -296,7 +297,7 @@ export default function SubjectsPage() {
 
         // For vocational, require at least one degree type selected
         if (formData.deptType === 'vocational' && selectedDegreeTypes.length === 0) {
-            setError('Please select at least one degree type (BCA/IT or BBA)');
+            setError('Please select at least one degree type (BCA, BSc IT, or BBA)');
             return;
         }
 
@@ -511,7 +512,7 @@ export default function SubjectsPage() {
             ['ENG101', '', 'English Literature', 'ba', '1,2,3,4,5', '4'],
             ['MATH101', 'PC-MATH-101', 'Mathematics', 'bsc', '1,2,3', '4'],
             ['ACC101', '', 'Accountancy', 'bcom', '1,2,3,4,5,6', '3'],
-            ['PROG101', 'BCA-PROG', 'Programming in C', 'it,bba', '1,2', '4'],
+            ['PROG101', 'BCA-PROG', 'Programming in C', 'bca,it,bba', '1,2', '4'],
             ['EVS101', '', 'Environmental Studies', 'ba,bsc,bcom', '1', '2'],
             ['MGT101', '', 'Management Principles', 'bba', '1,2,3', '3']
         ];
@@ -659,7 +660,8 @@ export default function SubjectsPage() {
                                     <option value="ba">BA (Bachelor of Arts)</option>
                                     <option value="bsc">B.Sc (Bachelor of Science)</option>
                                     <option value="bcom">B.Com (Bachelor of Commerce)</option>
-                                    <option value="it">BCA / IT</option>
+                                    <option value="bca">BCA</option>
+                                    <option value="it">BSc IT</option>
                                     <option value="bba">BBA</option>
                                     <option value="mcom">M.Com (Master of Commerce)</option>
                                 </select>
@@ -1002,14 +1004,14 @@ export default function SubjectsPage() {
                                                 });
                                                 // Reset selectedDegreeTypes based on course type
                                                 if (newDeptType === 'vocational') {
-                                                    setSelectedDegreeTypes(['it']); // Default to BCA/IT selected
+                                                    setSelectedDegreeTypes(['bca']); // Default to BCA selected
                                                 } else {
                                                     setSelectedDegreeTypes([newDegreeType]);
                                                 }
                                             }}
                                         >
                                             <option value="regular">Regular (BA/BSc/BCom)</option>
-                                            <option value="vocational">Vocational (BCA/IT, BBA)</option>
+                                            <option value="vocational">Vocational (BCA, BSc IT, BBA)</option>
                                             <option value="pg">Postgraduate (MCom)</option>
                                         </select>
                                     </div>
@@ -1025,7 +1027,8 @@ export default function SubjectsPage() {
                                             <>
                                                 <div className="grid grid-cols-2 gap-2 mt-2">
                                                     {[
-                                                        { value: 'it', label: 'BCA / IT' },
+                                                        { value: 'bca', label: 'BCA' },
+                                                        { value: 'it', label: 'BSc IT' },
                                                         { value: 'bba', label: 'BBA' }
                                                     ].map(opt => (
                                                         <label
@@ -1052,7 +1055,7 @@ export default function SubjectsPage() {
                                                     ))}
                                                 </div>
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    Selected: {selectedDegreeTypes.length === 0 ? 'None' : selectedDegreeTypes.map(dt => dt === 'it' ? 'BCA/IT' : 'BBA').join(', ')}
+                                                    Selected: {selectedDegreeTypes.length === 0 ? 'None' : selectedDegreeTypes.map(dt => dt === 'bca' ? 'BCA' : dt === 'it' ? 'BSc IT' : 'BBA').join(', ')}
                                                 </p>
                                             </>
                                         ) : (

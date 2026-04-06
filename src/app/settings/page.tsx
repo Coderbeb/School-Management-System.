@@ -212,19 +212,19 @@ export default function SettingsPage() {
 
                     {/* Batch Manager Section */}
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                        <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+                        <div className="p-4 sm:p-6 border-b border-gray-100 bg-gray-50/50">
                             <div className="flex items-center gap-3 mb-2">
-                                <div className="p-2 bg-blue-100 text-blue-700 rounded-lg">
+                                <div className="p-2 bg-blue-100 text-blue-700 rounded-lg shrink-0">
                                     <Building2 className="w-5 h-5" />
                                 </div>
-                                <h2 className="text-xl font-bold text-gray-900">Batch & Semester Manager</h2>
+                                <h2 className="text-lg sm:text-xl font-bold text-gray-900">Batch & Semester Manager</h2>
                             </div>
-                            <p className="text-sm text-gray-500 mt-1">
+                            <p className="text-xs sm:text-sm text-gray-500 mt-1">
                                 Force upgrade students' current semester based on their admission batch year. Only their current semester index will be updated, preserving existing attendance and subjects.
                             </p>
                         </div>
 
-                        <div className="p-6">
+                        <div className="p-4 sm:p-6">
                             {message && (
                                 <div className={`p-4 rounded-xl mb-6 text-sm flex items-start gap-3 ${
                                     message.type === 'error' ? 'bg-red-50 text-red-800 border bg-red-100' : 'bg-green-50 text-green-800 border border-green-200'
@@ -235,68 +235,70 @@ export default function SettingsPage() {
                             )}
 
                             {/* Dept Type Selector */}
-                            <div className="mb-8">
+                            <div className="mb-6 sm:mb-8">
                                 <label className="block text-sm font-semibold text-gray-700 mb-2">Department Structure</label>
                                 <div className="flex flex-wrap gap-2">
                                     {(['regular', 'vocational', 'pg'] as DeptType[]).map((type) => (
                                         <button
                                             key={type}
                                             onClick={() => { setSelectedDeptType(type); setBatchMappings({}); }}
-                                            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                                            className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors ${
                                                 selectedDeptType === type
                                                     ? 'bg-blue-600 text-white shadow-sm'
                                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                             }`}
                                         >
-                                            {type.charAt(0).toUpperCase() + type.slice(1)} ({getSemestersCount(type)} Semesters)
+                                            <span className="block sm:inline">{type.charAt(0).toUpperCase() + type.slice(1)}</span>{' '}
+                                            <span className="opacity-75 tracking-tight hidden sm:inline">({getSemestersCount(type)} Semesters)</span>
+                                            <span className="opacity-75 tracking-tight sm:hidden text-[10px]">({getSemestersCount(type)} Sems)</span>
                                         </button>
                                     ))}
                                 </div>
                             </div>
 
                             {/* Semester Inputs */}
-                            <div className="bg-gray-50 rounded-xl p-6 border border-gray-100 mb-6">
+                            <div className="bg-gray-50 rounded-xl p-4 sm:p-6 border border-gray-100 mb-6">
                                 <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                    <ArrowRightCircle className="w-4 h-4 text-blue-500"/>
+                                    <ArrowRightCircle className="w-4 h-4 text-blue-500 shrink-0"/>
                                     Map Admission Year (Batch) to Semester
                                 </h3>
                                 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                                     {Array.from({ length: semestersCount }, (_, i) => i + 1).map((sem) => (
-                                        <div key={sem} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
-                                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                        <div key={sem} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-between">
+                                            <label className="block text-[10px] sm:text-xs font-bold text-gray-500 uppercase mb-1">
                                                 Semester {sem}
                                             </label>
                                             <input
                                                 type="number"
-                                                placeholder={loadingMappings ? "Loading..." : "e.g. 2025"}
+                                                placeholder={loadingMappings ? "Wait..." : "e.g. 2025"}
                                                 value={batchMappings[sem] || ''}
                                                 onChange={(e) => handleBatchChange(sem, e.target.value)}
                                                 disabled={loadingMappings}
-                                                className="w-full bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors font-medium text-gray-900"
+                                                className="w-full bg-gray-50 border border-gray-200 rounded-md px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors font-medium text-gray-900"
                                             />
-                                            <p className="text-[10px] text-gray-400 mt-1">
+                                            <p className="text-[9px] sm:text-[10px] text-gray-400 mt-1 leading-tight min-h-[14px]">
                                                 {batchMappings[sem] 
-                                                    ? `Updates ${batchMappings[sem]} batch`
-                                                    : 'Leave blank to ignore'}
+                                                    ? `Sets ${batchMappings[sem]}`
+                                                    : 'Skip'}
                                             </p>
                                         </div>
                                     ))}
                                 </div>
                             </div>
 
-                            <div className="flex gap-3">
+                            <div className="flex flex-col-reverse sm:flex-row gap-3">
                                 <button
                                     onClick={resetToDefaults}
                                     disabled={isSaving}
-                                    className="px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all bg-gray-100 text-gray-600 hover:bg-gray-200 active:scale-[0.99]"
+                                    className="w-full sm:w-auto px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all bg-gray-100 text-gray-600 hover:bg-gray-200 active:scale-[0.99]"
                                 >
                                     <RotateCcw className="w-4 h-4" /> Reset
                                 </button>
                                 <button
                                     onClick={handleApplyUpgrades}
                                     disabled={isSaving || Object.keys(batchMappings).length === 0}
-                                    className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
+                                    className={`w-full sm:flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
                                         isSaving || Object.keys(batchMappings).length === 0
                                             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                             : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg hover:shadow-blue-500/20 active:scale-[0.99]'
@@ -305,7 +307,7 @@ export default function SettingsPage() {
                                     {isSaving ? (
                                         <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Upgrading...</>
                                     ) : (
-                                        <><Save className="w-5 h-5" /> Apply Semester Upgrades</>
+                                        <><Save className="w-5 h-5 shrink-0" /> Apply {semestersCount} Semesters</>
                                     )}
                                 </button>
                             </div>

@@ -69,7 +69,7 @@ interface GroupedSubject {
     code: string;
     paperCode?: string | null;
     name: string;
-    degreeType: string;
+    degreeTypes: string[];
     semesters: number[];
 }
 
@@ -115,15 +115,18 @@ export default function TeachersPage() {
     // Default academic year
     const [academicYear] = useState('2025-2026');
 
-    // Group subjects by code + degreeType for dropdown
+    // Group subjects by code for dropdown
     const groupedSubjects = useMemo(() => {
         const groups: Map<string, GroupedSubject> = new Map();
 
         subjects.forEach(subject => {
-            const key = `${subject.code}|${subject.degreeType}`;
+            const key = subject.code; // Group ONLY by code
 
             if (groups.has(key)) {
                 const group = groups.get(key)!;
+                if (!group.degreeTypes.includes(subject.degreeType)) {
+                    group.degreeTypes.push(subject.degreeType);
+                }
                 for (const sem of subject.semesters) {
                     if (!group.semesters.includes(sem)) {
                         group.semesters.push(sem);
@@ -134,7 +137,7 @@ export default function TeachersPage() {
                     code: subject.code,
                     paperCode: subject.paperCode || null,
                     name: subject.name,
-                    degreeType: subject.degreeType,
+                    degreeTypes: [subject.degreeType],
                     semesters: [...subject.semesters]
                 });
             }
@@ -154,7 +157,10 @@ export default function TeachersPage() {
             .filter(d => selectedDepartmentIds.includes(d.id))
             .map(d => d.degree_type);
         
-        const filtered = groupedSubjects.filter(([, g]) => selectedDegreeTypes.includes(g.degreeType));
+        // Include if the grouped subject contains ANY of the selected degree types
+        const filtered = groupedSubjects.filter(([, g]) => 
+            g.degreeTypes.some(dt => selectedDegreeTypes.includes(dt))
+        );
         
         // Sort according to paper code
         return filtered.sort(([, a], [, b]) => {
@@ -267,7 +273,7 @@ export default function TeachersPage() {
                 const dept = departments.find(d => d.id === deptId);
                 if (dept) {
                     const deptSubjectKeys = groupedSubjects
-                        .filter(([, g]) => g.degreeType === dept.degree_type)
+                        .filter(([, g]) => g.degreeTypes.includes(dept.degree_type) && g.degreeTypes.length === 1)
                         .map(([key]) => key);
                     setSelectedSubjectKeys(prevSubs => prevSubs.filter(k => !deptSubjectKeys.includes(k)));
                 }
@@ -315,7 +321,7 @@ export default function TeachersPage() {
             teacher.subjects.forEach(sub => {
                 const matchingSubject = subjects.find(s => s.id === sub.subjectId);
                 if (matchingSubject) {
-                    subjectKeys.add(`${matchingSubject.code}|${matchingSubject.degreeType}`);
+                    subjectKeys.add(matchingSubject.code);
                 }
             });
             setSelectedSubjectKeys(Array.from(subjectKeys));
@@ -423,54 +429,54 @@ export default function TeachersPage() {
         try {
             // Get current teacher's assignments
             const currentTeacher = teachers.find(t => t.id === teacherId);
-            const currentSubjectKeys = new Set<string>();
+            const currentAssignmentSubjectIds = new Set<string>();
 
             if (currentTeacher?.subjects) {
                 currentTeacher.subjects.forEach(sub => {
-                    const matchingSubject = subjects.find(s => s.id === sub.subjectId);
-                    if (matchingSubject) {
-                        currentSubjectKeys.add(`${matchingSubject.code}|${matchingSubject.degreeType}`);
-                    }
+                    currentAssignmentSubjectIds.add(sub.subjectId);
                 });
             }
 
-            // Find subjects to remove
-            const keysToRemove = [...currentSubjectKeys].filter(k => !selectedSubjectKeys.includes(k));
+            // Determine which exact subject IDs they SHOULD have based on selected codes AND selected departments
+            const targetDegreeTypes = departments
+                .filter(d => selectedDepartmentIds.includes(d.id))
+                .map(d => d.degree_type);
 
-            // Remove assignments for unselected subjects
+            const targetSubjectIds = new Set<string>();
+            const targetSubjects = subjects.filter(s => 
+                selectedSubjectKeys.includes(s.code) && targetDegreeTypes.includes(s.degreeType)
+            );
+            targetSubjects.forEach(s => targetSubjectIds.add(s.id));
+
+            // Find assignments to remove (in current, not in target)
             if (currentTeacher?.subjects) {
                 for (const sub of currentTeacher.subjects) {
-                    const matchingSubject = subjects.find(s => s.id === sub.subjectId);
-                    if (matchingSubject) {
-                        const key = `${matchingSubject.code}|${matchingSubject.degreeType}`;
-                        if (keysToRemove.includes(key)) {
-                            await fetch(`/api/teacher-subjects?id=${sub.assignmentId}`, {
-                                method: 'DELETE',
-                                headers: { Authorization: `Bearer ${token}` }
-                            });
-                        }
+                    if (!targetSubjectIds.has(sub.subjectId)) {
+                        await fetch(`/api/teacher-subjects?id=${sub.assignmentId}`, {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
                     }
                 }
             }
 
-            // Add new subject assignments
-            const keysToAdd = selectedSubjectKeys.filter(k => !currentSubjectKeys.has(k));
-
-            for (const key of keysToAdd) {
-                const [subjectCode, degreeType] = key.split('|');
-                await fetch('/api/teacher-subjects', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        teacherId,
-                        subjectCode,
-                        degreeType,
-                        academicYear
-                    }),
-                });
+            // Find assignments to add (in target, not in current)
+            for (const subject of targetSubjects) {
+                if (!currentAssignmentSubjectIds.has(subject.id)) {
+                    await fetch('/api/teacher-subjects', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Authorization: `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({
+                            teacherId,
+                            subjectCode: subject.code,
+                            degreeType: subject.degreeType,
+                            academicYear
+                        }),
+                    });
+                }
             }
 
             return true;
@@ -1160,7 +1166,12 @@ export default function TeachersPage() {
                                                             className="w-4 h-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500"
                                                         />
                                                         <div>
-                                                            <div className="text-sm font-medium text-gray-900">{group.name}</div>
+                                                            <div className="text-sm font-medium text-gray-900">
+                                                                {group.degreeTypes.length > 0 && (
+                                                                    <span className="text-amber-600 font-bold mr-1">[{group.degreeTypes.map(d => d.toUpperCase()).join(', ')}]</span>
+                                                                )}
+                                                                {group.name}
+                                                            </div>
                                                             <div className="text-xs text-gray-500">{group.paperCode || group.code} • Sem {group.semesters.join(', ')}</div>
                                                         </div>
                                                     </div>

@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
                     )), '[]'::json)
                     FROM user_departments ud
                     JOIN departments dept ON ud.department_id = dept.id
-                    WHERE ud.user_id = u.id
+                    WHERE ud.user_id = u.id AND (u.department_id IS NULL OR ud.department_id != u.department_id)
                 ) as additional_departments
             FROM users u
             LEFT JOIN departments d ON u.department_id = d.id

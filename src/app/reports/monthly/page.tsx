@@ -64,7 +64,7 @@ export default function MonthlyReportPage() {
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
     const [selectedSemester, setSelectedSemester] = useState('');
-    const [selectedStream, setSelectedStream] = useState('all');
+
     const [stats, setStats] = useState<MonthlyStats | null>(null);
     const [dailyBreakdown, setDailyBreakdown] = useState<DailyBreakdown[]>([]);
     const [subjectStats, setSubjectStats] = useState<SubjectStat[]>([]);
@@ -103,7 +103,7 @@ export default function MonthlyReportPage() {
         if (token && user) {
             fetchMonthlyReport(token);
         }
-    }, [selectedMonth, selectedDepartmentId, selectedSemester, selectedStream, user]);
+    }, [selectedMonth, selectedDepartmentId, selectedSemester, user]);
 
     const getCachedDepartments = () => {
         try {
@@ -168,7 +168,7 @@ export default function MonthlyReportPage() {
             let url = `/api/reports/monthly?month=${selectedMonth}`;
             if (selectedDepartmentId) url += `&departmentId=${selectedDepartmentId}`;
             if (selectedSemester) url += `&semester=${selectedSemester}`;
-            if (selectedStream && selectedStream !== 'all') url += `&stream=${selectedStream}`;
+
 
             const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -502,30 +502,7 @@ export default function MonthlyReportPage() {
                                 </div>
                             </div>
 
-                            {(() => {
-                                const activeDept = selectedDepartmentId
-                                    ? departments.find(d => d.id === selectedDepartmentId)
-                                    : departments.length === 1 ? departments[0] : null;
-                                const showStream = activeDept && activeDept.code?.toUpperCase() === 'IT';
-                                if (!showStream) return null;
-                                return (
-                                    <div className="w-full">
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Stream</label>
-                                        <div className="relative">
-                                            <select
-                                                value={selectedStream}
-                                                onChange={(e) => setSelectedStream(e.target.value)}
-                                                className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-emerald-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
-                                            >
-                                                <option value="all">All Streams</option>
-                                                <option value="BCA">BCA</option>
-                                                <option value="BSCIT">BSc IT</option>
-                                            </select>
-                                            <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
-                                        </div>
-                                    </div>
-                                );
-                            })()}
+
 
                             <div className="w-full lg:w-auto">
                                 <Button 
@@ -534,7 +511,7 @@ export default function MonthlyReportPage() {
                                     onClick={() => {
                                         setSelectedSemester('');
                                         setSelectedDepartmentId('');
-                                        setSelectedStream('all');
+
                                         setSelectedMonth(new Date().toISOString().slice(0, 7));
                                     }}
                                 >

@@ -50,7 +50,6 @@ export async function GET(request: NextRequest) {
         const subjectId = searchParams.get('subjectId');
         const departmentId = searchParams.get('departmentId');
         const semester = searchParams.get('semester');
-        const stream = searchParams.get('stream');
         const detailed = searchParams.get('detailed') === 'true';
 
         // Build role-based filter
@@ -58,12 +57,27 @@ export async function GET(request: NextRequest) {
         const params: (string | number)[] = [date];
 
         // Role-based restrictions
-        if (role === 'hod' && userDeptId) {
-            // HOD: filter by their department (students.department_id)
-            filters.push(`ar.student_id IN (
-                SELECT id FROM students WHERE department_id = $${params.length + 1}
-            )`);
-            params.push(userDeptId);
+        if (role === 'hod') {
+            // HOD: filter by their multiple allowed departments (students.department_id)
+            if (departmentId) {
+                filters.push(`ar.student_id IN (
+                    SELECT id FROM students WHERE department_id = $${params.length + 1}
+                    AND department_id IN (
+                        SELECT department_id FROM users WHERE id = $${params.length + 2}
+                        UNION SELECT department_id FROM user_departments WHERE user_id = $${params.length + 2}
+                    )
+                )`);
+                params.push(departmentId);
+                params.push(userId);
+            } else {
+                filters.push(`ar.student_id IN (
+                    SELECT id FROM students WHERE department_id IN (
+                        SELECT department_id FROM users WHERE id = $${params.length + 1}
+                        UNION SELECT department_id FROM user_departments WHERE user_id = $${params.length + 1}
+                    )
+                )`);
+                params.push(userId);
+            }
         } else if (role === 'teacher') {
             // Teacher: only show records marked by THEM
             filters.push(`ar.teacher_id = $${params.length + 1}`);
@@ -97,13 +111,6 @@ export async function GET(request: NextRequest) {
             filters.push(`ar.subject_id = $${params.length}`);
         }
 
-        // Stream filter (e.g. BCA, BSCIT — matches prefix of student custom ID)
-        if (stream && stream !== 'all') {
-            filters.push(`ar.student_id IN (
-                SELECT id FROM students WHERE UPPER(student_id) LIKE $${params.length + 1}
-            )`);
-            params.push(`${stream.toUpperCase()}%`);
-        }
 
         const filterClause = filters.length > 0 ? 'AND ' + filters.join(' AND ') : '';
 

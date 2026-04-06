@@ -40,10 +40,21 @@ export async function GET(request: NextRequest) {
         const params: (string | number)[] = [];
 
         // Role-based restrictions
-        if (role === 'hod' && userDeptId) {
-            // HOD: filter by their department (students.department_id)
-            params.push(userDeptId);
-            filters.push(`s.department_id = $${params.length}`);
+        if (role === 'hod') {
+            if (departmentId) {
+                params.push(departmentId);
+                params.push(userId);
+                filters.push(`s.department_id = $${params.length - 1} AND s.department_id IN (
+                    SELECT department_id FROM users WHERE id = $${params.length}
+                    UNION SELECT department_id FROM user_departments WHERE user_id = $${params.length}
+                )`);
+            } else {
+                params.push(userId);
+                filters.push(`s.department_id IN (
+                    SELECT department_id FROM users WHERE id = $${params.length}
+                    UNION SELECT department_id FROM user_departments WHERE user_id = $${params.length}
+                )`);
+            }
         } else if (role === 'teacher') {
             // Teacher: Only show students who are enrolled in subjects this teacher teaches
             params.push(userId);

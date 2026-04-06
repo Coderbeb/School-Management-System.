@@ -100,8 +100,6 @@ export default function StudentsPage() {
     const [filterDeptType, setFilterDeptType] = useState('');
     const [filterDepartmentId, setFilterDepartmentId] = useState('');
     const [filterSemester, setFilterSemester] = useState('');
-    const [filterStream, setFilterStream] = useState('all');
-    const [availableStreams, setAvailableStreams] = useState<string[]>([]);
 
 
     // Import States
@@ -151,23 +149,7 @@ export default function StudentsPage() {
         fetchBatchConfig(token);
     }, [router]);
 
-    useEffect(() => {
-        let activeDepts = departments;
-        if (filterDepartmentId) {
-            activeDepts = departments.filter(d => d.id === filterDepartmentId);
-        } else if (user?.departmentId) {
-            activeDepts = departments.filter(d => d.id === user.departmentId);
-        }
 
-        const hasIT = activeDepts.some(d => d.code && d.code.toUpperCase() === 'IT');
-        
-        if (hasIT) {
-            setAvailableStreams(['BCA', 'BSCIT']);
-        } else {
-            setAvailableStreams([]);
-        }
-        setFilterStream('all');
-    }, [departments, filterDepartmentId, user]);
 
     const safeJson = async (res: Response) => {
         const contentType = res.headers.get('content-type');
@@ -464,7 +446,6 @@ export default function StudentsPage() {
                 subjectsToSelect.push(coreSubject.id);
             }
 
-            // GE subjects based on stream
             if (parsed.geSubjects) {
                 const ge1Subject = findSubjectByName(parsed.geSubjects.ge1);
                 if (ge1Subject) {
@@ -883,10 +864,7 @@ export default function StudentsPage() {
         const matchesDept = !filterDepartmentId || student.department_id === filterDepartmentId;
         const matchesSem = !filterSemester || student.current_semester.toString() === filterSemester;
 
-        const matchesStream = filterStream === 'all' || 
-            (student.student_id ? student.student_id.toUpperCase().startsWith(filterStream) : false);
-
-        return matchesSearch && matchesDept && matchesSem && matchesStream;
+        return matchesSearch && matchesDept && matchesSem;
     }).sort((a, b) =>
         String(a.roll_number || '').localeCompare(String(b.roll_number || ''), undefined, { numeric: true, sensitivity: 'base' })
     );
@@ -998,21 +976,6 @@ export default function StudentsPage() {
                             </select>
                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                         </div>
-                        {availableStreams.length > 0 && (
-                            <div className="relative w-full">
-                                <select
-                                    className="w-full bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none cursor-pointer"
-                                    value={filterStream}
-                                    onChange={(e) => setFilterStream(e.target.value)}
-                                >
-                                    <option value="all">All Streams</option>
-                                    {availableStreams.map(stream => (
-                                        <option key={stream} value={stream}>{stream}</option>
-                                    ))}
-                                </select>
-                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                            </div>
-                        )}
                     </div>
 
                     {/* Search Bar */}

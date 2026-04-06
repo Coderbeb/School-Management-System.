@@ -169,6 +169,9 @@ export async function POST(req: Request) {
                     if (parsed.prefix === 'BBA') {
                         deptId = departmentMap.get('BBA')?.id;
                         degreeType = departmentMap.get('BBA')?.degreeType;
+                    } else if (parsed.prefix === 'BCA' || parsed.prefix === 'BSCCA' || parsed.prefix === 'BCOMCA') {
+                        deptId = departmentMap.get('BCA')?.id;
+                        degreeType = departmentMap.get('BCA')?.degreeType;
                     } else {
                         deptId = departmentMap.get('IT')?.id;
                         degreeType = departmentMap.get('IT')?.degreeType;

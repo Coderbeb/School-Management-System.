@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Code must be under 20 characters, name under 100' }, { status: 400 });
         }
 
-        const validDegreeTypes = ['ba', 'bsc', 'bcom', 'it', 'bba', 'mcom'];
+        const validDegreeTypes = ['ba', 'bsc', 'bcom', 'bca', 'it', 'bba', 'mcom'];
         for (const dt of degreeTypeList) {
             if (!validDegreeTypes.includes(dt)) {
                 return NextResponse.json({ error: `Invalid degree type: ${dt}` }, { status: 400 });

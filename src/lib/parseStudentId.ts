@@ -244,11 +244,14 @@ export function findDepartmentByCode(
             d.code.toUpperCase().startsWith(parsed.deptCode?.toUpperCase() || '')
         ) || null;
     } else if (parsed.courseType === 'vocational') {
-        // For vocational, they belong to BCA & IT or BBA department
+        // For vocational, each program maps to its own department
         if (parsed.prefix === 'BBA') {
             return departments.find(d => d.code === 'BBA') || null;
-        } else {
+        } else if (parsed.prefix === 'BSCIT') {
             return departments.find(d => d.code === 'IT') || null;
+        } else {
+            // BCA, BSCCA, BCOMCA all go to BCA department
+            return departments.find(d => d.code === 'BCA') || null;
         }
     }
 

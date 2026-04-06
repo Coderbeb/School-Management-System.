@@ -59,7 +59,11 @@ export function ProfileModal({ isOpen, onClose, user, onLogout }: ProfileModalPr
             if (cached) {
                 const parsed = JSON.parse(cached);
                 if (parsed.data && Array.isArray(parsed.data)) {
-                    setAssignedSubjects(parsed.data);
+                    // Deduplicate by subjectId
+                    const uniqueCached = Array.from(
+                        new Map(parsed.data.map((a: any) => [a.subjectId || a.subject_id, a])).values()
+                    ) as AssignedSubject[];
+                    setAssignedSubjects(uniqueCached);
                 }
             }
         } catch { /* ignore */ }
@@ -74,11 +78,23 @@ export function ProfileModal({ isOpen, onClose, user, onLogout }: ProfileModalPr
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    setAssignedSubjects(data.assignments || []);
+                    const assignments = data.assignments || [];
+                    
+                    // Deduplicate by Subject Code (Paper Code preferred)
+                    const uniqueMap = new Map();
+                    assignments.forEach((a: any) => {
+                        const code = a.subjectPaperCode || a.subject_paper_code || a.subjectCode || a.subject_code || 'N/A';
+                        if (!uniqueMap.has(code)) {
+                            uniqueMap.set(code, a);
+                        }
+                    });
+                    const uniqueAssignments = Array.from(uniqueMap.values()) as AssignedSubject[];
+
+                    setAssignedSubjects(uniqueAssignments);
                     try {
                         localStorage.setItem('offline_subjects', JSON.stringify({
                             timestamp: Date.now(),
-                            data: data.assignments || []
+                            data: uniqueAssignments
                         }));
                     } catch { /* ignore */ }
                 }
@@ -186,20 +202,25 @@ export function ProfileModal({ isOpen, onClose, user, onLogout }: ProfileModalPr
                                                 const bCode = b.subjectPaperCode || b.subject_paper_code || b.subjectCode || b.subject_code || '';
                                                 return aCode.localeCompare(bCode, undefined, { numeric: true, sensitivity: 'base' });
                                             })
-                                            .map((sub) => {
+                                            .map((sub, index) => {
                                             const subName = sub.subjectName || sub.subject_name || 'Unknown Subject';
                                             const subCode = sub.subjectPaperCode || sub.subject_paper_code || sub.subjectCode || sub.subject_code || 'N/A';
                                             const subSems = sub.subjectSemesters || sub.subject_semesters || [];
 
                                             return (
                                                 <div key={sub.id} className="p-3.5 bg-blue-50/50 border border-blue-100/50 rounded-xl flex flex-row items-center justify-between gap-3 group hover:bg-blue-50 transition-colors">
-                                                    <div className="min-w-0 flex-1 pr-2">
-                                                        <p className="font-semibold text-gray-900 text-sm leading-tight mb-1 group-hover:text-blue-700 transition-colors truncate">
-                                                            {subName}
-                                                        </p>
-                                                        <p className="text-xs text-gray-500 font-medium">
-                                                            Code: <span className="text-gray-700">{subCode}</span>
-                                                        </p>
+                                                    <div className="flex items-start gap-3 min-w-0 flex-1 pr-2">
+                                                        <div className="shrink-0 w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-600 mt-0.5">
+                                                            {index + 1}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="font-semibold text-gray-900 text-sm leading-tight mb-1 group-hover:text-blue-700 transition-colors truncate">
+                                                                {subName}
+                                                            </p>
+                                                            <p className="text-xs text-gray-500 font-medium">
+                                                                Code: <span className="text-gray-700">{subCode}</span>
+                                                            </p>
+                                                        </div>
                                                     </div>
 
                                                     {subSems.length > 0 && (

@@ -56,7 +56,7 @@ export default function DailyReportPage() {
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
     const [selectedSemester, setSelectedSemester] = useState('');
     const [selectedSubjectId, setSelectedSubjectId] = useState('');
-    const [selectedStream, setSelectedStream] = useState('all');
+
     const [records, setRecords] = useState<AttendanceRecord[]>([]);
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -89,7 +89,7 @@ export default function DailyReportPage() {
         if (token && user) {
             fetchDailyReport(token);
         }
-    }, [selectedDate, selectedDepartmentId, selectedSemester, selectedSubjectId, selectedStream, user]);
+    }, [selectedDate, selectedDepartmentId, selectedSemester, selectedSubjectId, user]);
 
     // Fetch subjects when semester changes
     useEffect(() => {
@@ -189,9 +189,6 @@ export default function DailyReportPage() {
             if (selectedSubjectId) {
                 url += `&subjectId=${selectedSubjectId}`;
             }
-            if (selectedStream && selectedStream !== 'all') {
-                url += `&stream=${selectedStream}`;
-            }
 
             const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -249,9 +246,6 @@ export default function DailyReportPage() {
             if (selectedSubjectId) {
                 url += `&subjectId=${selectedSubjectId}`;
             }
-            if (selectedStream && selectedStream !== 'all') {
-                url += `&stream=${selectedStream}`;
-            }
 
             const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -265,13 +259,7 @@ export default function DailyReportPage() {
             const data = await res.json();
             const detailedRecords = data.detailedRecords || [];
 
-            // Filter by stream if selected
             let filteredRecords = detailedRecords;
-            if (selectedStream !== 'all') {
-                filteredRecords = detailedRecords.filter((r: any) => 
-                    r.studentCustomId && r.studentCustomId.toUpperCase().startsWith(selectedStream)
-                );
-            }
 
             if (filteredRecords.length === 0) {
                 alert('No attendance records found for the selected date and filters.');
@@ -383,7 +371,6 @@ export default function DailyReportPage() {
             <strong>Filters Applied:</strong> 
             Subject: ${getSelectedSubjectName()} | 
             Semester: ${selectedSemester || 'All'} | 
-            Stream: ${selectedStream === 'all' ? 'All' : selectedStream} | 
             Department: ${selectedDepartmentId ? departments.find(d => d.id === selectedDepartmentId)?.name || 'Selected' : 'All'}
         </div>
         <div class="summary-cards">
@@ -590,7 +577,7 @@ export default function DailyReportPage() {
                                 <div className="relative">
                                     <select
                                         value={selectedDepartmentId}
-                                        onChange={(e) => { setSelectedDepartmentId(e.target.value); setSelectedStream('all'); }}
+                                        onChange={(e) => { setSelectedDepartmentId(e.target.value); }}
                                         className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-blue-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium"
                                     >
                                         <option value="">All Departments</option>
@@ -621,31 +608,7 @@ export default function DailyReportPage() {
                             </div>
                         </div>
 
-                        {/* Stream Filter (only for IT department) */}
-                        {(() => {
-                            const activeDept = selectedDepartmentId 
-                                ? departments.find(d => d.id === selectedDepartmentId) 
-                                : departments.length === 1 ? departments[0] : null;
-                            const showStream = activeDept && activeDept.code?.toUpperCase() === 'IT';
-                            if (!showStream) return null;
-                            return (
-                                <div className="w-full">
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Stream</label>
-                                    <div className="relative">
-                                        <select
-                                            value={selectedStream}
-                                            onChange={(e) => setSelectedStream(e.target.value)}
-                                            className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-blue-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium"
-                                        >
-                                            <option value="all">All Streams</option>
-                                            <option value="BCA">BCA</option>
-                                            <option value="BSCIT">BSc IT</option>
-                                        </select>
-                                        <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
-                                    </div>
-                                </div>
-                            );
-                        })()}
+
 
                         {/* Subject Filter */}
                         <div className="w-full">
@@ -675,9 +638,7 @@ export default function DailyReportPage() {
                                 onClick={() => {
                                     setSelectedSemester('');
                                     setSelectedDepartmentId('');
-                                    setSelectedSubjectId('');
-                                    setSelectedStream('all');
-                                }}
+                                    setSelectedSubjectId('');                                }}
                             >
                                 Reset Filters
                             </Button>

@@ -46,16 +46,28 @@ export async function GET(request: NextRequest) {
         const subjectParams: string[] = [];
         const attendanceParams: string[] = [];
 
-        if (role === 'hod' && departmentId) {
-            // HOD: filter by their department
-            studentFilter = `AND s.department_id = $1`;
-            studentParams.push(departmentId);
-            subjectFilter = `WHERE department_id = $1`;
-            subjectParams.push(departmentId);
-            attendanceFilter = `AND ar.student_id IN (
-                SELECT id FROM students WHERE department_id = $1
+        if (role === 'hod' && userId) {
+            // HOD: filter by ALL their authorized departments (including user_departments)
+            studentFilter = `AND s.department_id IN (
+                SELECT department_id FROM users WHERE id = $1
+                UNION
+                SELECT department_id FROM user_departments WHERE user_id = $1
             )`;
-            attendanceParams.push(departmentId);
+            studentParams.push(userId);
+            subjectFilter = `WHERE department_id IN (
+                SELECT department_id FROM users WHERE id = $1
+                UNION
+                SELECT department_id FROM user_departments WHERE user_id = $1
+            )`;
+            subjectParams.push(userId);
+            attendanceFilter = `AND ar.student_id IN (
+                SELECT id FROM students WHERE department_id IN (
+                    SELECT department_id FROM users WHERE id = $1
+                    UNION
+                    SELECT department_id FROM user_departments WHERE user_id = $1
+                )
+            )`;
+            attendanceParams.push(userId);
         } else if (role === 'teacher') {
             // Teacher: filter by students in their assigned subjects
             // teacher_subjects.teacher_id references users.id directly

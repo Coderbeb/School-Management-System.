@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS departments (
     name VARCHAR(100) NOT NULL UNIQUE,
     code VARCHAR(20) NOT NULL UNIQUE,
     dept_type VARCHAR(20) NOT NULL DEFAULT 'regular' CHECK (dept_type IN ('regular', 'vocational', 'pg')),
-    degree_type VARCHAR(20) NOT NULL DEFAULT 'ba' CHECK (degree_type IN ('ba', 'bsc', 'bcom', 'it', 'bba', 'mcom')),
+    degree_type VARCHAR(20) NOT NULL DEFAULT 'ba' CHECK (degree_type IN ('ba', 'bsc', 'bcom', 'bca', 'it', 'bba', 'mcom')),
     description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS subjects (
     code VARCHAR(20) NOT NULL,
     paper_code VARCHAR(20),
     name VARCHAR(200) NOT NULL,
-    degree_type VARCHAR(20) NOT NULL CHECK (degree_type IN ('ba', 'bsc', 'bcom', 'it', 'bba', 'mcom')),
+    degree_type VARCHAR(20) NOT NULL CHECK (degree_type IN ('ba', 'bsc', 'bcom', 'bca', 'it', 'bba', 'mcom')),
     credits INTEGER NOT NULL DEFAULT 3,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

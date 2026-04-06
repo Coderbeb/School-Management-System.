@@ -96,8 +96,7 @@ function StudentReportContent() {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
     const [selectedSemester, setSelectedSemester] = useState('');
-    const [selectedStream, setSelectedStream] = useState<string>('all');
-    const [availableStreams, setAvailableStreams] = useState<string[]>([]);
+
     const [showSearch, setShowSearch] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -232,21 +231,6 @@ function StudentReportContent() {
         }
     };
 
-    useEffect(() => {
-        let activeDepts = departments;
-        if (selectedDepartmentId) {
-            activeDepts = departments.filter(d => d.id === selectedDepartmentId);
-        }
-
-        const hasIT = activeDepts.some(d => d.code && d.code.toUpperCase() === 'IT');
-        
-        if (hasIT) {
-            setAvailableStreams(['BCA', 'BSCIT']);
-        } else {
-            setAvailableStreams([]);
-        }
-        setSelectedStream('all');
-    }, [departments, selectedDepartmentId]);
 
     // Fetch departments for teachers (from their profile + multi-department assignments)
     const fetchTeacherDepartments = async (token: string, teacherId: string) => {
@@ -829,9 +813,7 @@ function StudentReportContent() {
 
         if (!matchesSearch) return false;
 
-        if (selectedStream !== 'all' && (!student.studentId || !student.studentId.toUpperCase().startsWith(selectedStream))) {
-            return false;
-        }
+
 
         if (statusParam === 'critical') {
             return student.percentage < 60;
@@ -1084,25 +1066,7 @@ function StudentReportContent() {
                                 </div>
                             )}
 
-                            {/* Stream Filter */}
-                            {availableStreams.length > 1 && (
-                                <div className="w-full">
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Stream</label>
-                                    <div className="relative">
-                                        <select
-                                            value={selectedStream}
-                                            onChange={(e) => setSelectedStream(e.target.value)}
-                                            className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-purple-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
-                                        >
-                                            <option value="all">All Streams</option>
-                                            {availableStreams.map((stream) => (
-                                                <option key={stream} value={stream}>{stream}</option>
-                                            ))}
-                                        </select>
-                                        <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
-                                    </div>
-                                </div>
-                            )}
+
 
                             {/* Semester Filter */}
                             <div className="w-full">
@@ -1150,7 +1114,6 @@ function StudentReportContent() {
                                     onClick={() => {
                                         setSelectedSemester('');
                                         setSelectedDepartmentId('');
-                                        setSelectedStream('all');
                                         setSearchTerm('');
                                         setPageSelectedSubjectIds(new Set(availableSubjects.map(s => s.id)));
                                         setShowSubjectFilter(false);

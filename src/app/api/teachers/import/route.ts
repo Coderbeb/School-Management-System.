@@ -54,6 +54,7 @@ export async function POST(req: Request) {
 
         // Collect subject assignments for batch insert
         const subjectAssignments: { teacherId: string; subjectId: string; academicYear: string }[] = [];
+        const userDeptAssignments: { userId: string; departmentId: string }[] = [];
 
         // Calculate academic year once
         const now = new Date();
@@ -85,12 +86,25 @@ export async function POST(req: Request) {
                     throw new Error(`Email already exists: ${email}`);
                 }
 
-                // Department validation
-                const deptInfo = departmentMap.get(teacher.department_code.toUpperCase());
-                if (!deptInfo) {
-                    throw new Error(`Invalid Department Code: ${teacher.department_code}`);
+                // Department validation (now supports comma-separated)
+                const deptCodes = teacher.department_code.split(',').map((c: string) => c.trim().toUpperCase()).filter(Boolean);
+                if (deptCodes.length === 0) {
+                    throw new Error('No department codes provided');
                 }
-                const deptId = deptInfo.id;
+
+                const assignedDeptIds: string[] = [];
+                const assignedDegreeTypes: string[] = [];
+                
+                for (const code of deptCodes) {
+                    const deptInfo = departmentMap.get(code);
+                    if (!deptInfo) {
+                        throw new Error(`Invalid Department Code: ${code}`);
+                    }
+                    assignedDeptIds.push(deptInfo.id);
+                    assignedDegreeTypes.push(deptInfo.degreeType);
+                }
+                
+                const primaryDeptId = assignedDeptIds[0];
 
                 // Role validation
                 const role = teacher.role.toLowerCase();
@@ -98,14 +112,14 @@ export async function POST(req: Request) {
                     throw new Error(`Invalid Role: ${teacher.role} (must be 'teacher' or 'hod')`);
                 }
 
-                // 2. Resolve target subject IDs in memory
+                // 2. Resolve target subject IDs in memory spanning all authorized degree types
                 const resolvedSubjectIds: string[] = [];
                 if (teacher.subject_codes) {
                     const subjectInputs = teacher.subject_codes.split(',').map((s: string) => s.trim()).filter(Boolean);
                     for (const input of subjectInputs) {
                         const inputUpper = input.toUpperCase();
                         const matchedSubjects = allSubjects.filter((s: any) =>
-                            s.degree_type === deptInfo.degreeType && (
+                            assignedDegreeTypes.includes(s.degree_type) && (
                                 s.code.toUpperCase() === inputUpper ||
                                 s.name.toUpperCase() === inputUpper ||
                                 s.name.toUpperCase().includes(inputUpper) ||
@@ -117,7 +131,7 @@ export async function POST(req: Request) {
                         }
                     }
                     if (resolvedSubjectIds.length > 0) {
-                        teacherSubjectsMap.set(email, resolvedSubjectIds);
+                        teacherSubjectsMap.set(email, [...new Set(resolvedSubjectIds)]);
                     }
                 }
 
@@ -128,7 +142,8 @@ export async function POST(req: Request) {
                     email: email,
                     passwordHash: passwordHashes[i],
                     role: role,
-                    deptId: deptId
+                    deptId: primaryDeptId,
+                    allDeptIds: assignedDeptIds
                 });
 
                 existingEmails.add(email);
@@ -167,6 +182,15 @@ export async function POST(req: Request) {
                 for (const row of insertResult.rows) {
                     const newTeacherId = row.id;
                     const insertedEmail = row.email;
+                    
+                    // Link multi-departments
+                    const baseUserRecord = chunk.find(c => c.email === insertedEmail);
+                    if (baseUserRecord && baseUserRecord.allDeptIds) {
+                         for (const dId of baseUserRecord.allDeptIds) {
+                              userDeptAssignments.push({ userId: newTeacherId, departmentId: dId });
+                         }
+                    }
+                    
                     const resolvedIds = teacherSubjectsMap.get(insertedEmail);
                     if (resolvedIds) {
                         for (const subjectId of resolvedIds) {
@@ -178,6 +202,27 @@ export async function POST(req: Request) {
                         }
                     }
                 }
+            }
+        }
+
+        // Batch insert user department spanning authorities
+        if (userDeptAssignments.length > 0) {
+            const CHUNK_SIZE = 100;
+            for (let i = 0; i < userDeptAssignments.length; i += CHUNK_SIZE) {
+                const chunk = userDeptAssignments.slice(i, i + CHUNK_SIZE);
+                const values: string[] = [];
+                const params: string[] = [];
+                chunk.forEach((a, idx) => {
+                    const offset = idx * 2;
+                    values.push(`($${offset + 1}, $${offset + 2})`);
+                    params.push(a.userId, a.departmentId);
+                });
+                await client.query(
+                    `INSERT INTO user_departments (user_id, department_id)
+                     VALUES ${values.join(', ')}
+                     ON CONFLICT (user_id, department_id) DO NOTHING`,
+                    params
+                );
             }
         }
 
