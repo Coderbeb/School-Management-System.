@@ -20,7 +20,8 @@ interface SubjectStat {
     id: string;
     name: string;
     code: string;
-    semester: number;
+    paperCode?: string;
+    semester: string | number;
     department: string;
     sessions: number;
     students: number;
@@ -273,8 +274,8 @@ export default function MyPerformancePage() {
                                             <div key={`${subject.id}-${idx}`} className="p-5 bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-100 hover:shadow-md transition-shadow">
                                                 <div className="flex justify-between items-start mb-3">
                                                     <div>
-                                                        <h3 className="font-bold text-gray-900">{subject.code} - {subject.name}</h3>
-                                                        <p className="text-xs font-medium text-gray-500 mt-0.5">Sem {subject.semester} • {subject.sessions} sessions</p>
+                                                        <h3 className="font-bold text-gray-900">{subject.paperCode || subject.code} - {subject.name}</h3>
+                                                        <p className="text-xs font-medium text-gray-500 mt-0.5">({subject.code}) Sem {subject.semester} • {subject.sessions} sessions</p>
                                                     </div>
                                                     <span className={`px-3 py-1 rounded-full text-xs font-bold shadow-sm ${getAttendanceColor(subject.attendance)}`}>
                                                         {subject.attendance}%

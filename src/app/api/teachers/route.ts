@@ -73,13 +73,20 @@ export async function GET(request: NextRequest) {
         `;
         const params: string[] = [];
 
-        // HODs can see teachers from their department (primary OR additional)
-        if (payload.role === 'hod' && payload.departmentId) {
-            queryText += ` AND (u.department_id = $1 OR EXISTS (
-                SELECT 1 FROM user_departments ud 
-                WHERE ud.user_id = u.id AND ud.department_id = $1
-            ))`;
-            params.push(payload.departmentId);
+        // HODs can see teachers from their assigned departments
+        if (payload.role === 'hod' && payload.userId) {
+            queryText += ` AND (
+                u.department_id IN (SELECT department_id FROM user_departments WHERE user_id = $1)
+                OR u.department_id = $2
+                OR EXISTS (
+                    SELECT 1 FROM user_departments ud 
+                    WHERE ud.user_id = u.id AND (
+                        ud.department_id IN (SELECT department_id FROM user_departments WHERE user_id = $1)
+                        OR ud.department_id = $2
+                    )
+                )
+            )`;
+            params.push(payload.userId, payload.departmentId || '00000000-0000-0000-0000-000000000000');
         }
 
         queryText += ' ORDER BY u.first_name, u.last_name';

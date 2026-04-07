@@ -34,6 +34,8 @@ export async function GET(request: NextRequest) {
         const subjectIdsParam = searchParams.get('subjectIds'); // allows comma-separated string
         const departmentId = searchParams.get('departmentId');
         const semester = searchParams.get('semester');
+        const startDate = searchParams.get('startDate');
+        const endDate = searchParams.get('endDate');
 
         // Build filters
         const filters: string[] = [];
@@ -88,6 +90,16 @@ export async function GET(request: NextRequest) {
                 }).join(', ');
                 filters.push(`ar.subject_id IN (${placeholders})`);
             }
+        }
+
+        // Date filter
+        if (startDate) {
+            params.push(startDate);
+            filters.push(`ar.date >= $${params.length}`);
+        }
+        if (endDate) {
+            params.push(endDate);
+            filters.push(`ar.date <= $${params.length}`);
         }
 
         const filterClause = filters.length > 0 ? 'AND ' + filters.join(' AND ') : '';

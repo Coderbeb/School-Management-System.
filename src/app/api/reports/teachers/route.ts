@@ -37,10 +37,20 @@ export async function GET(request: NextRequest) {
         const filters: string[] = [];
         const params: string[] = [];
 
-        if (role === 'hod' && userDeptId) {
-            // HOD: filter by their department
-            params.push(userDeptId);
-            filters.push(`u.department_id = $${params.length}`);
+        if (role === 'hod') {
+            // HOD: filter by all their assigned departments (or a specific one if provided)
+            params.push(userId);
+            let hodDeptSql = `
+                SELECT department_id FROM users WHERE id = $${params.length}
+                UNION
+                SELECT department_id FROM user_departments WHERE user_id = $${params.length}
+            `;
+            if (departmentId) {
+                params.push(departmentId);
+                filters.push(`u.department_id = $${params.length} AND u.department_id IN (${hodDeptSql})`);
+            } else {
+                filters.push(`u.department_id IN (${hodDeptSql})`);
+            }
         } else if (role === 'teacher') {
             // Teacher: only see their own stats
             params.push(userId);
@@ -60,7 +70,12 @@ export async function GET(request: NextRequest) {
                 u.first_name,
                 u.last_name,
                 u.email,
-                d.name as department_name,
+                (
+                    SELECT STRING_AGG(DISTINCT ud_d.code, ', ' ORDER BY ud_d.code)
+                    FROM departments ud_d
+                    WHERE ud_d.id = u.department_id
+                       OR ud_d.id IN (SELECT department_id FROM user_departments ud WHERE ud.user_id = u.id)
+                ) as department_name,
                 COALESCE(
                     STRING_AGG(DISTINCT s.name, ', ' ORDER BY s.name),
                     ''

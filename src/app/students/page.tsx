@@ -930,8 +930,8 @@ export default function StudentsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6">
                     {/* Filters */}
                     <div className="md:col-span-4 flex gap-2">
-                        {isSuperAdmin && (
-                            <>
+                        {/* Always show department filters for Admins and HODs */}
+                            {new Set(departments.map(d => d.dept_type)).size > 1 && (
                                 <div className="relative w-full">
                                     <select
                                         className="w-full bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none cursor-pointer"
@@ -948,6 +948,7 @@ export default function StudentsPage() {
                                     </select>
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                 </div>
+                            )}
                                 <div className="relative w-full">
                                     <select
                                         className="w-full bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none cursor-pointer"
@@ -963,8 +964,6 @@ export default function StudentsPage() {
                                     </select>
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                 </div>
-                            </>
-                        )}
                         <div className="relative w-full">
                             <select
                                 className="w-full bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none cursor-pointer"

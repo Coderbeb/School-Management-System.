@@ -117,21 +117,9 @@ function StudentReportContent() {
     const [selectedStudent, setSelectedStudent] = useState<StudentDetail | null>(null);
     const [loadingDetail, setLoadingDetail] = useState(false);
 
-    // Date range filter states for student detail
-    const [popupStartDate, setPopupStartDate] = useState(() => {
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = String(today.getMonth() + 1).padStart(2, '0');
-        const day = String(today.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    });
-    const [popupEndDate, setPopupEndDate] = useState(() => {
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = String(today.getMonth() + 1).padStart(2, '0');
-        const day = String(today.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    });
+    // Date range filter states for report
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
     const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -164,7 +152,7 @@ function StudentReportContent() {
         if (token && user) {
             fetchStudentReport(token);
         }
-    }, [selectedDepartmentId, selectedSemester, selectedSubjectsStr, user]);
+    }, [selectedDepartmentId, selectedSemester, selectedSubjectsStr, user, startDate, endDate]);
 
     // Fetch subjects when department/semester changes
     useEffect(() => {
@@ -264,6 +252,8 @@ function StudentReportContent() {
             const params = new URLSearchParams();
             if (selectedDepartmentId) params.append('departmentId', selectedDepartmentId);
             if (selectedSemester) params.append('semester', selectedSemester);
+            if (startDate) params.append('startDate', startDate);
+            if (endDate) params.append('endDate', endDate);
             
             if (pageSelectedSubjectIds.size > 0 && availableSubjects.length > 0 && pageSelectedSubjectIds.size < availableSubjects.length) {
                 params.append('subjectIds', Array.from(pageSelectedSubjectIds).join(','));
@@ -314,28 +304,16 @@ function StudentReportContent() {
         setLoadingDetail(false);
     };
 
-    // Handle date filter apply in popup
-    const applyDateFilter = () => {
-        if (selectedStudentId) {
-            fetchStudentDetail(selectedStudentId, popupStartDate, popupEndDate);
-        }
-    };
-
     // Clear date filter
     const clearDateFilter = () => {
-        setPopupStartDate('');
-        setPopupEndDate('');
-        if (selectedStudentId) {
-            fetchStudentDetail(selectedStudentId);
-        }
+        setStartDate('');
+        setEndDate('');
     };
 
     // Close popup and reset states
     const closePopup = () => {
         setSelectedStudent(null);
         setSelectedStudentId(null);
-        setPopupStartDate('');
-        setPopupEndDate('');
     };
 
     // Toggle a subject in the page-level selection
@@ -396,12 +374,12 @@ function StudentReportContent() {
         // Determine date range text
         const dateFilterText = dateRange
             ? `${new Date(dateRange.startDate).toLocaleDateString()} – ${new Date(dateRange.endDate).toLocaleDateString()}`
-            : (popupStartDate && popupEndDate)
-                ? `${new Date(popupStartDate).toLocaleDateString()} – ${new Date(popupEndDate).toLocaleDateString()}`
-                : (popupStartDate)
-                    ? `From ${new Date(popupStartDate).toLocaleDateString()}`
-                    : (popupEndDate)
-                        ? `Until ${new Date(popupEndDate).toLocaleDateString()}`
+            : (startDate && endDate)
+                ? `${new Date(startDate).toLocaleDateString()} – ${new Date(endDate).toLocaleDateString()}`
+                : (startDate)
+                    ? `From ${new Date(startDate).toLocaleDateString()}`
+                    : (endDate)
+                        ? `Until ${new Date(endDate).toLocaleDateString()}`
                         : 'All Time';
 
         const getStatus = (pct: number) => {
@@ -1046,6 +1024,32 @@ function StudentReportContent() {
                                 </div>
                             </div>
 
+                            {/* Date Filter */}
+                            <div className="w-full col-span-2 lg:col-span-1">
+                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Date Range</label>
+                                <div className="flex items-center justify-between w-full px-3 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-purple-300 rounded-xl focus-within:ring-2 focus-within:ring-purple-500 focus-within:border-transparent transition-all shadow-sm">
+                                    <div className="flex items-center flex-1">
+                                        <input 
+                                            type="date" 
+                                            value={startDate} 
+                                            onChange={(e) => setStartDate(e.target.value)} 
+                                            className="bg-transparent border-none p-0 text-sm outline-none w-full text-gray-700" 
+                                            title="Start Date"
+                                        />
+                                    </div>
+                                    <div className="h-4 w-px bg-gray-300 mx-2 flex-shrink-0"></div>
+                                    <div className="flex items-center flex-1">
+                                        <input 
+                                            type="date" 
+                                            value={endDate} 
+                                            onChange={(e) => setEndDate(e.target.value)} 
+                                            className="bg-transparent border-none p-0 text-sm outline-none w-full text-gray-700" 
+                                            title="End Date"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Department Filter */}
                             {(user?.role === 'super_admin' || departments.length > 1) && (
                                 <div className="w-full">
@@ -1112,6 +1116,8 @@ function StudentReportContent() {
                                     variant="outline"
                                     className="w-full lg:w-auto mt-6 bg-white hover:bg-red-50 text-gray-600 hover:text-red-600 border-gray-200 hover:border-red-200 rounded-xl transition-colors h-[42px]"
                                     onClick={() => {
+                                        setStartDate('');
+                                        setEndDate('');
                                         setSelectedSemester('');
                                         setSelectedDepartmentId('');
                                         setSearchTerm('');
@@ -1230,7 +1236,7 @@ function StudentReportContent() {
                                                                         {student.name.charAt(0)}
                                                                     </div>
                                                                     <div className="ml-4">
-                                                                        <div className="text-sm font-medium text-gray-900 group-hover:text-purple-600 transition-colors cursor-pointer" onClick={() => fetchStudentDetail(student.id)}>
+                                                                        <div className="text-sm font-medium text-gray-900 group-hover:text-purple-600 transition-colors cursor-pointer" onClick={() => fetchStudentDetail(student.id, startDate, endDate)}>
                                                                             {student.name}
                                                                         </div>
                                                                     <div className="flex gap-2 mt-0.5">
@@ -1267,7 +1273,7 @@ function StudentReportContent() {
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="sm"
-                                                                    onClick={() => fetchStudentDetail(student.id)}
+                                                                    onClick={() => fetchStudentDetail(student.id, startDate, endDate)}
                                                                     className="text-gray-400 hover:text-purple-600 hover:bg-purple-50"
                                                                 >
                                                                     <Eye className="w-4 h-4" />
@@ -1284,7 +1290,7 @@ function StudentReportContent() {
                                             {paginatedStudents.map((student) => (
                                                 <div
                                                     key={student.id}
-                                                    onClick={() => fetchStudentDetail(student.id)}
+                                                    onClick={() => fetchStudentDetail(student.id, startDate, endDate)}
                                                     className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm active:scale-[0.99] transition-transform"
                                                 >
                                                     <div className="flex justify-between items-start mb-3">
@@ -1485,30 +1491,6 @@ function StudentReportContent() {
                                                         </>
                                                     );
                                                 })()}
-                                            </div>
-                                        </div>
-
-                                        {/* Filters for Detail */}
-                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                                            <div className="flex flex-wrap items-center gap-3">
-                                                <span className="text-sm font-medium text-gray-700">Filter Range:</span>
-                                                <Input
-                                                    type="date"
-                                                    value={popupStartDate}
-                                                    onChange={(e) => setPopupStartDate(e.target.value)}
-                                                    className="w-auto h-9 bg-white"
-                                                />
-                                                <span className="text-gray-400">-</span>
-                                                <Input
-                                                    type="date"
-                                                    value={popupEndDate}
-                                                    onChange={(e) => setPopupEndDate(e.target.value)}
-                                                    className="w-auto h-9 bg-white"
-                                                />
-                                                <Button size="sm" variant="secondary" onClick={applyDateFilter}>Apply</Button>
-                                                {(popupStartDate || popupEndDate) && (
-                                                    <Button size="sm" variant="ghost" onClick={clearDateFilter}>Clear</Button>
-                                                )}
                                             </div>
                                         </div>
 

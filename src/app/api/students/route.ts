@@ -38,10 +38,12 @@ export async function GET(request: NextRequest) {
              LEFT JOIN departments d ON s.department_id = d.id`;
         const params: string[] = [];
 
-        // HODs can only see their department's students
-        if (payload.role === 'hod' && payload.departmentId) {
-            queryText += ' WHERE s.department_id = $1';
-            params.push(payload.departmentId);
+        // HODs can see students from all their assigned departments
+        if (payload.role === 'hod' && payload.userId) {
+            queryText += ` WHERE s.department_id IN (
+                SELECT department_id FROM user_departments WHERE user_id = $1
+            ) OR s.department_id = $2`;
+            params.push(payload.userId, payload.departmentId || '00000000-0000-0000-0000-000000000000');
         }
 
         queryText += ' ORDER BY s.roll_number ASC';
@@ -121,7 +123,7 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ error: 'Student ID required' }, { status: 400 });
         }
 
-        // Check if student belongs to HOD's department
+        // Check if student belongs to HOD's departments
         if (payload.role === 'hod') {
             const student = await query<{ department_id: string }>(
                 'SELECT department_id FROM students WHERE id = $1',
@@ -130,7 +132,14 @@ export async function DELETE(request: NextRequest) {
             if (student.length === 0) {
                 return NextResponse.json({ error: 'Student not found' }, { status: 404 });
             }
-            if (student[0].department_id !== payload.departmentId) {
+
+            const allowedDepts = await query<{ department_id: string }>(
+                'SELECT department_id FROM user_departments WHERE user_id = $1',
+                [payload.userId]
+            );
+            const allowedDeptIds = [payload.departmentId, ...allowedDepts.map(d => d.department_id)].filter(Boolean);
+
+            if (!allowedDeptIds.includes(student[0].department_id)) {
                 return NextResponse.json({ error: 'Access denied' }, { status: 403 });
             }
         }
@@ -168,7 +177,7 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'Student ID required' }, { status: 400 });
         }
 
-        // HOD can only edit students in their own department
+        // HOD can only edit students in their own departments
         if (payload.role === 'hod') {
             const student = await query<{ department_id: string }>(
                 'SELECT department_id FROM students WHERE id = $1',
@@ -177,7 +186,14 @@ export async function PUT(request: NextRequest) {
             if (student.length === 0) {
                 return NextResponse.json({ error: 'Student not found' }, { status: 404 });
             }
-            if (student[0].department_id !== payload.departmentId) {
+
+            const allowedDepts = await query<{ department_id: string }>(
+                'SELECT department_id FROM user_departments WHERE user_id = $1',
+                [payload.userId]
+            );
+            const allowedDeptIds = [payload.departmentId, ...allowedDepts.map(d => d.department_id)].filter(Boolean);
+
+            if (!allowedDeptIds.includes(student[0].department_id)) {
                 return NextResponse.json({ error: 'Access denied' }, { status: 403 });
             }
         }

@@ -113,7 +113,7 @@ export default function TeacherReportPage() {
             firstName: parsedUser.firstName || 'User'
         });
 
-        if (parsedUser.role === 'super_admin') {
+        if (parsedUser.role !== 'teacher') {
             fetchDepartments(token);
         }
     }, [router]);
@@ -784,7 +784,7 @@ export default function TeacherReportPage() {
                             </div>
 
                             {/* Department Filter */}
-                            {user?.role === 'super_admin' ? (
+                            {user?.role !== 'teacher' ? (
                                 <div className="w-full">
                                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Department</label>
                                     <div className="relative">

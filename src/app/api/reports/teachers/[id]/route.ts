@@ -109,18 +109,21 @@ export async function GET(
         }
 
         // Get subject-wise stats with filters
-        const subjectStats = await query<SubjectStats>(
+        const subjectStats = await query<SubjectStats & { paper_code: string }>(
             `SELECT 
-                s.id as subject_id,
+                MIN(s.id::text) as subject_id,
                 s.name as subject_name,
                 s.code as subject_code,
+                s.paper_code as paper_code,
                 COALESCE(
-                    (SELECT string_agg(ss2.semester::text, ', ' ORDER BY ss2.semester)
-                     FROM subject_semesters ss2 WHERE ss2.subject_id = s.id),
+                    (SELECT string_agg(DISTINCT ss2.semester::text, ', ' ORDER BY ss2.semester::text)
+                     FROM subject_semesters ss2 
+                     JOIN subjects s2 ON s2.id = ss2.subject_id
+                     WHERE s2.code = s.code),
                     ''
                 ) as semester,
-                (SELECT id FROM departments WHERE degree_type = s.degree_type LIMIT 1) as department_id,
-                (SELECT name FROM departments WHERE degree_type = s.degree_type LIMIT 1) as department_name,
+                MIN(d.id::text) as department_id,
+                MIN(d.name) as department_name,
                 COUNT(DISTINCT ar.date || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_sessions,
                 COUNT(DISTINCT ar.date) as working_days,
                 COUNT(DISTINCT ar.student_id) as total_students,
@@ -134,9 +137,10 @@ export async function GET(
                 ) as avg_attendance
              FROM teacher_subjects ts
              JOIN subjects s ON s.id = ts.subject_id
+             LEFT JOIN departments d ON d.degree_type = s.degree_type
              LEFT JOIN attendance_records ar ON ar.subject_id = s.id AND ar.teacher_id = ts.teacher_id
              WHERE ${subjectFilters.join(' AND ')}
-             GROUP BY s.id, s.name, s.code, s.degree_type
+             GROUP BY s.code, s.name, s.paper_code
              ORDER BY s.code, s.name`,
             subjectParams
         );
@@ -223,10 +227,11 @@ export async function GET(
                 absentCount: parseInt(overall.absent_count) || 0,
                 averageAttendance: Math.round(parseFloat(overall.avg_attendance) || 0)
             },
-            subjects: subjectStats.map(s => ({
+            subjects: subjectStats.map((s: any) => ({
                 id: s.subject_id,
                 name: s.subject_name,
                 code: s.subject_code,
+                paperCode: s.paper_code,
                 semester: s.semester,
                 department: s.department_name,
                 sessions: parseInt(s.total_sessions) || 0,
