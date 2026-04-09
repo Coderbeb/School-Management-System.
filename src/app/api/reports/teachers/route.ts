@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         const params: string[] = [];
 
         if (role === 'hod') {
-            // HOD: filter by all their assigned departments (or a specific one if provided)
+            // HOD: show teachers whose primary OR secondary departments overlap with HOD's departments
             params.push(userId);
             let hodDeptSql = `
                 SELECT department_id FROM users WHERE id = $${params.length}
@@ -47,9 +47,11 @@ export async function GET(request: NextRequest) {
             `;
             if (departmentId) {
                 params.push(departmentId);
-                filters.push(`u.department_id = $${params.length} AND u.department_id IN (${hodDeptSql})`);
+                // Teacher's primary dept OR any linked dept matches the selected dept (which must be in HOD's authorized depts)
+                filters.push(`(u.department_id = $${params.length} OR u.id IN (SELECT user_id FROM user_departments WHERE department_id = $${params.length})) AND $${params.length} IN (${hodDeptSql})`);
             } else {
-                filters.push(`u.department_id IN (${hodDeptSql})`);
+                // Teacher's primary dept OR any linked dept is in HOD's authorized depts
+                filters.push(`(u.department_id IN (${hodDeptSql}) OR u.id IN (SELECT user_id FROM user_departments WHERE department_id IN (${hodDeptSql})))`);
             }
         } else if (role === 'teacher') {
             // Teacher: only see their own stats

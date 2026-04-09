@@ -15,6 +15,7 @@ interface QueueItem {
     records: { studentId: string; status: string }[];
     subjectId: string;
     date: string;
+    sessionLectureNumber?: number | null;
   };
   authHeader: string;
   timestamp: number;

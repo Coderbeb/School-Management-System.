@@ -7,6 +7,7 @@ import { Calendar, TrendingUp, TrendingDown, BarChart3, Filter, ChevronDown, Ale
 import * as XLSX from 'xlsx';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
+import { useActiveSemesters } from '@/hooks/useActiveSemesters';
 
 interface User {
     id: string;
@@ -21,6 +22,8 @@ interface Department {
     id: string;
     name: string;
     code: string;
+    deptType?: string;
+    dept_type?: string;
 }
 
 interface MonthlyStats {
@@ -70,6 +73,9 @@ export default function MonthlyReportPage() {
     const [subjectStats, setSubjectStats] = useState<SubjectStat[]>([]);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'daily' | 'subjects'>('daily');
+    const { getActiveSemesters, getBatchLabel } = useActiveSemesters();
+
+    const getDeptType = (dept?: Department) => dept?.deptType || dept?.dept_type;
 
     // Sorting state for daily table
     const [sortField, setSortField] = useState<'date' | 'total' | 'present' | 'absent' | 'percentage'>('date');
@@ -494,9 +500,13 @@ export default function MonthlyReportPage() {
                                         className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-emerald-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
                                     >
                                         <option value="">All Semesters</option>
-                                        {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
-                                            <option key={sem} value={sem}>Semester {sem}</option>
-                                        ))}
+                                        {getActiveSemesters(getDeptType(departments.find(d => d.id === selectedDepartmentId))).map((sem) => {
+                                            const dt = getDeptType(departments.find(d => d.id === selectedDepartmentId));
+                                            const label = getBatchLabel(sem, dt);
+                                            return (
+                                                <option key={sem} value={sem}>Sem {sem}{label ? ` (${label})` : ''}</option>
+                                            );
+                                        })}
                                     </select>
                                     <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
                                 </div>

@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
                 const todayStr = istTime.toISOString().split('T')[0];
 
                 const lectureQuery = `SELECT 
-                    COUNT(DISTINCT ar.date::text || ar.subject_id::text || COALESCE(ar.semester::text, '0') || ar.lecture_number::text) as count,
+                    COUNT(DISTINCT ar.teacher_id || '-' || ar.date::text || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number::text) as count,
                     COUNT(DISTINCT ar.date) as working_days
                     FROM attendance_records ar WHERE 1=1 ${attendanceFilter}`;
                 const lectureCount = await queryOne<CountResult & { working_days: string }>(lectureQuery, attendanceParams);
@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
                 const todayParams = [...attendanceParams, todayStr];
                 const todayDateIdx = todayParams.length;
                 const tQuery = `SELECT 
-                    COUNT(DISTINCT ar.subject_id::text || COALESCE(ar.semester::text, '0') || ar.lecture_number::text) as count
+                    COUNT(DISTINCT ar.teacher_id || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number::text) as count
                     FROM attendance_records ar WHERE ar.date = $${todayDateIdx} ${attendanceFilter}`;
                 const tCount = await queryOne<CountResult>(tQuery, todayParams);
                 todaySessions = parseInt(tCount?.count || '0');

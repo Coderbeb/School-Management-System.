@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
-import { parseStudentId, ParsedStudentId } from '@/lib/parseStudentId';
+import { parseStudentId, ParsedStudentId, BatchConfig } from '@/lib/parseStudentId';
 
 // Helper: collect subject enrollments for a student (used by both insert and update paths)
 function collectSubjectEnrollments(
@@ -94,7 +94,17 @@ export async function POST(req: Request) {
         const deptResult = await client.query(
             'SELECT id, code, dept_type, degree_type FROM departments'
         );
-        const departmentMap = new Map(deptResult.rows.map((d: any) => [d.code.toUpperCase(), { id: d.id, degreeType: d.degree_type }]));
+        const departmentMap = new Map(deptResult.rows.map((d: any) => [d.code.toUpperCase(), { id: d.id, deptType: d.dept_type, degreeType: d.degree_type }]));
+
+        // Fetch admin's batch config for semester mapping
+        const batchConfigResult = await client.query(
+            `SELECT key, value FROM application_settings WHERE key LIKE 'batch_mapping_%'`
+        );
+        const batchConfig: BatchConfig = {};
+        batchConfigResult.rows.forEach((row: any) => {
+            const deptType = row.key.replace('batch_mapping_', '');
+            batchConfig[deptType] = row.value;
+        });
 
         // Cache ALL subjects with their semesters
         const subjectResult = await client.query(
@@ -156,7 +166,7 @@ export async function POST(req: Request) {
                 }
 
                 // 2. Parse Student ID to auto-detect fields
-                const parsed = parseStudentId(student.student_id);
+                const parsed = parseStudentId(student.student_id, batchConfig);
                 if (!parsed.isValid) {
                     throw new Error(`Invalid Student ID format: ${parsed.error}`);
                 }
@@ -198,14 +208,35 @@ export async function POST(req: Request) {
 
                 const finalDegreeType = degreeType || '';
 
-                // 4. Check if student already exists — update instead of skipping
+                // 4. If dept is PG type, override semester using PG batch config
+                // (parseStudentId only knows regular/vocational, not PG)
+                let resolvedSemester = parsed.semester || 1;
+                if (parsed.admissionYear) {
+                    // Find which dept_type this student's department actually is
+                    const matchedDeptEntry = student.department_code
+                        ? departmentMap.get(student.department_code.toUpperCase())
+                        : (parsed.deptCode ? departmentMap.get(parsed.deptCode.toUpperCase()) : null);
+                    const actualDeptType = matchedDeptEntry?.deptType;
+
+                    if (actualDeptType === 'pg' && batchConfig['pg']) {
+                        // Reverse lookup PG config
+                        for (const [semStr, batchYear] of Object.entries(batchConfig['pg'])) {
+                            if (batchYear === parsed.admissionYear) {
+                                resolvedSemester = parseInt(semStr);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // 5. Check if student already exists — update instead of skipping
                 const sid = student.student_id.toUpperCase();
                 const email = student.email?.toLowerCase();
                 const existingStudent = existingStudentMap.get(sid);
 
-                // 5. Determine final values
+                // 6. Determine final values
                 const finalRollNumber = student.roll_number ? parseInt(student.roll_number) : (parsed.rollNumber || 0);
-                const finalSemester = student.semester ? parseInt(student.semester) : (parsed.semester || 1);
+                const finalSemester = student.semester ? parseInt(student.semester) : resolvedSemester;
 
                 if (existingStudent) {
                     // EXISTING student — check if any data changed, and queue update

@@ -9,6 +9,7 @@ import * as XLSX from 'xlsx';
 import { Input } from '@/components/ui/input';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
+import { useActiveSemesters } from '@/hooks/useActiveSemesters';
 
 interface User {
     id: string;
@@ -24,6 +25,7 @@ interface Department {
     name: string;
     code: string;
     dept_type?: 'regular' | 'vocational' | 'pg';
+    deptType?: string;
 }
 
 interface SubjectOption {
@@ -121,6 +123,9 @@ function StudentReportContent() {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+    const { getActiveSemesters, getBatchLabel } = useActiveSemesters();
+
+    const getDeptType = (dept?: Department) => dept?.deptType || dept?.dept_type;
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -1082,9 +1087,13 @@ function StudentReportContent() {
                                         className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-purple-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
                                     >
                                         <option value="">All Semesters</option>
-                                        {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
-                                            <option key={sem} value={sem}>Semester {sem}</option>
-                                        ))}
+                                        {getActiveSemesters(getDeptType(departments.find(d => d.id === selectedDepartmentId))).map((sem) => {
+                                            const dt = getDeptType(departments.find(d => d.id === selectedDepartmentId));
+                                            const label = getBatchLabel(sem, dt);
+                                            return (
+                                                <option key={sem} value={sem}>Sem {sem}{label ? ` (${label})` : ''}</option>
+                                            );
+                                        })}
                                     </select>
                                     <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
                                 </div>

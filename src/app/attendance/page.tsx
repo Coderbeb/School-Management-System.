@@ -100,10 +100,18 @@ export default function AttendancePage() {
     const [currentLectureNumber, setCurrentLectureNumber] = useState<number | null>(null);
     const [totalLecturesToday, setTotalLecturesToday] = useState<number>(0);
 
+    // Search buffer for keyboard shortcut
+    const [searchBuffer, setSearchBuffer] = useState('');
+    const [searchError, setSearchError] = useState('');
+    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     // Auto-save timer ref
     const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
     const pendingChangesRef = useRef(false);
+
+    // Session-based lecture number: persists across dept/subject switches within same page visit.
+    // Resets to null when page remounts (e.g., navigating back from dashboard).
+    const sessionLectureNumberRef = useRef<number | null>(null);
 
     const handleLogout = () => {
         localStorage.removeItem('token');
@@ -308,6 +316,16 @@ export default function AttendancePage() {
         return `${batchStart}-${String(batchEnd).padStart(2, '0')}`;
     };
 
+    // Helper: check if a semester is active (not disabled by admin in settings)
+    // If admin has saved config and set a semester to null/empty, it's inactive
+    const isSemesterActive = (sem: number, deptType: string): boolean => {
+        const savedMappings = batchConfig[deptType];
+        // If no saved config exists yet, all semesters are active (first-time setup)
+        if (!savedMappings || Object.keys(savedMappings).length === 0) return true;
+        // If config exists, semester is active only if it has a truthy (non-null) value
+        return !!savedMappings[sem.toString()];
+    };
+
     // Check if selected date is a holiday
     useEffect(() => {
         // Helper function to normalize date to YYYY-MM-DD in LOCAL timezone
@@ -372,9 +390,21 @@ export default function AttendancePage() {
 
     // Get semesters for filtered subjects. If filtering resulted in empty, fall back to all subjects
     const subjectsToUse = filteredSubjects.length > 0 ? filteredSubjects : subjects;
+
+    // Determine active dept type for semester filtering
+    const activeDeptTypeForFilter = selectedDepartmentId
+        ? (departments.find(d => d.id === selectedDepartmentId)?.deptType || primaryDeptType)
+        : primaryDeptType;
+
     const filteredSemesters = Array.from(
         new Set(subjectsToUse.flatMap((s: Subject) => s.subjectSemesters))
-    ).sort((a, b) => a - b);
+    ).filter(sem => isSemesterActive(sem, activeDeptTypeForFilter))
+     .sort((a, b) => a - b);
+
+    // Also filter the base availableSemesters (used when no dept filter is active)
+    const activeAvailableSemesters = availableSemesters.filter(sem =>
+        isSemesterActive(sem, primaryDeptType)
+    );
 
     // Auto-select subject when semester changes
     useEffect(() => {
@@ -684,7 +714,8 @@ export default function AttendancePage() {
                     body: JSON.stringify({
                         records: attendanceData,
                         subjectId: selectedSubjectId,
-                        date: selectedDate
+                        date: selectedDate,
+                        sessionLectureNumber: sessionLectureNumberRef.current
                     }),
                 });
 
@@ -695,6 +726,11 @@ export default function AttendancePage() {
 
                 if (res.ok) {
                     pendingChangesRef.current = false;
+                    const data = await res.json();
+                    // Store session lecture number for cross-subject reuse
+                    if (data.lectureNumber && sessionLectureNumberRef.current === null) {
+                        sessionLectureNumberRef.current = data.lectureNumber;
+                    }
                 }
             } catch (err) {
                 console.error('Auto-save error:', err);
@@ -707,7 +743,8 @@ export default function AttendancePage() {
                             body: {
                                 records: attendanceData as { studentId: string; status: string }[],
                                 subjectId: selectedSubjectId,
-                                date: selectedDate
+                                date: selectedDate,
+                                sessionLectureNumber: sessionLectureNumberRef.current
                             },
                             authHeader: `Bearer ${token}`,
                             timestamp: Date.now(),
@@ -730,6 +767,91 @@ export default function AttendancePage() {
         setMessage('');
         triggerAutoSave();
     };
+
+    const markAttendanceRef = useRef(markAttendance);
+    useEffect(() => {
+        markAttendanceRef.current = markAttendance;
+    }, [markAttendance]);
+
+    useEffect(() => {
+        const executeSearch = (buffer: string) => {
+            const currentStudents = studentsRef.current;
+            if (!buffer || currentStudents.length === 0) return;
+            
+            let matchedStudent = currentStudents.find(s => String(s.roll_number).trim() === buffer);
+            if (!matchedStudent) {
+                const targetNum = parseInt(buffer, 10);
+                matchedStudent = currentStudents.find(s => {
+                    const rollStr = String(s.roll_number).trim();
+                    // Extract exactly the numerical trailing part of the string
+                    const suffixMatch = rollStr.match(/\d+$/);
+                    if (suffixMatch) {
+                        return parseInt(suffixMatch[0], 10) === targetNum;
+                    }
+                    return false;
+                });
+            }
+            
+            if (matchedStudent) {
+                if (matchedStudent.attendance !== 'present') {
+                    markAttendanceRef.current(matchedStudent.id, 'present');
+                }
+                
+                setSearchError(''); // Clear error if match is found
+
+                // Scroll to student row
+                const rows = document.querySelectorAll(`tr[data-student-row="${matchedStudent.id}"]`);
+                // Use Array.from to filter visible rows, as multiple DOM structures exist
+                const visibleRow = Array.from(rows).find(row => {
+                     // Check if an ancestor or the element itself is completely hidden
+                     return (row as HTMLElement).offsetParent !== null;
+                });
+
+                if (visibleRow) {
+                    visibleRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    visibleRow.classList.add('bg-green-100');
+                    setTimeout(() => visibleRow.classList.remove('bg-green-100'), 2000);
+                }
+            } else {
+                setSearchError(`Roll '${buffer}' not found`);
+                setTimeout(() => setSearchError(''), 2500);
+            }
+        };
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) {
+                return;
+            }
+
+            if (/^\d$/.test(e.key)) {
+                setSearchError('');
+                setSearchBuffer(prev => {
+                    const newBuffer = prev + e.key;
+                    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+                    searchTimeoutRef.current = setTimeout(() => {
+                        executeSearch(newBuffer);
+                        setSearchBuffer('');
+                    }, 800);
+                    return newBuffer;
+                });
+            } else if (e.key === 'Enter') {
+                setSearchBuffer(prev => {
+                    if (prev) {
+                        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+                        executeSearch(prev);
+                        return '';
+                    }
+                    return prev;
+                });
+            } else if (e.key === 'Escape') {
+                setSearchBuffer('');
+                if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
     const toggleAttendance = (studentId: string) => {
         setStudents(prev => prev.map(s => {
@@ -777,7 +899,8 @@ export default function AttendancePage() {
                 body: JSON.stringify({
                     records: attendanceData,
                     subjectId: selectedSubjectId,
-                    date: selectedDate
+                    date: selectedDate,
+                    sessionLectureNumber: sessionLectureNumberRef.current
                 }),
             });
 
@@ -796,6 +919,10 @@ export default function AttendancePage() {
                     // Update lecture number from response
                     if (data.lectureNumber) {
                         setCurrentLectureNumber(data.lectureNumber);
+                        // Store session lecture number for cross-subject reuse
+                        if (sessionLectureNumberRef.current === null) {
+                            sessionLectureNumberRef.current = data.lectureNumber;
+                        }
                     }
                     setMessage('✅ Attendance saved successfully!');
                 }
@@ -811,7 +938,8 @@ export default function AttendancePage() {
                     body: {
                         records: attendanceData as { studentId: string; status: string }[],
                         subjectId: selectedSubjectId,
-                        date: selectedDate
+                        date: selectedDate,
+                        sessionLectureNumber: sessionLectureNumberRef.current
                     },
                     authHeader: `Bearer ${token}`,
                     timestamp: Date.now(),
@@ -862,6 +990,21 @@ export default function AttendancePage() {
 
             {/* Navbar */}
             <Navbar user={user} onMenuClick={() => setSidebarOpen(true)} />
+
+            {/* Keyboard Entry Feedback */}
+            {searchBuffer && !searchError && (
+                <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-in fade-in zoom-in duration-200">
+                    <span className="text-gray-400 text-sm font-medium">Mark Roll:</span>
+                    <span className="text-2xl font-mono font-bold tracking-widest">{searchBuffer}</span>
+                </div>
+            )}
+            
+            {searchError && (
+                <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 bg-red-600 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 animate-in fade-in zoom-in duration-200">
+                    <X className="w-5 h-5" />
+                    <span className="text-sm font-medium">{searchError}</span>
+                </div>
+            )}
 
             {/* Main Content Wrapper */}
             <div className="flex flex-col flex-1 pt-20 h-screen overflow-hidden">
@@ -929,6 +1072,7 @@ export default function AttendancePage() {
                                             setSelectedDepartmentId(e.target.value);
                                             // Keep selected semester as requested
                                             setSelectedSubjectId('');
+                                            e.target.blur();
                                         }}
                                     >
                                         <option value="">All Depts</option>
@@ -944,10 +1088,13 @@ export default function AttendancePage() {
                                 <select
                                     className={`${departments.length > 1 ? 'flex-1' : 'w-full'} px-3 py-2.5 bg-white border rounded-xl text-sm font-medium`}
                                     value={selectedSemester}
-                                    onChange={(e) => setSelectedSemester(e.target.value)}
+                                    onChange={(e) => {
+                                        setSelectedSemester(e.target.value);
+                                        e.target.blur();
+                                    }}
                                 >
                                     <option value="">Select Semester</option>
-                                    {(departments.length > 1 && selectedDepartmentId ? filteredSemesters : availableSemesters).map(sem => {
+                                    {(departments.length > 1 && selectedDepartmentId ? filteredSemesters : activeAvailableSemesters).map(sem => {
                                         const activeDept = selectedDepartmentId
                                             ? departments.find(d => d.id === selectedDepartmentId)
                                             : departments[0] || null;
@@ -1075,7 +1222,7 @@ export default function AttendancePage() {
                                             <table className="w-full">
                                                 <tbody className="divide-y divide-gray-100">
                                                     {displayStudents.map((student) => (
-                                                        <tr key={student.id} className="hover:bg-gray-50">
+                                                        <tr key={student.id} data-student-row={student.id} className="hover:bg-gray-50 transition-colors duration-500">
                                                             <td className="px-2 py-2 text-sm font-mono font-bold text-gray-900">{student.roll_number}</td>
                                                             <td className="px-2 py-2 text-sm font-medium text-gray-900 truncate max-w-[120px]">
                                                                 {student.first_name} {student.last_name}
@@ -1139,6 +1286,7 @@ export default function AttendancePage() {
                                                 setSelectedDepartmentId(e.target.value);
                                                 // Keep selected semester as requested
                                                 setSelectedSubjectId('');
+                                                e.target.blur();
                                             }}
                                         >
                                             <option value="">All Departments</option>
@@ -1160,10 +1308,13 @@ export default function AttendancePage() {
                                         id="semester-select"
                                         className="w-full p-2 border rounded bg-white text-sm"
                                         value={selectedSemester}
-                                        onChange={(e) => setSelectedSemester(e.target.value)}
+                                        onChange={(e) => {
+                                            setSelectedSemester(e.target.value);
+                                            e.target.blur();
+                                        }}
                                     >
                                         <option value="">Select...</option>
-                                        {(departments.length > 1 && selectedDepartmentId ? filteredSemesters : availableSemesters).map(sem => {
+                                        {(departments.length > 1 && selectedDepartmentId ? filteredSemesters : activeAvailableSemesters).map(sem => {
                                             const activeDept = selectedDepartmentId
                                                 ? departments.find(d => d.id === selectedDepartmentId)
                                                 : departments[0] || null;
@@ -1290,7 +1441,7 @@ export default function AttendancePage() {
                                             </thead>
                                             <tbody className="divide-y">
                                                 {displayStudents.map((student) => (
-                                                    <tr key={student.id} className="hover:bg-gray-50">
+                                                    <tr key={student.id} data-student-row={student.id} className="hover:bg-gray-50 transition-colors duration-500">
                                                         <td className="px-3 sm:px-6 py-3 text-xs sm:text-sm font-mono font-bold">{student.roll_number}</td>
                                                         <td className="px-3 sm:px-6 py-3 text-xs sm:text-sm font-medium">{student.first_name} <span className="hidden sm:inline">{student.last_name}</span></td>
                                                         <td className="px-3 sm:px-6 py-3 text-center">

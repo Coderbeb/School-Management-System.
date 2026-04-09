@@ -24,6 +24,7 @@ import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { Navbar } from '@/components/ui/Navbar';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
+import { useActiveSemesters } from '@/hooks/useActiveSemesters';
 
 interface Subject {
     id: string;
@@ -78,6 +79,7 @@ export default function SubjectsPage() {
     const [selectedDegreeTypes, setSelectedDegreeTypes] = useState<string[]>(['it']); // For multi-select degree types (vocational)
     const [editingGroup, setEditingGroup] = useState<GroupedSubject | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const { getActiveSemesters, getBatchLabel } = useActiveSemesters();
 
     // Search & Filter
     const [searchTerm, setSearchTerm] = useState('');
@@ -674,9 +676,12 @@ export default function SubjectsPage() {
                                 onChange={(e) => setFilterSemester(e.target.value)}
                             >
                                 <option value="">All Semesters</option>
-                                {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
-                                    <option key={s} value={s}>Sem {s}</option>
-                                ))}
+                                {getActiveSemesters().map(s => {
+                                    const label = getBatchLabel(s);
+                                    return (
+                                        <option key={s} value={s}>Sem {s}{label ? ` (${label})` : ''}</option>
+                                    );
+                                })}
                             </select>
                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                         </div>

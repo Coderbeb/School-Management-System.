@@ -65,26 +65,26 @@ export default function SettingsPage() {
                     
                     // Convert numeric batch values to strings for inputs
                     const stringMappings: Record<number, string> = {};
-                    
-                    // 1. Prefill with calculated defaults based on the academic calendar
                     const semCount = (selectedDeptType === 'vocational' || selectedDeptType === 'pg') ? 6 : 8;
-                    const currentDate = new Date();
-                    const currentYear = currentDate.getFullYear();
-                    const isNewAcademicYear = currentDate.getMonth() >= 6; // July or later
                     
-                    for (let i = 1; i <= semCount; i++) {
-                        const yearIndex = Math.floor((i - 1) / 2);
-                        const expectedBatch = isNewAcademicYear ? (currentYear - yearIndex) : (currentYear - 1 - yearIndex);
-                        stringMappings[i] = String(expectedBatch);
-                    }
-
-                    // 2. Override with actual existing database mappings if they exist
-                    if (data.mappings) {
-                        Object.keys(data.mappings).forEach(sem => {
-                            if (data.mappings[sem]) {
-                                stringMappings[parseInt(sem)] = String(data.mappings[sem]);
-                            }
-                        });
+                    if (data.mappings && Object.keys(data.mappings).length > 0) {
+                        // Saved config exists — only load saved values.
+                        // Semesters intentionally left blank stay blank.
+                        for (let i = 1; i <= semCount; i++) {
+                            const saved = data.mappings[i.toString()];
+                            stringMappings[i] = saved ? String(saved) : '';
+                        }
+                    } else {
+                        // No saved config yet (first time) — prefill with calculated defaults
+                        const currentDate = new Date();
+                        const currentYear = currentDate.getFullYear();
+                        const isNewAcademicYear = currentDate.getMonth() >= 6; // July or later
+                        
+                        for (let i = 1; i <= semCount; i++) {
+                            const yearIndex = Math.floor((i - 1) / 2);
+                            const expectedBatch = isNewAcademicYear ? (currentYear - yearIndex) : (currentYear - 1 - yearIndex);
+                            stringMappings[i] = String(expectedBatch);
+                        }
                     }
                     
                     setBatchMappings(stringMappings);
@@ -130,21 +130,27 @@ export default function SettingsPage() {
     };
 
     const handleApplyUpgrades = async () => {
-        // Collect ALL mappings for saving the config (even blank ones are useful info)
-        const allMappings = Object.entries(batchMappings)
+        // Collect only valid (non-empty) mappings for the student upgrade
+        const validMappings = Object.entries(batchMappings)
             .filter(([_, batchYear]) => batchYear && !isNaN(parseInt(batchYear)))
             .map(([semester, batchYear]) => ({
                 semester: parseInt(semester),
                 batchYear: parseInt(batchYear)
             }));
 
-        if (allMappings.length === 0) {
-            setMessage({ type: 'error', text: 'Please enter at least one valid Batch Year.' });
-            return;
+        // Build the full config object (including empty semesters as null)
+        // so the API knows which semesters are intentionally cleared
+        const semCount = getSemestersCount(selectedDeptType);
+        const fullConfig: Record<string, number | null> = {};
+        for (let i = 1; i <= semCount; i++) {
+            const val = batchMappings[i];
+            fullConfig[i.toString()] = (val && !isNaN(parseInt(val))) ? parseInt(val) : null;
         }
 
-        if (!window.confirm('Are you sure you want to upgrade students to these semesters? This will change their current semester in the database.')) {
-            return;
+        if (validMappings.length > 0) {
+            if (!window.confirm('Are you sure you want to upgrade students to these semesters? This will change their current semester in the database.')) {
+                return;
+            }
         }
 
         setIsSaving(true);
@@ -159,7 +165,8 @@ export default function SettingsPage() {
                 },
                 body: JSON.stringify({
                     deptType: selectedDeptType,
-                    mappings: allMappings
+                    mappings: validMappings,
+                    fullConfig: fullConfig
                 })
             });
 

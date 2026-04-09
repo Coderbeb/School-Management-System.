@@ -29,6 +29,7 @@ import { Navbar } from '@/components/ui/Navbar';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { parseStudentId, findDepartmentByCode, type ParsedStudentId } from '@/lib/parseStudentId';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
+import { useActiveSemesters } from '@/hooks/useActiveSemesters';
 
 interface Student {
     id: string;
@@ -48,6 +49,7 @@ interface Department {
     name: string;
     code: string;
     dept_type: 'regular' | 'vocational' | 'pg';
+    deptType?: string;
     degree_type: string;
 }
 
@@ -77,6 +79,9 @@ export default function StudentsPage() {
     const [showModal, setShowModal] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [batchConfig, setBatchConfig] = useState<Record<string, Record<string, number>>>({});
+    const { getActiveSemesters, getBatchLabel } = useActiveSemesters();
+
+    const getDeptType = (dept?: Department) => dept?.deptType || dept?.dept_type;
 
     // Form States
     const [formData, setFormData] = useState({
@@ -971,7 +976,11 @@ export default function StudentsPage() {
                                 onChange={(e) => setFilterSemester(e.target.value)}
                             >
                                 <option value="">All Semesters</option>
-                                {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Sem {s}</option>)}
+                                {getActiveSemesters(getDeptType(departments.find(d => d.id === filterDepartmentId))).map(s => {
+                                    const dt = getDeptType(departments.find(d => d.id === filterDepartmentId));
+                                    const label = getBatchLabel(s, dt);
+                                    return <option key={s} value={s}>Sem {s}{label ? ` (${label})` : ''}</option>;
+                                })}
                             </select>
                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                         </div>
@@ -1303,9 +1312,13 @@ export default function StudentsPage() {
                                             if (!selectedStudentId) setSelectedSubjects([]);
                                         }}
                                     >
-                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
-                                            <option key={s} value={s}>Semester {s}</option>
-                                        ))}
+                                        {getActiveSemesters(getDeptType(departments.find(d => d.id === formData.departmentId))).map(s => {
+                                            const dt = getDeptType(departments.find(d => d.id === formData.departmentId));
+                                            const label = getBatchLabel(s, dt);
+                                            return (
+                                                <option key={s} value={s}>Sem {s}{label ? ` (${label})` : ''}</option>
+                                            );
+                                        })}
                                     </select>
                                 </div>
 
