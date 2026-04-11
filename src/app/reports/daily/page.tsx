@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 
@@ -42,7 +42,7 @@ interface AttendanceRecord {
     attendancePercentage: number;
 }
 
-export default function DailyReportPage() {
+function DailyReportContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const viewParam = searchParams.get('view') || '';
@@ -786,5 +786,13 @@ export default function DailyReportPage() {
                 </div>
             </main>
         </div>
+    );
+}
+
+export default function DailyReportPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full"></div></div>}>
+            <DailyReportContent />
+        </Suspense>
     );
 }
