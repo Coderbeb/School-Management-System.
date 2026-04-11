@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,7 @@ import { Navbar } from '@/components/ui/Navbar';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
 import { getInitials } from '@/lib/utils';
+import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface DepartmentInfo {
     id: string;
@@ -93,7 +94,7 @@ export default function TeachersPage() {
 
     // Form States
     const [formData, setFormData] = useState({
-        firstName: '', lastName: '', email: '', role: 'teacher', password: ''
+        name: '', email: '', role: 'teacher', password: ''
     });
     const [selectedDepartmentIds, setSelectedDepartmentIds] = useState<string[]>([]);
     const [selectedSubjectKeys, setSelectedSubjectKeys] = useState<string[]>([]);
@@ -200,9 +201,23 @@ export default function TeachersPage() {
         fetchSubjects(token);
     }, [router]);
 
+    // Real-time updates: silently re-fetch when DB tables change
+    useRealtimeData({
+        tables: ['users', 'teacher_subjects', 'teacher_departments', 'departments', 'subjects'],
+        onTableChange: useCallback(() => {
+            const token = localStorage.getItem('token');
+            if (token) {
+                fetchTeachers(token);
+                fetchDepartments(token);
+                fetchSubjects(token);
+            }
+        }, []),
+    });
+
     const fetchTeachers = async (token: string) => {
         try {
             const res = await fetch('/api/teachers', {
+                cache: 'no-store',
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
@@ -222,6 +237,7 @@ export default function TeachersPage() {
     const fetchDepartments = async (token: string) => {
         try {
             const res = await fetch('/api/departments', {
+                cache: 'no-store',
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
@@ -236,6 +252,7 @@ export default function TeachersPage() {
     const fetchSubjects = async (token: string) => {
         try {
             const res = await fetch('/api/subjects', {
+                cache: 'no-store',
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
@@ -256,7 +273,7 @@ export default function TeachersPage() {
     const resetForm = () => {
         // For HOD users, auto-set their departmentId
         const defaultDeptIds = user?.role === 'hod' && user.departmentId ? [user.departmentId] : [];
-        setFormData({ firstName: '', lastName: '', email: '', role: 'teacher', password: '' });
+        setFormData({ name: '', email: '', role: 'teacher', password: '' });
         setSelectedDepartmentIds(defaultDeptIds);
         setSelectedSubjectKeys([]);
         setSelectedTeacherId(null);
@@ -296,8 +313,7 @@ export default function TeachersPage() {
 
     const handleEdit = (teacher: Teacher) => {
         setFormData({
-            firstName: teacher.first_name,
-            lastName: teacher.last_name,
+            name: [teacher.first_name, teacher.last_name].filter(Boolean).join(' ').trim(),
             email: teacher.email,
             role: teacher.role,
             password: ''
@@ -355,15 +371,18 @@ export default function TeachersPage() {
                         'Content-Type': 'application/json',
                         Authorization: `Bearer ${token}`,
                     },
-                    body: JSON.stringify({
-                        id: selectedTeacherId,
-                        firstName: formData.firstName,
-                        lastName: formData.lastName,
-                        email: formData.email,
-                        role: formData.role,
-                        password: formData.password || undefined,
-                        departmentIds: selectedDepartmentIds
-                    }),
+                    body: JSON.stringify((() => {
+                        const parts = formData.name.trim().split(/\s+/);
+                        return {
+                            id: selectedTeacherId,
+                            firstName: parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0],
+                            lastName: parts.length > 1 ? parts[parts.length - 1] : '',
+                            email: formData.email,
+                            role: formData.role,
+                            password: formData.password || undefined,
+                            departmentIds: selectedDepartmentIds
+                        };
+                    })()),
                 });
 
                 const data = await res.json();
@@ -383,14 +402,17 @@ export default function TeachersPage() {
                         'Content-Type': 'application/json',
                         Authorization: `Bearer ${token}`,
                     },
-                    body: JSON.stringify({
-                        firstName: formData.firstName,
-                        lastName: formData.lastName,
-                        email: formData.email,
-                        role: formData.role,
-                        password: formData.password || undefined,
-                        departmentIds: selectedDepartmentIds
-                    }),
+                    body: JSON.stringify((() => {
+                        const parts = formData.name.trim().split(/\s+/);
+                        return {
+                            firstName: parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0],
+                            lastName: parts.length > 1 ? parts[parts.length - 1] : '',
+                            email: formData.email,
+                            role: formData.role,
+                            password: formData.password || undefined,
+                            departmentIds: selectedDepartmentIds
+                        };
+                    })()),
                 });
 
                 const data = await res.json();
@@ -490,7 +512,8 @@ export default function TeachersPage() {
     const normalizeData = (data: any[]) => {
         const keyMap: { [key: string]: string } = {
             'email': 'email', 'email address': 'email', 'mail': 'email', 'email*': 'email',
-            'first name': 'first_name', 'firstname': 'first_name', 'name': 'first_name', 'first_name': 'first_name', 'first_name*': 'first_name',
+            'first name': 'name', 'firstname': 'name', 'name': 'name', 'first_name': 'name', 'first_name*': 'name',
+            'full name': 'name', 'fullname': 'name', 'teacher name': 'name', 'name*': 'name',
             'last name': 'last_name', 'lastname': 'last_name', 'surname': 'last_name', 'last_name': 'last_name', 'last_name*': 'last_name',
             'department': 'department_code', 'dept': 'department_code', 'department code': 'department_code', 'department_code': 'department_code', 'department_code*': 'department_code',
             'role': 'role', 'position': 'role', 'type': 'role', 'role*': 'role',
@@ -562,12 +585,12 @@ export default function TeachersPage() {
 
     const downloadTemplate = () => {
         // Teachers template - all mandatory except password and subjects
-        const headers = ['email*', 'first_name*', 'last_name*', 'department_code*', 'role*', 'password', 'subject_codes'];
+        const headers = ['email*', 'name*', 'department_code*', 'role*', 'password', 'subject_codes'];
         const dummyData = [
-            ['teacher1@college.edu', 'Amit', 'Sharma', 'IT', 'teacher', '', 'Programming,DBMS'],
-            ['teacher2@college.edu', 'Priya', 'Verma', 'HIS', 'teacher', '', 'History,Political Science'],
-            ['hod.physics@college.edu', 'Dr. Rajesh', 'Kumar', 'PHY', 'hod', 'custom123', 'Physics,Mathematics'],
-            ['hod.bba@college.edu', 'Dr. Neha', 'Singh', 'BBA', 'hod', '', 'Management,Marketing,Accounts']
+            ['teacher1@college.edu', 'Amit Sharma', 'IT', 'teacher', '', 'Programming,DBMS'],
+            ['teacher2@college.edu', 'Priya Verma', 'HIS', 'teacher', '', 'History,Political Science'],
+            ['hod.physics@college.edu', 'Dr. Rajesh Kumar', 'PHY', 'hod', 'custom123', 'Physics,Mathematics'],
+            ['hod.bba@college.edu', 'Dr. Neha Singh', 'BBA', 'hod', '', 'Management,Marketing,Accounts']
         ];
 
         const csvContent = [
@@ -979,27 +1002,16 @@ export default function TeachersPage() {
                         <CardContent className="pt-6 pb-6 overflow-y-auto custom-scrollbar">
                             <form onSubmit={handleSubmit} className="space-y-4">
                                 {/* Basic Info Section */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="firstName">First Name *</Label>
-                                        <Input
-                                            id="firstName"
-                                            value={formData.firstName}
-                                            onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                                            required
-                                            className="rounded-xl border-gray-200"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="lastName">Last Name *</Label>
-                                        <Input
-                                            id="lastName"
-                                            value={formData.lastName}
-                                            onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                                            required
-                                            className="rounded-xl border-gray-200"
-                                        />
-                                    </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="teacherName">Name *</Label>
+                                    <Input
+                                        id="teacherName"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                        placeholder="Full name"
+                                        required
+                                        className="rounded-xl border-gray-200"
+                                    />
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

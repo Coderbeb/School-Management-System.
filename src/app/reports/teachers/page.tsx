@@ -8,6 +8,7 @@ import { Search, X, Users, BookOpen, TrendingUp, Filter, ChevronRight, FileDown,
 import { Input } from '@/components/ui/input';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
+import { useActiveSemesters } from '@/hooks/useActiveSemesters';
 import * as XLSX from 'xlsx';
 
 interface User {
@@ -43,7 +44,7 @@ interface TeacherDetail {
         department: string;
     };
     filters: {
-        departments: { id: string; name: string; code: string }[];
+        departments: { id: string; name: string; code: string; deptType?: string }[];
         semesters: number[];
     };
     summary: {
@@ -58,6 +59,7 @@ interface TeacherDetail {
         id: string;
         name: string;
         code: string;
+        paperCode?: string;
         semester: number;
         department: string;
         sessions: number;
@@ -69,6 +71,14 @@ interface TeacherDetail {
         month: string;
         sessions: number;
         attendance: number;
+    }[];
+    dailyBreakdown: {
+        date: string;
+        total: number;
+        present: number;
+        absent: number;
+        topics: string;
+        percentage: number;
     }[];
 }
 
@@ -89,6 +99,8 @@ export default function TeacherReportPage() {
         router.replace('/login');
     };
 
+    const { getBatchLabel, getActiveSemesters } = useActiveSemesters();
+
     // Detail popup state
     const [selectedTeacher, setSelectedTeacher] = useState<TeacherDetail | null>(null);
     const [loadingDetail, setLoadingDetail] = useState(false);
@@ -97,6 +109,8 @@ export default function TeacherReportPage() {
     // Popup filters
     const [popupDeptFilter, setPopupDeptFilter] = useState('');
     const [popupSemesterFilter, setPopupSemesterFilter] = useState('');
+    const [popupDateFrom, setPopupDateFrom] = useState('');
+    const [popupDateTo, setPopupDateTo] = useState('');
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -128,9 +142,9 @@ export default function TeacherReportPage() {
     // Re-fetch teacher detail when popup filters change
     useEffect(() => {
         if (selectedTeacherId) {
-            fetchTeacherDetail(selectedTeacherId, popupDeptFilter, popupSemesterFilter);
+            fetchTeacherDetail(selectedTeacherId, popupDeptFilter, popupSemesterFilter, popupDateFrom, popupDateTo);
         }
-    }, [popupDeptFilter, popupSemesterFilter]);
+    }, [popupDeptFilter, popupSemesterFilter, popupDateFrom, popupDateTo]);
 
     const fetchDepartments = async (token: string) => {
         try {
@@ -169,7 +183,7 @@ export default function TeacherReportPage() {
         setLoading(false);
     };
 
-    const fetchTeacherDetail = async (teacherId: string, deptId?: string, semester?: string) => {
+    const fetchTeacherDetail = async (teacherId: string, deptId?: string, semester?: string, dateFrom?: string, dateTo?: string) => {
         setLoadingDetail(true);
         try {
             const token = localStorage.getItem('token');
@@ -177,6 +191,8 @@ export default function TeacherReportPage() {
             const params = new URLSearchParams();
             if (deptId) params.append('departmentId', deptId);
             if (semester) params.append('semester', semester);
+            if (dateFrom) params.append('dateFrom', dateFrom);
+            if (dateTo) params.append('dateTo', dateTo);
             if (params.toString()) url += '?' + params.toString();
 
             const res = await fetch(url, {
@@ -198,6 +214,8 @@ export default function TeacherReportPage() {
         setSelectedTeacherId(teacherId);
         setPopupDeptFilter('');
         setPopupSemesterFilter('');
+        setPopupDateFrom('');
+        setPopupDateTo('');
         fetchTeacherDetail(teacherId);
     };
 
@@ -206,6 +224,8 @@ export default function TeacherReportPage() {
         setSelectedTeacherId(null);
         setPopupDeptFilter('');
         setPopupSemesterFilter('');
+        setPopupDateFrom('');
+        setPopupDateTo('');
     };
 
     // Download Teacher Report Card as PDF
@@ -529,8 +549,10 @@ export default function TeacherReportPage() {
                     <div class="teacher-email">${teacher.email}</div>
                 </div>
                 <div class="meta-values">
-                    <div class="meta-row"><strong>Department:</strong> ${teacher.department}</div>
-                    <div class="meta-row"><strong>Faculty ID:</strong> ${teacher.id.toString().padStart(6, '0')}</div>
+                    <div class="meta-row"><strong>Department:</strong> ${popupDeptFilter ? selectedTeacher.filters.departments.find(d => d.id === popupDeptFilter)?.name : 'All Departments'}</div>
+                    <div class="meta-row"><strong>Semester:</strong> ${popupSemesterFilter ? (() => { const dept = selectedTeacher.filters.departments.find(d => d.id === popupDeptFilter); const label = getBatchLabel(parseInt(popupSemesterFilter), dept?.deptType); return `Semester ${popupSemesterFilter}${label ? ` (${label})` : ''}`; })() : 'All Semesters'}</div>
+                    ${subjects.length === 1 ? `<div class="meta-row"><strong>Subject:</strong> ${subjects[0].name} (${subjects[0].paperCode || subjects[0].code})</div>` : ''}
+                    ${popupDateFrom || popupDateTo ? `<div class="meta-row"><strong>Period:</strong> ${popupDateFrom || 'Start'} to ${popupDateTo || 'Present'}</div>` : ''}
                     <div class="meta-row"><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
                 </div>
             </div>
@@ -538,29 +560,22 @@ export default function TeacherReportPage() {
             <div class="stats-grid">
                 <div class="stat-item">
                     <div class="stat-val">${summary.totalSessions}</div>
-                    <div class="stat-lbl">Sessions</div>
+                    <div class="stat-lbl">No. of Lectures</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-val">${summary.totalStudents}</div>
                     <div class="stat-lbl">Students</div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-val" style="color: #166534">${summary.presentCount}</div>
-                    <div class="stat-lbl">Present</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-val" style="color: #991b1b">${summary.absentCount}</div>
-                    <div class="stat-lbl">Absent</div>
-                </div>
             </div>
 
+            ${subjects.length > 1 ? `
             <div class="section-header">Subject Performance Analysis</div>
             <table>
                 <thead>
                     <tr>
                         <th style="border-radius: 4px 0 0 0;">Subject</th>
                         <th>Code</th>
-                        <th style="text-align: center;">Sessions</th>
+                        <th style="text-align: center;">No. of Lectures</th>
                         <th style="text-align: center;">Attendance</th>
                         <th style="border-radius: 0 4px 0 0; text-align: center;">Status</th>
                     </tr>
@@ -569,7 +584,7 @@ export default function TeacherReportPage() {
                     ${subjects.map(sub => `
                         <tr>
                             <td style="font-weight: 600;">${sub.name}</td>
-                            <td style="color: var(--text-sub); font-size: 11px;">${sub.code}</td>
+                            <td style="color: var(--text-sub); font-size: 11px;">${sub.paperCode || sub.code}</td>
                             <td style="text-align: center;">${sub.sessions}</td>
                             <td style="text-align: center; font-weight: 700; color: var(--primary);">${sub.attendance}%</td>
                             <td style="text-align: center;">
@@ -581,6 +596,39 @@ export default function TeacherReportPage() {
                     `).join('')}
                 </tbody>
             </table>
+            ` : ''}
+
+            ${selectedTeacher.dailyBreakdown && selectedTeacher.dailyBreakdown.length > 0 ? `
+                <div class="section-header">Day-by-Day Breakdown</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="border-radius: 4px 0 0 0;">Date</th>
+                            <th>Topic</th>
+                            <th style="text-align: center;">Total</th>
+                            <th style="text-align: center;">Present</th>
+                            <th style="text-align: center;">Absent</th>
+                            <th style="border-radius: 0 4px 0 0; text-align: center;">Attendance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${selectedTeacher.dailyBreakdown.map(d => `
+                            <tr>
+                                <td style="white-space: nowrap;">${new Date(d.date).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })}</td>
+                                <td style="color: #4338ca; font-size: 11px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${d.topics || '-'}</td>
+                                <td style="text-align: center;">${d.total}</td>
+                                <td style="text-align: center; color: #166534;">${d.present}</td>
+                                <td style="text-align: center; color: #991b1b;">${d.absent}</td>
+                                <td style="text-align: center;">
+                                    <span class="badge-status ${d.percentage >= 75 ? 'bg-green' : d.percentage >= 60 ? 'bg-amber' : 'bg-red'}">
+                                        ${d.percentage}%
+                                    </span>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            ` : ''}
 
              ${monthlyTrend && monthlyTrend.length > 0 ? `
                 <div class="section-header">Monthly Trend</div>
@@ -664,7 +712,7 @@ export default function TeacherReportPage() {
 
     // Export functions
     const exportTeacherList = (format: 'csv' | 'excel') => {
-        const headers = ['Name', 'Email', 'Department', 'Subjects', 'Sessions', 'Avg. Attendance %'];
+        const headers = ['Name', 'Email', 'Department', 'Subjects', 'No. of Lectures', 'Avg. Attendance %'];
         const rows = sortedTeachers.map(t => [
             t.name, t.email, t.department, t.subjects, t.totalSessions.toString(), `${t.averageAttendance}%`
         ]);
@@ -850,7 +898,7 @@ export default function TeacherReportPage() {
                                                         {[
                                                             { key: 'name' as const, label: 'Teacher', align: 'text-left' },
                                                             { key: 'department' as const, label: 'Department', align: 'text-left' },
-                                                            { key: 'totalSessions' as const, label: 'Sessions', align: 'text-center' },
+                                                            { key: 'totalSessions' as const, label: 'No. of Lectures', align: 'text-center' },
                                                             { key: 'averageAttendance' as const, label: 'Avg. Attendance', align: 'text-left' },
                                                         ].map(col => (
                                                             <th
@@ -947,7 +995,7 @@ export default function TeacherReportPage() {
                                                         </span>
                                                         <span className="text-gray-300">|</span>
                                                         <span className="flex items-center gap-1">
-                                                            <BookOpen className="w-3 h-3" /> {teacher.totalSessions} Sessions
+                                                            <BookOpen className="w-3 h-3" /> {teacher.totalSessions} Lectures
                                                         </span>
                                                     </div>
 
@@ -982,14 +1030,22 @@ export default function TeacherReportPage() {
                                 </Button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                                {loadingDetail ? (
+                            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar relative">
+                                {!selectedTeacher && loadingDetail ? (
                                     <div className="flex flex-col items-center justify-center py-12">
                                         <div className="animate-spin w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full mb-4"></div>
                                         <p className="text-sm text-gray-500">Loading details...</p>
                                     </div>
                                 ) : selectedTeacher && (
-                                    <div className="space-y-8">
+                                    <div className={`space-y-8 relative transition-opacity duration-300 ${loadingDetail ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                                        {loadingDetail && (
+                                            <div className="absolute inset-x-0 top-1/3 flex justify-center z-50">
+                                                <div className="bg-white/90 p-3 rounded-full shadow-lg border border-purple-100 flex items-center gap-3 animate-in fade-in zoom-in duration-200">
+                                                    <div className="animate-spin w-5 h-5 border-2 border-purple-200 border-t-purple-600 rounded-full"></div>
+                                                    <span className="text-sm font-semibold text-purple-700 pr-2">Updating...</span>
+                                                </div>
+                                            </div>
+                                        )}
                                         {/* Profile Card */}
                                         <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-100">
                                             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
@@ -1004,6 +1060,11 @@ export default function TeacherReportPage() {
                                                             <span className="px-2 py-0.5 bg-white text-gray-600 text-xs rounded border border-gray-200">
                                                                 {selectedTeacher.teacher.department}
                                                             </span>
+                                                            {selectedTeacher.subjects.length === 1 && (
+                                                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-xs rounded border border-indigo-200 font-medium">
+                                                                    📖 {selectedTeacher.subjects[0].name} ({selectedTeacher.subjects[0].paperCode || selectedTeacher.subjects[0].code})
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1015,26 +1076,14 @@ export default function TeacherReportPage() {
                                                 </div>
                                             </div>
 
-                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6">
-                                                <div className="bg-white p-4 rounded-xl shadow-sm border border-indigo-100 text-center">
-                                                    <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Working Days</div>
-                                                    <div className="text-2xl font-bold text-indigo-600">{selectedTeacher.summary.workingDays}</div>
-                                                </div>
+                                            <div className="grid grid-cols-2 md:grid-cols-2 gap-4 mt-6">
                                                 <div className="bg-white p-4 rounded-xl shadow-sm border border-purple-100 text-center">
-                                                    <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Total Sessions</div>
+                                                    <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">No. of Lectures</div>
                                                     <div className="text-2xl font-bold text-gray-900">{selectedTeacher.summary.totalSessions}</div>
                                                 </div>
                                                 <div className="bg-white p-4 rounded-xl shadow-sm border border-purple-100 text-center">
                                                     <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Total Students</div>
                                                     <div className="text-2xl font-bold text-purple-600">{selectedTeacher.summary.totalStudents}</div>
-                                                </div>
-                                                <div className="bg-white p-4 rounded-xl shadow-sm border border-emerald-100 text-center">
-                                                    <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Present</div>
-                                                    <div className="text-2xl font-bold text-emerald-600">{selectedTeacher.summary.presentCount}</div>
-                                                </div>
-                                                <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 text-center">
-                                                    <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Absent</div>
-                                                    <div className="text-2xl font-bold text-red-600">{selectedTeacher.summary.absentCount}</div>
                                                 </div>
                                             </div>
 
@@ -1046,17 +1095,15 @@ export default function TeacherReportPage() {
                                             </div>
                                         </div>
 
-                                        {/* Filters for Detail (Department/Semester if applicable) */}
-                                        {((selectedTeacher.filters.departments && selectedTeacher.filters.departments.length > 1) ||
-                                            (selectedTeacher.filters.semesters && selectedTeacher.filters.semesters.length > 1)) && (
+                                        {/* Filters for Detail (Department/Semester/Date) */}
                                                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                                                     <div className="text-xs font-semibold text-gray-500 uppercase mb-3">Filter Details</div>
-                                                    <div className="flex flex-col sm:flex-row gap-3">
-                                                        {selectedTeacher.filters.departments?.length > 1 && (
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                                        {selectedTeacher.filters.departments?.length > 0 && (
                                                             <select
                                                                 value={popupDeptFilter}
                                                                 onChange={(e) => setPopupDeptFilter(e.target.value)}
-                                                                className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+                                                                className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
                                                             >
                                                                 <option value="">All Departments</option>
                                                                 {selectedTeacher.filters.departments.map((dept) => (
@@ -1064,24 +1111,67 @@ export default function TeacherReportPage() {
                                                                 ))}
                                                             </select>
                                                         )}
-                                                        {selectedTeacher.filters.semesters?.length > 1 && (
+                                                        {selectedTeacher.filters.semesters?.length > 0 && (
                                                             <select
                                                                 value={popupSemesterFilter}
                                                                 onChange={(e) => setPopupSemesterFilter(e.target.value)}
-                                                                className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+                                                                className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
                                                             >
                                                                 <option value="">All Semesters</option>
-                                                                {selectedTeacher.filters.semesters.map((sem) => (
-                                                                    <option key={sem} value={sem}>Semester {sem}</option>
-                                                                ))}
+                                                                {selectedTeacher.filters.semesters
+                                                                    .filter(sem => {
+                                                                        if (popupDeptFilter) {
+                                                                            const selectedDept = selectedTeacher.filters.departments.find(d => d.id === popupDeptFilter);
+                                                                            const activeSemesters = getActiveSemesters(selectedDept?.deptType);
+                                                                            return activeSemesters.includes(sem);
+                                                                        } else {
+                                                                            return selectedTeacher.filters.departments.some(dept => {
+                                                                                const activeSemesters = getActiveSemesters(dept.deptType);
+                                                                                return activeSemesters.includes(sem);
+                                                                            });
+                                                                        }
+                                                                    })
+                                                                    .map((sem) => {
+                                                                        let dt: string | undefined;
+                                                                        if (popupDeptFilter) {
+                                                                            const selectedDept = selectedTeacher.filters.departments.find(d => d.id === popupDeptFilter);
+                                                                            dt = selectedDept?.deptType;
+                                                                        } else {
+                                                                            const validDept = selectedTeacher.filters.departments.find(dept => 
+                                                                                getActiveSemesters(dept.deptType).includes(sem)
+                                                                            );
+                                                                            dt = validDept?.deptType;
+                                                                        }
+                                                                        const label = getBatchLabel(sem, dt);
+                                                                        return (
+                                                                            <option key={sem} value={sem}>Sem {sem}{label ? ` (${label})` : ''}</option>
+                                                                        );
+                                                                    })}
                                                             </select>
                                                         )}
+                                                        <div>
+                                                            <input
+                                                                type="date"
+                                                                value={popupDateFrom}
+                                                                onChange={(e) => setPopupDateFrom(e.target.value)}
+                                                                className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+                                                                placeholder="From Date"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <input
+                                                                type="date"
+                                                                value={popupDateTo}
+                                                                onChange={(e) => setPopupDateTo(e.target.value)}
+                                                                className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+                                                                placeholder="To Date"
+                                                            />
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            )}
 
-                                        {/* Subject Breakdown */}
-                                        {selectedTeacher.subjects.length > 0 && (
+                                        {/* Subject Breakdown - only show when multiple subjects */}
+                                        {selectedTeacher.subjects.length > 1 && (
                                             <div>
                                                 <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3 flex items-center gap-2">
                                                     <BookOpen className="w-4 h-4 text-purple-600" />
@@ -1092,7 +1182,7 @@ export default function TeacherReportPage() {
                                                         <thead className="bg-gray-50 text-gray-500 font-semibold border-b">
                                                             <tr>
                                                                 <th className="px-4 py-3">Subject</th>
-                                                                <th className="px-4 py-3 text-center">Sessions</th>
+                                                                <th className="px-4 py-3 text-center">No. of Lectures</th>
                                                                 <th className="px-4 py-3 text-center">Attendance</th>
                                                             </tr>
                                                         </thead>
@@ -1101,7 +1191,7 @@ export default function TeacherReportPage() {
                                                                 <tr key={`${subj.id}-${idx}`} className="bg-white hover:bg-gray-50/50">
                                                                     <td className="px-4 py-3">
                                                                         <div className="font-medium text-gray-900">{subj.name}</div>
-                                                                        <div className="text-xs text-gray-500">Sem {subj.semester} • {subj.code}</div>
+                                                                        <div className="text-xs text-gray-500">Sem {subj.semester} • {subj.paperCode || subj.code}</div>
                                                                     </td>
                                                                     <td className="px-4 py-3 text-center text-gray-600">{subj.sessions}</td>
                                                                     <td className="px-4 py-3 text-center">
@@ -1113,6 +1203,54 @@ export default function TeacherReportPage() {
                                                             ))}
                                                         </tbody>
                                                     </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Day-by-Day Breakdown with Topics */}
+                                        {selectedTeacher.dailyBreakdown && selectedTeacher.dailyBreakdown.length > 0 && (
+                                            <div>
+                                                <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3 flex items-center gap-2">
+                                                    <CalendarDays className="w-4 h-4 text-purple-600" />
+                                                    Day-by-Day Breakdown
+                                                </h4>
+                                                <div className="border rounded-xl overflow-hidden shadow-sm">
+                                                    <div className="overflow-x-auto">
+                                                        <table className="w-full text-sm text-left">
+                                                            <thead className="bg-gray-50 text-gray-500 font-semibold border-b">
+                                                                <tr>
+                                                                    <th className="px-4 py-3">Date</th>
+                                                                    <th className="px-4 py-3">Topic</th>
+                                                                    <th className="px-4 py-3 text-center">Total</th>
+                                                                    <th className="px-4 py-3 text-center">Present</th>
+                                                                    <th className="px-4 py-3 text-center">Absent</th>
+                                                                    <th className="px-4 py-3 text-center">Attendance</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y">
+                                                                {selectedTeacher.dailyBreakdown.map((day) => (
+                                                                    <tr key={day.date} className={`bg-white hover:bg-gray-50/50 ${day.percentage < 60 ? 'bg-red-50/30' : day.percentage < 75 ? 'bg-amber-50/20' : ''}`}>
+                                                                        <td className="px-4 py-3 whitespace-nowrap">
+                                                                            <div className="text-sm font-medium text-gray-900">
+                                                                                {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })}
+                                                                            </div>
+                                                                        </td>
+                                                                        <td className="px-4 py-3 text-sm text-indigo-600 max-w-[200px] truncate" title={day.topics}>
+                                                                            {day.topics ? `📖 ${day.topics}` : <span className="text-gray-300">-</span>}
+                                                                        </td>
+                                                                        <td className="px-4 py-3 text-center text-sm text-gray-600">{day.total}</td>
+                                                                        <td className="px-4 py-3 text-center text-sm font-medium text-emerald-600">{day.present}</td>
+                                                                        <td className="px-4 py-3 text-center text-sm font-medium text-red-600">{day.absent}</td>
+                                                                        <td className="px-4 py-3 text-center">
+                                                                            <span className={`px-2 py-1 rounded text-xs font-bold ${day.percentage >= 75 ? 'bg-emerald-100 text-emerald-800' : day.percentage >= 60 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}`}>
+                                                                                {day.percentage}%
+                                                                            </span>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}

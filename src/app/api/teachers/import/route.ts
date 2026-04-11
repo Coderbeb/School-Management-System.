@@ -69,9 +69,16 @@ export async function POST(req: Request) {
             const rowNum = i + 1;
 
             try {
+                // Handle 'name' field: split into first_name/last_name if needed
+                if (teacher.name && !teacher.first_name) {
+                    const parts = teacher.name.trim().split(/\s+/);
+                    teacher.first_name = parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0];
+                    teacher.last_name = parts.length > 1 ? parts[parts.length - 1] : '';
+                }
+
                 // 1. Validate Required Fields
-                if (!teacher.email || !teacher.first_name || !teacher.last_name || !teacher.department_code || !teacher.role) {
-                    throw new Error('Missing required fields (email, first_name, last_name, role, department_code)');
+                if (!teacher.email || !teacher.first_name || !teacher.department_code || !teacher.role) {
+                    throw new Error('Missing required fields (email, name, role, department_code)');
                 }
 
                 // Email validation
@@ -153,7 +160,7 @@ export async function POST(req: Request) {
                 stats.failed++;
                 stats.errors.push({
                     row: rowNum,
-                    name: `${teacher.first_name} ${teacher.last_name}`,
+                    name: `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim() || 'Unknown',
                     error: err.message
                 });
             }

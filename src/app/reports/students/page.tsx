@@ -91,6 +91,7 @@ function StudentReportContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const statusParam = searchParams.get('status');
+    const viewParam = searchParams.get('view') || '';
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [departments, setDepartments] = useState<Department[]>([]);
@@ -171,6 +172,7 @@ function StudentReportContent() {
         try {
             const params = new URLSearchParams();
             if (selectedSemester) params.append('semester', selectedSemester);
+            if (selectedDepartmentId) params.append('departmentId', selectedDepartmentId);
             let url = '/api/subjects';
             if (params.toString()) url += '?' + params.toString();
 
@@ -218,7 +220,7 @@ function StudentReportContent() {
             const data = await res.json();
             const depts = data.departments || [];
             setDepartments(depts);
-            try { sessionStorage.setItem('cache_departments', JSON.stringify(depts)); } catch {}
+            try { sessionStorage.setItem('cache_departments', JSON.stringify(depts)); } catch { }
         } catch (err) {
             console.error('Error fetching departments:', err);
         }
@@ -259,7 +261,8 @@ function StudentReportContent() {
             if (selectedSemester) params.append('semester', selectedSemester);
             if (startDate) params.append('startDate', startDate);
             if (endDate) params.append('endDate', endDate);
-            
+            if (viewParam) params.append('view', viewParam);
+
             if (pageSelectedSubjectIds.size > 0 && availableSubjects.length > 0 && pageSelectedSubjectIds.size < availableSubjects.length) {
                 params.append('subjectIds', Array.from(pageSelectedSubjectIds).join(','));
             }
@@ -292,6 +295,7 @@ function StudentReportContent() {
             const params = new URLSearchParams();
             if (startDate) params.append('startDate', startDate);
             if (endDate) params.append('endDate', endDate);
+            if (viewParam) params.append('view', viewParam);
             if (params.toString()) url += '?' + params.toString();
 
             const res = await fetch(url, {
@@ -858,6 +862,11 @@ function StudentReportContent() {
     };
 
     const exportReport = (format: 'csv' | 'excel' | 'pdf') => {
+        const allSubjectsSelected = pageSelectedSubjectIds.size === 0 || pageSelectedSubjectIds.size === availableSubjects.length;
+        const subjectFilterText = allSubjectsSelected
+            ? 'All Subjects'
+            : availableSubjects.filter(s => pageSelectedSubjectIds.has(s.id)).map(s => s.code + ' - ' + s.name).join(', ');
+
         const headers = ['Student ID', 'Roll Number', 'Name', 'Total Classes', 'Attended', 'Percentage', 'Status'];
         const rows = filteredStudents.map(s => {
             const status = s.percentage >= 75 ? 'Good Standing' : s.percentage >= 60 ? 'Warning' : 'Critical';
@@ -873,9 +882,19 @@ function StudentReportContent() {
         });
 
         const filename = `student_attendance_report_${new Date().toISOString().split('T')[0]}`;
+        const deptName = selectedDepartmentId ? departments.find(d => d.id === selectedDepartmentId)?.name || 'All' : 'All';
+
+        const metadataRows = [
+            ['Generated on:', new Date().toLocaleDateString()],
+            ['Department:', deptName],
+            ['Semester:', selectedSemester || 'All'],
+            ['Subjects:', subjectFilterText],
+            [] // Empty row spacer
+        ];
 
         if (format === 'csv') {
             const csvContent = [
+                ...metadataRows.map(row => row.map(cell => `"${cell || ''}"`).join(',')),
                 headers.join(','),
                 ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
             ].join('\n');
@@ -888,11 +907,12 @@ function StudentReportContent() {
             link.click();
             document.body.removeChild(link);
         } else if (format === 'excel') {
-            const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+            const worksheet = XLSX.utils.aoa_to_sheet([...metadataRows, headers, ...rows]);
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "Student Report");
             XLSX.writeFile(workbook, `${filename}.xlsx`);
         } else if (format === 'pdf') {
+            const logoUrl = typeof window !== 'undefined' ? `${window.location.origin}/college-logo.png` : '/college-logo.png';
             // Simple table print for export
             const printContent = `
 <!DOCTYPE html>
@@ -900,9 +920,17 @@ function StudentReportContent() {
 <head>
     <title>Student Attendance Report</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        h1 { color: #1a365d; border-bottom: 2px solid #4f46e5; padding-bottom: 10px; }
-        .meta { color: #666; margin-bottom: 20px; }
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', Arial, sans-serif; padding: 20px; }
+        .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 25px; }
+        .logo-section { display: flex; align-items: center; gap: 15px; }
+        .logo-img { height: 60px; width: auto; object-fit: contain; }
+        .college-info h1 { font-family: 'Playfair Display', serif; font-size: 20px; color: #1e3a8a; text-transform: uppercase; margin-bottom: 2px; letter-spacing: 0.5px; }
+        .college-info p { font-size: 10px; color: #64748b; margin-bottom: 1px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+        .report-title-box { text-align: right; }
+        .report-title-box h2 { color: #1e3a8a; font-size: 16px; margin: 0 0 4px 0; }
+        .report-title-box p { color: #6b7280; font-size: 11px; margin: 0; }
+        .meta { color: #666; margin-bottom: 20px; font-size: 12px; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th { background-color: #4f46e5; color: white; padding: 12px 8px; text-align: left; }
         td { padding: 10px 8px; border-bottom: 1px solid #ddd; }
@@ -915,8 +943,21 @@ function StudentReportContent() {
     </style>
 </head>
 <body>
-    <h1>📊 Student Attendance Report</h1>
-    <p class="meta">Generated on: ${new Date().toLocaleDateString()} | Total Students: ${filteredStudents.length}${selectedSemester ? (() => { const now = new Date(); const acYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1; const admYear = acYear - (parseInt(selectedSemester) - 1); const dept = departments.find(d => d.id === selectedDepartmentId); const duration = dept?.dept_type === 'vocational' ? 3 : dept?.dept_type === 'pg' ? 2 : 4; const gradYear = admYear + duration; return ` | Semester: ${selectedSemester} | Batch: ${admYear}-${String(gradYear).slice(2)}`; })() : ''}${selectedDepartmentId ? ` | Department: ${departments.find(d => d.id === selectedDepartmentId)?.name || ''}` : ''}</p>
+    <div class="header">
+        <div class="logo-section">
+            <img src="${logoUrl}" class="logo-img" alt="YSM Logo">
+            <div class="college-info">
+                <h1>Yogoda Satsanga Mahavidyalaya</h1>
+                <p>Established 1967 | NAAC Accredited Grade 'B'++</p>
+                <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
+            </div>
+        </div>
+        <div class="report-title-box">
+            <h2>STUDENT REPORT</h2>
+            <p>Attendance Overview</p>
+        </div>
+    </div>
+    <p class="meta"><strong>Filters Applied:</strong> Generated on: ${new Date().toLocaleDateString()} | Total Students: ${filteredStudents.length}${selectedSemester ? (() => { const now = new Date(); const acYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1; const admYear = acYear - (parseInt(selectedSemester) - 1); const dept = departments.find(d => d.id === selectedDepartmentId); const duration = dept?.dept_type === 'vocational' ? 3 : dept?.dept_type === 'pg' ? 2 : 4; const gradYear = admYear + duration; return ` | Semester: ${selectedSemester} | Batch: ${admYear}-${String(gradYear).slice(2)}`; })() : ''}${selectedDepartmentId ? ` | Department: ${departments.find(d => d.id === selectedDepartmentId)?.name || ''}` : ''}<br/><strong>Subjects:</strong> ${subjectFilterText}</p>
     <table>
         <thead>
             <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
@@ -1034,21 +1075,21 @@ function StudentReportContent() {
                                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Date Range</label>
                                 <div className="flex items-center justify-between w-full px-3 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-purple-300 rounded-xl focus-within:ring-2 focus-within:ring-purple-500 focus-within:border-transparent transition-all shadow-sm">
                                     <div className="flex items-center flex-1">
-                                        <input 
-                                            type="date" 
-                                            value={startDate} 
-                                            onChange={(e) => setStartDate(e.target.value)} 
-                                            className="bg-transparent border-none p-0 text-sm outline-none w-full text-gray-700" 
+                                        <input
+                                            type="date"
+                                            value={startDate}
+                                            onChange={(e) => setStartDate(e.target.value)}
+                                            className="bg-transparent border-none p-0 text-sm outline-none w-full text-gray-700"
                                             title="Start Date"
                                         />
                                     </div>
                                     <div className="h-4 w-px bg-gray-300 mx-2 flex-shrink-0"></div>
                                     <div className="flex items-center flex-1">
-                                        <input 
-                                            type="date" 
-                                            value={endDate} 
-                                            onChange={(e) => setEndDate(e.target.value)} 
-                                            className="bg-transparent border-none p-0 text-sm outline-none w-full text-gray-700" 
+                                        <input
+                                            type="date"
+                                            value={endDate}
+                                            onChange={(e) => setEndDate(e.target.value)}
+                                            className="bg-transparent border-none p-0 text-sm outline-none w-full text-gray-700"
                                             title="End Date"
                                         />
                                     </div>
@@ -1105,11 +1146,10 @@ function StudentReportContent() {
                                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Subjects</label>
                                     <button
                                         onClick={() => setShowSubjectFilter(!showSubjectFilter)}
-                                        className={`w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border rounded-xl text-sm text-left font-medium shadow-sm transition-all cursor-pointer relative ${
-                                            pageSelectedSubjectIds.size < availableSubjects.length && pageSelectedSubjectIds.size > 0
+                                        className={`w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border rounded-xl text-sm text-left font-medium shadow-sm transition-all cursor-pointer relative ${pageSelectedSubjectIds.size < availableSubjects.length && pageSelectedSubjectIds.size > 0
                                                 ? 'border-purple-300 text-purple-700 bg-purple-50/30'
                                                 : 'border-gray-200 hover:border-purple-300 text-gray-700'
-                                        }`}
+                                            }`}
                                     >
                                         {pageSelectedSubjectIds.size === 0 || pageSelectedSubjectIds.size === availableSubjects.length
                                             ? `All Subjects (${availableSubjects.length})`
@@ -1159,17 +1199,15 @@ function StudentReportContent() {
                                             <button
                                                 key={sub.id}
                                                 onClick={() => toggleSubjectSelection(sub.id)}
-                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 ${
-                                                    isSelected
+                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 ${isSelected
                                                         ? 'bg-purple-100 border-purple-300 text-purple-800 shadow-sm'
                                                         : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
-                                                }`}
+                                                    }`}
                                             >
-                                                <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                                                    isSelected
+                                                <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${isSelected
                                                         ? 'bg-purple-600 border-purple-600'
                                                         : 'border-gray-300 bg-white'
-                                                }`}>
+                                                    }`}>
                                                     {isSelected && (
                                                         <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                                                             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -1248,14 +1286,14 @@ function StudentReportContent() {
                                                                         <div className="text-sm font-medium text-gray-900 group-hover:text-purple-600 transition-colors cursor-pointer" onClick={() => fetchStudentDetail(student.id, startDate, endDate)}>
                                                                             {student.name}
                                                                         </div>
-                                                                    <div className="flex gap-2 mt-0.5">
-                                                                        <div className="text-xs text-gray-500 font-mono bg-gray-100 px-1.5 py-0.5 rounded inline-block">
-                                                                            ID: {student.studentId || '-'}
+                                                                        <div className="flex gap-2 mt-0.5">
+                                                                            <div className="text-xs text-gray-500 font-mono bg-gray-100 px-1.5 py-0.5 rounded inline-block">
+                                                                                ID: {student.studentId || '-'}
+                                                                            </div>
+                                                                            <div className="text-xs text-gray-500 font-mono bg-gray-100 px-1.5 py-0.5 rounded inline-block">
+                                                                                Roll: {student.rollNumber}
+                                                                            </div>
                                                                         </div>
-                                                                        <div className="text-xs text-gray-500 font-mono bg-gray-100 px-1.5 py-0.5 rounded inline-block">
-                                                                            Roll: {student.rollNumber}
-                                                                        </div>
-                                                                    </div>
                                                                     </div>
                                                                 </div>
                                                             </td>
@@ -1493,7 +1531,7 @@ function StudentReportContent() {
                                                             <div className={`bg-white p-4 rounded-xl shadow-sm border text-center ${filteredSummary.attendancePercentage >= 75 ? 'border-emerald-100' : 'border-amber-100'}`}>
                                                                 <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider mb-1">Attendance</div>
                                                                 <div className={`text-2xl font-bold ${filteredSummary.attendancePercentage >= 75 ? 'text-emerald-600' :
-                                                                        filteredSummary.attendancePercentage >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
+                                                                    filteredSummary.attendancePercentage >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
                                                                     {filteredSummary.attendancePercentage}%
                                                                 </div>
                                                             </div>
@@ -1570,8 +1608,8 @@ function StudentReportContent() {
                                                                     <td className="px-4 py-3 text-gray-600">Lecture {record.lectureNumber}</td>
                                                                     <td className="px-4 py-3 text-center">
                                                                         <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${record.status === 'present' ? 'bg-emerald-100 text-emerald-700' :
-                                                                                record.status === 'absent' ? 'bg-red-100 text-red-700' :
-                                                                                    'bg-amber-100 text-amber-700'
+                                                                            record.status === 'absent' ? 'bg-red-100 text-red-700' :
+                                                                                'bg-amber-100 text-amber-700'
                                                                             }`}>
                                                                             {record.status}
                                                                         </span>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ import { Navbar } from '@/components/ui/Navbar';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
 import { useActiveSemesters } from '@/hooks/useActiveSemesters';
+import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface Subject {
     id: string;
@@ -119,6 +120,18 @@ export default function SubjectsPage() {
         fetchSubjects(token);
         fetchDepartments(token);
     }, [router]);
+
+    // Real-time updates
+    useRealtimeData({
+        tables: ['subjects', 'departments'],
+        onTableChange: useCallback(() => {
+            const token = localStorage.getItem('token');
+            if (token) {
+                fetchSubjects(token);
+                fetchDepartments(token);
+            }
+        }, []),
+    });
 
     const fetchSubjects = async (token: string) => {
         try {

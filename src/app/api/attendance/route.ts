@@ -29,12 +29,13 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
-        const { records, subjectId, date, lectureNumber = 1, sessionLectureNumber } = await request.json() as {
+        const { records, subjectId, date, lectureNumber = 1, sessionLectureNumber, topic } = await request.json() as {
             records: AttendanceInput[];
             subjectId?: string;
             date?: string;
             lectureNumber?: number;
             sessionLectureNumber?: number | null;
+            topic?: string;
         };
 
         if (!records || records.length === 0) {
@@ -130,12 +131,15 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'No valid attendance records' }, { status: 400 });
         }
 
+        // Trim topic — store null if empty
+        const topicValue = topic?.trim() || null;
+
         const result = await query(
-            `INSERT INTO attendance_records (subject_id, student_id, teacher_id, date, lecture_number, semester, status)
-             SELECT unnest($1::uuid[]), unnest($2::uuid[]), $3, $4, $5, $6, unnest($7::text[])
+            `INSERT INTO attendance_records (subject_id, student_id, teacher_id, date, lecture_number, semester, status, topic)
+             SELECT unnest($1::uuid[]), unnest($2::uuid[]), $3, $4, $5, $6, unnest($7::text[]), $8
              ON CONFLICT (subject_id, student_id, teacher_id, date, lecture_number, semester)
-             DO UPDATE SET status = EXCLUDED.status`,
-            [subjectIds, studentIds, payload.userId, batchDate, assignedLectureNumber, batchSemester, statuses]
+             DO UPDATE SET status = EXCLUDED.status, topic = EXCLUDED.topic`,
+            [subjectIds, studentIds, payload.userId, batchDate, assignedLectureNumber, batchSemester, statuses, topicValue]
         );
 
         const savedCount = subjectIds.length;

@@ -37,12 +37,16 @@ export async function GET(request: NextRequest) {
         const startDate = searchParams.get('startDate');
         const endDate = searchParams.get('endDate');
 
+        // Allow HOD to view as teacher (for My Reports)
+        const view = searchParams.get('view');
+        const effectiveRole = (role === 'hod' && view === 'teacher') ? 'teacher' : role;
+
         // Build filters
         const filters: string[] = [];
         const params: (string | number)[] = [];
 
         // Role-based restrictions
-        if (role === 'hod') {
+        if (effectiveRole === 'hod') {
             if (departmentId) {
                 params.push(departmentId);
                 params.push(userId);
@@ -57,7 +61,7 @@ export async function GET(request: NextRequest) {
                     UNION SELECT department_id FROM user_departments WHERE user_id = $${params.length}
                 )`);
             }
-        } else if (role === 'teacher') {
+        } else if (effectiveRole === 'teacher') {
             // Teacher: Only show students who are enrolled in subjects this teacher teaches
             params.push(userId);
             const teacherParamIdx = params.length;
@@ -70,7 +74,7 @@ export async function GET(request: NextRequest) {
                 params.push(departmentId);
                 filters.push(`s.department_id = $${params.length}`);
             }
-        } else if (role === 'super_admin' && departmentId) {
+        } else if (effectiveRole === 'super_admin' && departmentId) {
             params.push(departmentId);
             filters.push(`s.department_id = $${params.length}`);
         }

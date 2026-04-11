@@ -30,6 +30,18 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url);
         const degreeType = searchParams.get('degreeType');
         const semester = searchParams.get('semester');
+        const reqDepartmentId = searchParams.get('departmentId');
+
+        let filterDegreeType = degreeType;
+        if (reqDepartmentId) {
+             const deptResult = await query<{ degree_type: string }>(
+                 'SELECT degree_type FROM departments WHERE id = $1',
+                 [reqDepartmentId]
+             );
+             if (deptResult.length > 0 && deptResult[0].degree_type) {
+                 filterDegreeType = deptResult[0].degree_type;
+             }
+        }
 
         const { role, departmentId } = payload;
 
@@ -73,9 +85,9 @@ export async function GET(request: NextRequest) {
             }
         }
 
-        // Filter by degree type if provided (for super_admin)
-        if (degreeType && role === 'super_admin') {
-            params.push(degreeType);
+        // Filter by specific degree type if resolved
+        if (filterDegreeType) {
+            params.push(filterDegreeType);
             queryStr += ` AND s.degree_type = $${params.length}`;
         }
 

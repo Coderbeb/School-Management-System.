@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
                         'code', s.code, 
                         'paperCode', s.paper_code,
                         'name', s.name, 
+                        'degreeType', s.degree_type,
                         'semesters', (SELECT COALESCE(array_agg(ss.semester ORDER BY ss.semester), ARRAY[]::integer[]) FROM subject_semesters ss WHERE ss.subject_id = s.id)
                     )), '[]'::json)
                     FROM teacher_subjects ts

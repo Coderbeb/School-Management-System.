@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
+import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface Holiday {
     id: string;
@@ -64,6 +65,15 @@ export default function HolidaysPage() {
 
         fetchHolidays(token);
     }, [router]);
+
+    // Real-time updates
+    useRealtimeData({
+        tables: ['holidays'],
+        onTableChange: useCallback(() => {
+            const token = localStorage.getItem('token');
+            if (token) fetchHolidays(token);
+        }, []),
+    });
 
     const handleLogout = () => {
         localStorage.removeItem('token');

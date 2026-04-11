@@ -3,6 +3,8 @@ import { query } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 import { parseStudentId } from '@/lib/parseStudentId';
 
+export const dynamic = 'force-dynamic';
+
 interface StudentRow {
     id: string;
     roll_number: number;

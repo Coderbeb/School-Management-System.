@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { Building2, Save, AlertTriangle, ArrowRightCircle, RotateCcw } from 'lucide-react';
+import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface User {
     firstName: string;
@@ -98,6 +99,14 @@ export default function SettingsPage() {
 
         fetchCurrentMappings();
     }, [selectedDeptType, user, refetchTrigger]);
+
+    // Real-time updates
+    useRealtimeData({
+        tables: ['batch_semester_config'],
+        onTableChange: useCallback(() => {
+            setRefetchTrigger(prev => prev + 1);
+        }, []),
+    });
 
     const handleLogout = () => {
         localStorage.removeItem('token');

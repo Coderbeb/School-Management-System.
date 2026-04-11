@@ -160,9 +160,16 @@ export async function POST(req: Request) {
             const rowNum = i + 1;
 
             try {
+                // Handle 'name' field: split into first_name/last_name if needed
+                if (student.name && !student.first_name) {
+                    const parts = student.name.trim().split(/\s+/);
+                    student.first_name = parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0];
+                    student.last_name = parts.length > 1 ? parts[parts.length - 1] : '';
+                }
+
                 // 1. Basic Validation
                 if (!student.student_id || !student.first_name) {
-                    throw new Error('Missing required fields (Student ID, First Name)');
+                    throw new Error('Missing required fields (Student ID, Name)');
                 }
 
                 // 2. Parse Student ID to auto-detect fields

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +30,7 @@ import { AccessDenied } from '@/components/ui/access-denied';
 import { parseStudentId, findDepartmentByCode, type ParsedStudentId } from '@/lib/parseStudentId';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
 import { useActiveSemesters } from '@/hooks/useActiveSemesters';
+import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface Student {
     id: string;
@@ -87,8 +88,7 @@ export default function StudentsPage() {
     const [formData, setFormData] = useState({
         studentId: '',
         rollNumber: '',
-        firstName: '',
-        lastName: '',
+        name: '',
         email: '',
         semester: '1',
         departmentId: ''
@@ -154,6 +154,19 @@ export default function StudentsPage() {
         fetchBatchConfig(token);
     }, [router]);
 
+    // Real-time updates: silently re-fetch when DB tables change
+    useRealtimeData({
+        tables: ['students', 'student_subjects', 'departments', 'subjects'],
+        onTableChange: useCallback(() => {
+            const token = localStorage.getItem('token');
+            if (token) {
+                fetchStudents(token);
+                fetchDepartments(token);
+                fetchSubjects(token);
+            }
+        }, []),
+    });
+
 
 
     const safeJson = async (res: Response) => {
@@ -167,6 +180,7 @@ export default function StudentsPage() {
     const fetchStudents = async (token: string) => {
         try {
             const res = await fetch('/api/students', {
+                cache: 'no-store',
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
@@ -186,6 +200,7 @@ export default function StudentsPage() {
     const fetchDepartments = async (token: string) => {
         try {
             const res = await fetch('/api/departments', {
+                cache: 'no-store',
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) { router.replace('/login'); return; }
@@ -201,6 +216,7 @@ export default function StudentsPage() {
     const fetchSubjects = async (token: string) => {
         try {
             const res = await fetch('/api/subjects', {
+                cache: 'no-store',
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) { router.replace('/login'); return; }
@@ -253,8 +269,7 @@ export default function StudentsPage() {
         setFormData({
             studentId: student.student_id || '',
             rollNumber: student.roll_number,
-            firstName: student.first_name,
-            lastName: student.last_name,
+            name: [student.first_name, student.last_name].filter(Boolean).join(' ').trim(),
             email: student.email || '',
             semester: student.current_semester.toString(),
             departmentId: student.department_id
@@ -292,8 +307,7 @@ export default function StudentsPage() {
         setFormData({
             studentId: '',
             rollNumber: '',
-            firstName: '',
-            lastName: '',
+            name: '',
             email: '',
             semester: '1',
             departmentId: defaultDeptId
@@ -504,7 +518,12 @@ export default function StudentsPage() {
                     },
                     body: JSON.stringify({
                         id: selectedStudentId,
-                        ...formData,
+                        ...(() => {
+                            const parts = formData.name.trim().split(/\s+/);
+                            const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0];
+                            const lastName = parts.length > 1 ? parts[parts.length - 1] : '';
+                            return { ...formData, firstName, lastName };
+                        })(),
                         currentSemester: parseInt(formData.semester)
                     }),
                 });
@@ -549,7 +568,12 @@ export default function StudentsPage() {
                         Authorization: `Bearer ${token}`,
                     },
                     body: JSON.stringify({
-                        ...formData,
+                        ...(() => {
+                            const parts = formData.name.trim().split(/\s+/);
+                            const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0];
+                            const lastName = parts.length > 1 ? parts[parts.length - 1] : '';
+                            return { ...formData, firstName, lastName };
+                        })(),
                         currentSemester: parseInt(formData.semester)
                     }),
                 });
@@ -693,12 +717,12 @@ export default function StudentsPage() {
 
     // Template for Regular students (BA/BSC/BCOM)
     const downloadRegularTemplate = () => {
-        const headers = ['student_id*', 'first_name*', 'last_name', 'email', 'subject_codes'];
+        const headers = ['student_id*', 'name*', 'email', 'subject_codes'];
         const dummyData = [
-            ['BA2025HIS001', 'John', 'Doe', 'john@example.com', '"History,Political Science,Hindi,Environmental Studies,English Communication"'],
-            ['BSC2025PHY002', 'Jane', 'Smith', 'jane@example.com', '"Physics,Chemistry,Mathematics"'],
-            ['BCOM2025COM003', 'Bob', 'Wilson', 'bob@example.com', '"Commerce,Economics"'],
-            ['BA2025ECO004', 'Alice', 'Brown', 'alice@example.com', '"Economics,History,Philosophy"']
+            ['BA2025HIS001', 'John Doe', 'john@example.com', '"History,Political Science,Hindi,Environmental Studies,English Communication"'],
+            ['BSC2025PHY002', 'Jane Smith', 'jane@example.com', '"Physics,Chemistry,Mathematics"'],
+            ['BCOM2025COM003', 'Bob Wilson', 'bob@example.com', '"Commerce,Economics"'],
+            ['BA2025ECO004', 'Alice Brown', 'alice@example.com', '"Economics,History,Philosophy"']
         ];
         const csvContent = [headers.join(','), ...dummyData.map(row => row.join(','))].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -711,14 +735,14 @@ export default function StudentsPage() {
 
     // Template for Vocational students (BCA/BSCIT/BBA)
     const downloadVocationalTemplate = () => {
-        const headers = ['student_id*', 'first_name*', 'last_name', 'email', 'subject_codes'];
+        const headers = ['student_id*', 'name*', 'email', 'subject_codes'];
         const dummyData = [
-            ['BCA2025SC001', 'Rahul', 'Kumar', 'rahul@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
-            ['BSCIT2025IT002', 'Priya', 'Sharma', 'priya@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
-            ['BBA2025BA003', 'Amit', 'Singh', 'amit@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
-            ['BCA2024SC004', 'Neha', 'Gupta', 'neha@example.com', '"C5,C6,C7,GE3A,GE3B,SEC1"'],
-            ['BCA2023SC005', 'Deepak', 'Roy', 'deepak@example.com', '"C11,C12,DSE1,DSE2"'],
-            ['BCA2022SC006', 'Anita', 'Das', 'anita@example.com', '"C13,C14,DSE3,DSE4"']
+            ['BCA2025SC001', 'Rahul Kumar', 'rahul@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
+            ['BSCIT2025IT002', 'Priya Sharma', 'priya@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
+            ['BBA2025BA003', 'Amit Singh', 'amit@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
+            ['BCA2024SC004', 'Neha Gupta', 'neha@example.com', '"C5,C6,C7,GE3A,GE3B,SEC1"'],
+            ['BCA2023SC005', 'Deepak Roy', 'deepak@example.com', '"C11,C12,DSE1,DSE2"'],
+            ['BCA2022SC006', 'Anita Das', 'anita@example.com', '"C13,C14,DSE3,DSE4"']
         ];
         const csvContent = [headers.join(','), ...dummyData.map(row => row.join(','))].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -734,8 +758,9 @@ export default function StudentsPage() {
             'student id': 'student_id', 'studentid': 'student_id', 'id': 'student_id',
             'student_id*': 'student_id', 'studentid*': 'student_id',
             'roll number': 'roll_number', 'rollnumber': 'roll_number', 'roll': 'roll_number', 'roll_no': 'roll_number',
-            'first name': 'first_name', 'firstname': 'first_name', 'name': 'first_name',
-            'first_name*': 'first_name', 'firstname*': 'first_name',
+            'first name': 'name', 'firstname': 'name', 'name': 'name',
+            'first_name*': 'name', 'firstname*': 'name', 'name*': 'name',
+            'first_name': 'name', 'full name': 'name', 'fullname': 'name', 'student name': 'name',
             'last name': 'last_name', 'lastname': 'last_name', 'surname': 'last_name',
             'last_name*': 'last_name', 'lastname*': 'last_name',
             'email': 'email', 'email address': 'email', 'email*': 'email',
@@ -954,6 +979,7 @@ export default function StudentsPage() {
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                 </div>
                             )}
+                            {departments.length > 1 && (
                                 <div className="relative w-full">
                                     <select
                                         className="w-full bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none cursor-pointer"
@@ -969,6 +995,7 @@ export default function StudentsPage() {
                                     </select>
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                 </div>
+                            )}
                         <div className="relative w-full">
                             <select
                                 className="w-full bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none cursor-pointer"
@@ -976,18 +1003,20 @@ export default function StudentsPage() {
                                 onChange={(e) => setFilterSemester(e.target.value)}
                             >
                                 <option value="">All Semesters</option>
-                                {getActiveSemesters(getDeptType(departments.find(d => d.id === filterDepartmentId))).map(s => {
-                                    const dt = getDeptType(departments.find(d => d.id === filterDepartmentId));
-                                    const label = getBatchLabel(s, dt);
-                                    return <option key={s} value={s}>Sem {s}{label ? ` (${label})` : ''}</option>;
-                                })}
+                                {(() => {
+                                    const effectiveDeptType = filterDeptType || (filterDepartmentId ? getDeptType(departments.find(d => d.id === filterDepartmentId)) : (isSuperAdmin ? 'regular' : (departments.length > 0 ? getDeptType(departments[0]) : 'regular')));
+                                    return getActiveSemesters(effectiveDeptType).map(s => {
+                                        const label = getBatchLabel(s, effectiveDeptType);
+                                        return <option key={s} value={s}>Sem {s}{label ? ` (${label})` : ''}</option>;
+                                    });
+                                })()}
                             </select>
                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                         </div>
                     </div>
 
                     {/* Search Bar */}
-                    <div className={`relative ${isSuperAdmin ? 'md:col-span-8' : 'md:col-span-8'}`}>
+                    <div className={`relative md:col-span-8`}>
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                         <Input
                             placeholder="Search by name, roll no, or ID..."
@@ -1248,26 +1277,16 @@ export default function StudentsPage() {
                                         })()}
                                     </div>
                                 )}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <Label htmlFor="firstName">First Name *</Label>
-                                        <Input
-                                            id="firstName"
-                                            value={formData.firstName}
-                                            onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                                            className="rounded-xl border-gray-200"
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <Label htmlFor="lastName">Last Name</Label>
-                                        <Input
-                                            id="lastName"
-                                            value={formData.lastName}
-                                            onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                                            className="rounded-xl border-gray-200"
-                                        />
-                                    </div>
+                                <div>
+                                    <Label htmlFor="studentName">Name *</Label>
+                                    <Input
+                                        id="studentName"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                        placeholder="Full name"
+                                        className="rounded-xl border-gray-200"
+                                        required
+                                    />
                                 </div>
                                 <div>
                                     <Label htmlFor="email">Email</Label>

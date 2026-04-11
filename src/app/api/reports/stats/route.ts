@@ -38,6 +38,11 @@ export async function GET(request: NextRequest) {
 
         const { role, departmentId, userId } = payload;
 
+        // Allow HOD to view as teacher (for My Reports)
+        const { searchParams } = new URL(request.url);
+        const view = searchParams.get('view');
+        const effectiveRole = (role === 'hod' && view === 'teacher') ? 'teacher' : role;
+
         // Build role-based filter conditions
         let studentFilter = '';
         let subjectFilter = '';
@@ -46,7 +51,7 @@ export async function GET(request: NextRequest) {
         const subjectParams: string[] = [];
         const attendanceParams: string[] = [];
 
-        if (role === 'hod' && userId) {
+        if (effectiveRole === 'hod' && userId) {
             // HOD: filter by ALL their authorized departments (including user_departments)
             studentFilter = `AND s.department_id IN (
                 SELECT department_id FROM users WHERE id = $1
@@ -68,7 +73,7 @@ export async function GET(request: NextRequest) {
                 )
             )`;
             attendanceParams.push(userId);
-        } else if (role === 'teacher') {
+        } else if (effectiveRole === 'teacher') {
             // Teacher: filter by students in their assigned subjects
             // teacher_subjects.teacher_id references users.id directly
             studentFilter = `AND s.id IN (
@@ -177,7 +182,7 @@ export async function GET(request: NextRequest) {
         let lowAttendanceCount = 0;
         let warningAttendanceCount = 0;
 
-        if (role === 'hod' || role === 'super_admin') {
+        if (effectiveRole === 'hod' || effectiveRole === 'super_admin') {
             promises.push((async () => {
                 try {
                     // Get student-wise attendance percentages
@@ -198,9 +203,9 @@ export async function GET(request: NextRequest) {
                         GROUP BY s.id
                         HAVING COUNT(ar.id) > 0
                     `;
-                    
+
                     const studentStats = await query<StudentAttendanceStatus>(studentAttendanceQuery, studentParams);
-                    
+
                     for (const student of studentStats) {
                         const pct = parseFloat(student.attendance_pct);
                         if (pct < 60) {
@@ -218,7 +223,7 @@ export async function GET(request: NextRequest) {
         // For Super Admin: Get department-wise stats
         let departmentStats: { departmentId: string; departmentName: string; totalStudents: number; avgAttendance: number }[] = [];
 
-        if (role === 'super_admin') {
+        if (effectiveRole === 'super_admin') {
             promises.push((async () => {
                 try {
                     const deptQuery = `
@@ -240,7 +245,7 @@ export async function GET(request: NextRequest) {
                         GROUP BY d.id, d.name
                         ORDER BY d.name
                     `;
-                    
+
                     const deptStats = await query<DepartmentStats>(deptQuery, []);
                     departmentStats = deptStats.map(d => ({
                         departmentId: d.department_id,
@@ -266,11 +271,11 @@ export async function GET(request: NextRequest) {
                 workingDays,
                 averageAttendance,
                 // Role-specific data
-                ...(role === 'hod' || role === 'super_admin' ? {
+                ...(effectiveRole === 'hod' || effectiveRole === 'super_admin' ? {
                     lowAttendanceCount,
                     warningAttendanceCount,
                 } : {}),
-                ...(role === 'super_admin' && departmentStats.length > 0 ? {
+                ...(effectiveRole === 'super_admin' && departmentStats.length > 0 ? {
                     departmentStats,
                 } : {}),
             }

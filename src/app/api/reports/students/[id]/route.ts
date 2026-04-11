@@ -60,6 +60,11 @@ export async function GET(
         const startDate = searchParams.get('startDate');
         const endDate = searchParams.get('endDate');
 
+        // Allow HOD to view as teacher (for My Reports)
+        const view = searchParams.get('view');
+        const { role, userId } = payload;
+        const effectiveRole = (role === 'hod' && view === 'teacher') ? 'teacher' : role;
+
         // Get student basic info
         const studentInfo = await query<StudentDetail>(
             `SELECT s.id, s.student_id, s.roll_number, s.first_name, s.last_name, s.email, 
@@ -91,29 +96,28 @@ export async function GET(
         // Role-based filtering (Teachers only see their subjects)
         let teacherSubjectFilter = '1=1';
         let subjectJoinClause = '';
-        
-        const { role, userId } = payload;
-        if (role === 'teacher') {
+
+        if (effectiveRole === 'teacher') {
             // Find or add userId to params for the filter query
             // Note: We need a reliable index. Since param order matters for $1, $2 etc,
             // we must append userId if not present, but be careful with existing dateParams logic.
             // The queries below use specific param indices. We will inject userId into the params array used by query.
-            
+
             // To be safe, we'll append userId to the existing arrays and use dynamic index
             // For subjectStats query: params are [studentId, ...dateParams]
             // We adding userId to the end => index is 1 + dateParams.length + 1
             const uIdIndex = 1 + dateParams.length + 1;
-            
+
             // STRICT ISOLATION: Filter by who marked the attendance
             teacherSubjectFilter = `ar.teacher_id = $${uIdIndex}`;
-            
+
             // Keep subject join to ensure they only see subjects they are assigned to
             subjectJoinClause = `JOIN teacher_subjects ts ON ts.subject_id = s.id AND ts.teacher_id = $${uIdIndex}`;
         }
 
         // Get subject-wise stats with date filter
         const subjectStatsParams = [studentId, ...dateParams];
-        if (role === 'teacher') {
+        if (effectiveRole === 'teacher') {
             subjectStatsParams.push(userId);
         }
 
@@ -158,8 +162,8 @@ export async function GET(
                 ) as attendance_pct
              FROM attendance_records ar
              WHERE ar.student_id = $1`;
-        
-        if (role === 'teacher') {
+
+        if (effectiveRole === 'teacher') {
             monthlyQuery += ` AND ${teacherSubjectFilter}`;
         }
 
@@ -175,7 +179,7 @@ export async function GET(
         monthlyQuery += ` GROUP BY TO_CHAR(ar.date, 'YYYY-MM') ORDER BY month DESC`;
 
         const otherStatsParams = [studentId, ...dateParams];
-        if (role === 'teacher') {
+        if (effectiveRole === 'teacher') {
             otherStatsParams.push(userId);
         }
 
@@ -196,7 +200,7 @@ export async function GET(
              FROM attendance_records ar
              WHERE ar.student_id = $1 ${dateFilter}`;
 
-        if (role === 'teacher') {
+        if (effectiveRole === 'teacher') {
             overallQuery += ` AND ${teacherSubjectFilter}`;
         }
 

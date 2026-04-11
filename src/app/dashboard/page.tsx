@@ -15,7 +15,9 @@ import {
     UsersRound,
     Settings,
     ChevronRight,
-    BookCheck
+    BookCheck,
+    TrendingUp,
+    CalendarClock
 } from 'lucide-react';
 
 interface User {
@@ -167,6 +169,16 @@ export default function DashboardPage() {
                     borderColor: 'border-emerald-200'
                 },
                 {
+                    id: 'class-schedule',
+                    title: "Today's Classes",
+                    description: 'Assign daily class schedule to teachers',
+                    href: '/class-schedule',
+                    iconComponent: <CalendarClock className="w-6 h-6" />,
+                    gradient: 'from-teal-100 to-cyan-100',
+                    textColor: 'text-teal-700',
+                    borderColor: 'border-teal-200'
+                },
+                {
                     id: 'teachers',
                     title: 'My Teachers',
                     description: 'Oversee department faculty members',
@@ -216,6 +228,16 @@ export default function DashboardPage() {
                     textColor: 'text-violet-700',
                     borderColor: 'border-violet-200'
                 },
+                {
+                    id: 'my-reports',
+                    title: 'My Reports',
+                    description: 'Your personal teaching statistics',
+                    href: '/my-reports',
+                    iconComponent: <TrendingUp className="w-6 h-6" />,
+                    gradient: 'from-indigo-100 to-blue-100',
+                    textColor: 'text-indigo-700',
+                    borderColor: 'border-indigo-200'
+                },
             ];
         } else {
             return [
@@ -259,13 +281,13 @@ export default function DashboardPage() {
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
             {/* Mobile Sidebar */}
-            <MobileSidebar 
-                isOpen={sidebarOpen} 
-                onClose={() => setSidebarOpen(false)} 
-                user={user} 
+            <MobileSidebar
+                isOpen={sidebarOpen}
+                onClose={() => setSidebarOpen(false)}
+                user={user}
                 onLogout={handleLogout}
             />
-            
+
             {/* Navbar */}
             <Navbar user={user} onMenuClick={() => setSidebarOpen(true)} onLogout={handleLogout} />
 

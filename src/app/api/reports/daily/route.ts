@@ -52,12 +52,16 @@ export async function GET(request: NextRequest) {
         const semester = searchParams.get('semester');
         const detailed = searchParams.get('detailed') === 'true';
 
+        // Allow HOD to view as teacher (for My Reports)
+        const view = searchParams.get('view');
+        const effectiveRole = (role === 'hod' && view === 'teacher') ? 'teacher' : role;
+
         // Build role-based filter
         const filters: string[] = [];
         const params: (string | number)[] = [date];
 
         // Role-based restrictions
-        if (role === 'hod') {
+        if (effectiveRole === 'hod') {
             // HOD: filter by their multiple allowed departments (students.department_id)
             if (departmentId) {
                 filters.push(`ar.student_id IN (
@@ -78,7 +82,7 @@ export async function GET(request: NextRequest) {
                 )`);
                 params.push(userId);
             }
-        } else if (role === 'teacher') {
+        } else if (effectiveRole === 'teacher') {
             // Teacher: only show records marked by THEM
             filters.push(`ar.teacher_id = $${params.length + 1}`);
             params.push(userId);
@@ -89,7 +93,7 @@ export async function GET(request: NextRequest) {
                 )`);
                 params.push(departmentId);
             }
-        } else if (role === 'super_admin' && departmentId) {
+        } else if (effectiveRole === 'super_admin' && departmentId) {
             // Super admin with department filter (students.department_id)
             filters.push(`ar.student_id IN (
                 SELECT id FROM students WHERE department_id = $${params.length + 1}
@@ -168,7 +172,7 @@ export async function GET(request: NextRequest) {
             `;
 
             const details = await query<DetailedRecord>(detailQueryStr, params);
-            
+
             detailedRecords = details.map(d => ({
                 studentId: d.student_id,
                 studentCustomId: d.student_custom_id || '',
@@ -183,7 +187,7 @@ export async function GET(request: NextRequest) {
             }));
         }
 
-        return NextResponse.json({ 
+        return NextResponse.json({
             records: formattedRecords,
             ...(detailed && { detailedRecords })
         });

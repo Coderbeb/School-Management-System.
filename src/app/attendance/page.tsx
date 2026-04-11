@@ -10,6 +10,7 @@ import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { useOfflineStatus } from '@/components/ServiceWorkerProvider';
 import { addToQueue, getQueueCount } from '@/lib/offlineQueue';
+import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface Student {
     id: string;
@@ -113,6 +114,10 @@ export default function AttendancePage() {
     // Resets to null when page remounts (e.g., navigating back from dashboard).
     const sessionLectureNumberRef = useRef<number | null>(null);
 
+    // Topic state for lecture topic input (optional)
+    const [topic, setTopic] = useState('');
+    const topicRef = useRef('');
+
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
@@ -141,6 +146,24 @@ export default function AttendancePage() {
         fetchBatchConfig(token);
         setLoading(false);
     }, [router]);
+
+    // Real-time updates: refresh holidays and subjects when changed
+    // (Don't auto-refresh student list during active marking)
+    useRealtimeData({
+        tables: ['holidays', 'subjects', 'teacher_subjects'],
+        onTableChange: useCallback((table: string) => {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+            if (table === 'holidays') fetchHolidays(token);
+            if (table === 'subjects' || table === 'teacher_subjects') {
+                const userData = localStorage.getItem('user');
+                if (userData) {
+                    const u = JSON.parse(userData);
+                    fetchTeacherSubjects(token, u.id);
+                }
+            }
+        }, []),
+    });
 
     // ========================
     // OFFLINE CACHE HELPERS
@@ -715,7 +738,8 @@ export default function AttendancePage() {
                         records: attendanceData,
                         subjectId: selectedSubjectId,
                         date: selectedDate,
-                        sessionLectureNumber: sessionLectureNumberRef.current
+                        sessionLectureNumber: sessionLectureNumberRef.current,
+                        topic: topicRef.current || undefined
                     }),
                 });
 
@@ -744,7 +768,8 @@ export default function AttendancePage() {
                                 records: attendanceData as { studentId: string; status: string }[],
                                 subjectId: selectedSubjectId,
                                 date: selectedDate,
-                                sessionLectureNumber: sessionLectureNumberRef.current
+                                sessionLectureNumber: sessionLectureNumberRef.current,
+                                topic: topicRef.current || undefined
                             },
                             authHeader: `Bearer ${token}`,
                             timestamp: Date.now(),
@@ -900,7 +925,8 @@ export default function AttendancePage() {
                     records: attendanceData,
                     subjectId: selectedSubjectId,
                     date: selectedDate,
-                    sessionLectureNumber: sessionLectureNumberRef.current
+                    sessionLectureNumber: sessionLectureNumberRef.current,
+                    topic: topicRef.current || undefined
                 }),
             });
 
@@ -939,7 +965,8 @@ export default function AttendancePage() {
                         records: attendanceData as { studentId: string; status: string }[],
                         subjectId: selectedSubjectId,
                         date: selectedDate,
-                        sessionLectureNumber: sessionLectureNumberRef.current
+                        sessionLectureNumber: sessionLectureNumberRef.current,
+                        topic: topicRef.current || undefined
                     },
                     authHeader: `Bearer ${token}`,
                     timestamp: Date.now(),
@@ -1129,17 +1156,17 @@ export default function AttendancePage() {
                         </div>
                     )}
 
-                    {/* Lecture Number Indicator */}
+                    {/* Lecture Number Indicator + Topic Input */}
                     {selectedSemester && !isHoliday && (
                         <div className="px-4 mb-3">
                             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 rounded-lg p-3 shadow-sm">
-                                <div className="flex items-center justify-between">
+                                <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-2">
                                         <BookOpen className="w-5 h-5 text-blue-600" />
                                         <span className="font-semibold text-blue-900">
                                             {currentLectureNumber
-                                                ? `You are marking: Lecture ${currentLectureNumber}`
-                                                : 'Ready to mark new lecture'
+                                                ? `Lecture ${currentLectureNumber}`
+                                                : 'New Lecture'
                                             }
                                         </span>
                                     </div>
@@ -1149,6 +1176,13 @@ export default function AttendancePage() {
                                         </span>
                                     )}
                                 </div>
+                                <input
+                                    type="text"
+                                    placeholder="Enter Topic"
+                                    value={topic}
+                                    onChange={(e) => { setTopic(e.target.value); topicRef.current = e.target.value; }}
+                                    className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none"
+                                />
                             </div>
                         </div>
                     )}
@@ -1352,6 +1386,19 @@ export default function AttendancePage() {
                                             <span className="text-gray-400">Select semester...</span>
                                         )}
                                     </div>
+                                </div>
+
+                                {/* Topic Input (Optional) */}
+                                <div className="w-full sm:flex-1 sm:min-w-[160px]">
+                                    <label htmlFor="topic-input" className="block text-xs text-gray-500 mb-1">Topic</label>
+                                    <input
+                                        id="topic-input"
+                                        type="text"
+                                        placeholder="Enter Topic"
+                                        className="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none"
+                                        value={topic}
+                                        onChange={(e) => { setTopic(e.target.value); topicRef.current = e.target.value; }}
+                                    />
                                 </div>
                             </div>
 
