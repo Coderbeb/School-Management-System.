@@ -23,6 +23,9 @@ interface AssignedSubject {
     subject_paper_code?: string | null; // fallback
     subjectSemesters?: number[];
     subject_semesters?: number[]; // fallback
+    degreeType?: string;
+    degree_type?: string;
+    degreeTypes?: string[];
 }
 
 interface ProfileModalProps {
@@ -59,7 +62,11 @@ export function ProfileModal({ isOpen, onClose, user, onLogout }: ProfileModalPr
             if (cached) {
                 const parsed = JSON.parse(cached);
                 if (parsed.data && Array.isArray(parsed.data)) {
-                    setAssignedSubjects(parsed.data);
+                    // Deduplicate by subjectId
+                    const uniqueCached = Array.from(
+                        new Map(parsed.data.map((a: any) => [a.subjectId || a.subject_id, a])).values()
+                    ) as AssignedSubject[];
+                    setAssignedSubjects(uniqueCached);
                 }
             }
         } catch { /* ignore */ }
@@ -74,11 +81,40 @@ export function ProfileModal({ isOpen, onClose, user, onLogout }: ProfileModalPr
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    setAssignedSubjects(data.assignments || []);
+                    const assignments = data.assignments || [];
+                    
+                    // Deduplicate by Subject Code (Paper Code preferred)
+                    const uniqueMap = new Map<string, AssignedSubject>();
+                    assignments.forEach((a: any) => {
+                        const code = a.subjectPaperCode || a.subject_paper_code || a.subjectCode || a.subject_code || 'N/A';
+                        const dt = a.degreeType || a.degree_type;
+                        if (!uniqueMap.has(code)) {
+                            uniqueMap.set(code, { ...a, degreeTypes: dt ? [dt.toUpperCase()] : [] });
+                        } else {
+                            const existing = uniqueMap.get(code)!;
+                            if (dt && existing.degreeTypes && !existing.degreeTypes.includes(dt.toUpperCase())) {
+                                existing.degreeTypes.push(dt.toUpperCase());
+                            }
+                            // ensure semesters are merged properly
+                            const sems = a.subjectSemesters || a.subject_semesters || [];
+                            const existingSems = existing.subjectSemesters || existing.subject_semesters || [];
+                            sems.forEach((sem: number) => {
+                                if (!existingSems.includes(sem)) {
+                                    existingSems.push(sem);
+                                }
+                            });
+                            existingSems.sort((x: number, y: number) => x - y);
+                            if (existing.subjectSemesters !== undefined) existing.subjectSemesters = existingSems;
+                            else if (existing.subject_semesters !== undefined) existing.subject_semesters = existingSems;
+                        }
+                    });
+                    const uniqueAssignments = Array.from(uniqueMap.values());
+
+                    setAssignedSubjects(uniqueAssignments);
                     try {
                         localStorage.setItem('offline_subjects', JSON.stringify({
                             timestamp: Date.now(),
-                            data: data.assignments || []
+                            data: uniqueAssignments
                         }));
                     } catch { /* ignore */ }
                 }
@@ -139,11 +175,15 @@ export function ProfileModal({ isOpen, onClose, user, onLogout }: ProfileModalPr
 
                         {/* Contact Info */}
                         {user.email && (
-                            <div className="space-y-3">
-                                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                                    <User className="w-3.5 h-3.5" />
-                                    Account Details
-                                </h3>
+                            <div className="flex flex-col gap-3">
+                                <div className="flex items-center gap-2.5 pb-3 border-b border-gray-100 w-full">
+                                    <div className="p-1.5 bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 rounded-lg shadow-inner border border-blue-100/50">
+                                        <User className="w-3.5 h-3.5" />
+                                    </div>
+                                    <h3 className="text-[11px] sm:text-xs font-black text-slate-800 uppercase tracking-widest">
+                                        Account Details
+                                    </h3>
+                                </div>
                                 <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-100 flex items-center gap-3">
                                     <div className="p-2 bg-white rounded-lg shadow-sm">
                                         <Mail className="w-4 h-4 text-gray-500" />
@@ -160,12 +200,16 @@ export function ProfileModal({ isOpen, onClose, user, onLogout }: ProfileModalPr
 
                         {/* Assigned Subjects (Teachers / HODs only) */}
                         {(user.role === 'teacher' || user.role === 'hod') && (
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                                        <BookOpen className="w-3.5 h-3.5" />
-                                        Assigned Subjects
-                                    </h3>
+                            <div className="flex flex-col gap-4">
+                                <div className="flex items-center justify-between pb-3 border-b border-gray-100 w-full">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="p-1.5 bg-gradient-to-br from-indigo-50 to-purple-50 text-indigo-600 rounded-lg shadow-inner border border-indigo-100/50">
+                                            <BookOpen className="w-3.5 h-3.5" />
+                                        </div>
+                                        <h3 className="text-[11px] sm:text-xs font-black text-slate-800 uppercase tracking-widest">
+                                            Assigned Subjects
+                                        </h3>
+                                    </div>
                                     {isLoadingSubjects && (
                                         <span className="flex items-center gap-1.5 text-xs text-blue-500 font-medium animate-pulse">
                                             <div className="w-3 h-3 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
@@ -186,29 +230,41 @@ export function ProfileModal({ isOpen, onClose, user, onLogout }: ProfileModalPr
                                                 const bCode = b.subjectPaperCode || b.subject_paper_code || b.subjectCode || b.subject_code || '';
                                                 return aCode.localeCompare(bCode, undefined, { numeric: true, sensitivity: 'base' });
                                             })
-                                            .map((sub) => {
+                                            .map((sub, index) => {
                                             const subName = sub.subjectName || sub.subject_name || 'Unknown Subject';
                                             const subCode = sub.subjectPaperCode || sub.subject_paper_code || sub.subjectCode || sub.subject_code || 'N/A';
                                             const subSems = sub.subjectSemesters || sub.subject_semesters || [];
 
                                             return (
-                                                <div key={sub.id} className="p-3.5 bg-blue-50/50 border border-blue-100/50 rounded-xl flex flex-row items-center justify-between gap-3 group hover:bg-blue-50 transition-colors">
-                                                    <div className="min-w-0 flex-1 pr-2">
-                                                        <p className="font-semibold text-gray-900 text-sm leading-tight mb-1 group-hover:text-blue-700 transition-colors truncate">
-                                                            {subName}
-                                                        </p>
-                                                        <p className="text-xs text-gray-500 font-medium">
-                                                            Code: <span className="text-gray-700">{subCode}</span>
-                                                        </p>
+                                                <div key={sub.id} className="p-3 bg-white border border-gray-100 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] rounded-2xl flex items-center justify-between gap-3 group hover:border-blue-200 hover:shadow-md transition-all">
+                                                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                        <div className="shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center text-sm font-black text-blue-700 shadow-inner border border-blue-100/50">
+                                                            {index + 1}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <h4 className="font-bold text-gray-900 text-sm mb-1 truncate group-hover:text-blue-700 transition-colors" title={subName}>
+                                                                {subName}
+                                                            </h4>
+                                                            <div className="flex items-center flex-wrap gap-2 text-[11px] font-medium text-gray-500">
+                                                                <span className="bg-gray-100/80 px-2 py-0.5 rounded text-gray-600 border border-gray-200/50 font-semibold tracking-wide shadow-sm">
+                                                                    {subCode}
+                                                                </span>
+                                                                {(sub.degreeTypes && sub.degreeTypes.length > 0) && (
+                                                                    <>
+                                                                        <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                                                                        <span className="text-indigo-600 font-bold uppercase tracking-wider truncate">{sub.degreeTypes.join(', ')}</span>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     </div>
 
                                                     {subSems.length > 0 && (
-                                                        <div className="flex items-center gap-1.5 flex-wrap justify-end shrink-0">
-                                                            {subSems.map(sem => (
-                                                                <span key={sem} className="inline-flex py-1 px-2.5 bg-white border border-blue-100 rounded-md text-xs font-bold text-blue-700 shadow-sm">
-                                                                    Sem {sem}
-                                                                </span>
-                                                            ))}
+                                                        <div className="flex items-center justify-end shrink-0 max-w-[50%]">
+                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-700 shadow-sm flex-wrap justify-end">
+                                                                <BookOpen className="w-3.5 h-3.5 opacity-60 shrink-0" />
+                                                                <span className="text-right">Sem: {subSems.sort().join(', ')}</span>
+                                                            </span>
                                                         </div>
                                                     )}
                                                 </div>

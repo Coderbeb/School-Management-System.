@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
+const buildId = Date.now().toString();
+
 const nextConfig: NextConfig = {
+  generateBuildId: () => buildId,
+  env: {
+    NEXT_PUBLIC_BUILD_ID: buildId,
+  },
   experimental: {
     // This is the correct way to allow origins for Server Actions
     serverActions: {

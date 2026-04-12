@@ -37,10 +37,22 @@ export async function GET(request: NextRequest) {
         const filters: string[] = [];
         const params: string[] = [];
 
-        if (role === 'hod' && userDeptId) {
-            // HOD: filter by their department
-            params.push(userDeptId);
-            filters.push(`u.department_id = $${params.length}`);
+        if (role === 'hod') {
+            // HOD: show teachers whose primary OR secondary departments overlap with HOD's departments
+            params.push(userId);
+            let hodDeptSql = `
+                SELECT department_id FROM users WHERE id = $${params.length}
+                UNION
+                SELECT department_id FROM user_departments WHERE user_id = $${params.length}
+            `;
+            if (departmentId) {
+                params.push(departmentId);
+                // Teacher's primary dept OR any linked dept matches the selected dept (which must be in HOD's authorized depts)
+                filters.push(`(u.department_id = $${params.length} OR u.id IN (SELECT user_id FROM user_departments WHERE department_id = $${params.length})) AND $${params.length} IN (${hodDeptSql})`);
+            } else {
+                // Teacher's primary dept OR any linked dept is in HOD's authorized depts
+                filters.push(`(u.department_id IN (${hodDeptSql}) OR u.id IN (SELECT user_id FROM user_departments WHERE department_id IN (${hodDeptSql})))`);
+            }
         } else if (role === 'teacher') {
             // Teacher: only see their own stats
             params.push(userId);
@@ -60,12 +72,17 @@ export async function GET(request: NextRequest) {
                 u.first_name,
                 u.last_name,
                 u.email,
-                d.name as department_name,
+                (
+                    SELECT STRING_AGG(DISTINCT ud_d.code, ', ' ORDER BY ud_d.code)
+                    FROM departments ud_d
+                    WHERE ud_d.id = u.department_id
+                       OR ud_d.id IN (SELECT department_id FROM user_departments ud WHERE ud.user_id = u.id)
+                ) as department_name,
                 COALESCE(
                     STRING_AGG(DISTINCT s.name, ', ' ORDER BY s.name),
                     ''
                 ) as subject_names,
-                COUNT(DISTINCT ar.date || '-' || ar.subject_id || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_sessions,
+                COUNT(DISTINCT ar.date || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_sessions,
                 COUNT(DISTINCT ar.date) as working_days,
                 COALESCE(
                     ROUND(

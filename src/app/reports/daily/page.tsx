@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 
 import { Calendar, Users, UserCheck, UserX, ArrowLeft, Filter, Search, ChevronDown, CheckCircle, XCircle, AlertCircle, FileText, FileSpreadsheet, FileDown, ChevronRight, CalendarDays } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
+import { useActiveSemesters } from '@/hooks/useActiveSemesters';
 
 interface User {
     id: string;
@@ -23,6 +24,7 @@ interface Department {
     name: string;
     code: string;
     deptType?: string;
+    dept_type?: string;
 }
 
 interface Subject {
@@ -40,8 +42,10 @@ interface AttendanceRecord {
     attendancePercentage: number;
 }
 
-export default function DailyReportPage() {
+function DailyReportContent() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const viewParam = searchParams.get('view') || '';
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [departments, setDepartments] = useState<Department[]>([]);
@@ -56,9 +60,13 @@ export default function DailyReportPage() {
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
     const [selectedSemester, setSelectedSemester] = useState('');
     const [selectedSubjectId, setSelectedSubjectId] = useState('');
-    const [selectedStream, setSelectedStream] = useState('all');
+
     const [records, setRecords] = useState<AttendanceRecord[]>([]);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const { getActiveSemesters, getBatchLabel } = useActiveSemesters();
+
+    // Helper to get dept type from either field name convention
+    const getDeptType = (dept?: Department) => dept?.deptType || dept?.dept_type;
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -89,7 +97,7 @@ export default function DailyReportPage() {
         if (token && user) {
             fetchDailyReport(token);
         }
-    }, [selectedDate, selectedDepartmentId, selectedSemester, selectedSubjectId, selectedStream, user]);
+    }, [selectedDate, selectedDepartmentId, selectedSemester, selectedSubjectId, user]);
 
     // Fetch subjects when semester changes
     useEffect(() => {
@@ -97,7 +105,7 @@ export default function DailyReportPage() {
         if (token) {
             fetchSubjects(token);
         }
-    }, [selectedSemester]);
+    }, [selectedSemester, selectedDepartmentId]);
 
     const getCachedDepartments = () => {
         try {
@@ -126,7 +134,7 @@ export default function DailyReportPage() {
             const data = await res.json();
             const depts = data.departments || [];
             setDepartments(depts);
-            try { sessionStorage.setItem('cache_departments', JSON.stringify(depts)); } catch {}
+            try { sessionStorage.setItem('cache_departments', JSON.stringify(depts)); } catch { }
         } catch (err) {
             console.error('Error fetching departments:', err);
         }
@@ -160,10 +168,11 @@ export default function DailyReportPage() {
     // Fetch subjects based on selected semester
     const fetchSubjects = async (token: string) => {
         try {
+            const params = new URLSearchParams();
+            if (selectedSemester) params.append('semester', selectedSemester);
+            if (selectedDepartmentId) params.append('departmentId', selectedDepartmentId);
             let url = '/api/subjects';
-            if (selectedSemester) {
-                url += `?semester=${selectedSemester}`;
-            }
+            if (params.toString()) url += '?' + params.toString();
             const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -189,8 +198,8 @@ export default function DailyReportPage() {
             if (selectedSubjectId) {
                 url += `&subjectId=${selectedSubjectId}`;
             }
-            if (selectedStream && selectedStream !== 'all') {
-                url += `&stream=${selectedStream}`;
+            if (viewParam) {
+                url += `&view=${viewParam}`;
             }
 
             const res = await fetch(url, {
@@ -249,29 +258,23 @@ export default function DailyReportPage() {
             if (selectedSubjectId) {
                 url += `&subjectId=${selectedSubjectId}`;
             }
-            if (selectedStream && selectedStream !== 'all') {
-                url += `&stream=${selectedStream}`;
+            if (viewParam) {
+                url += `&view=${viewParam}`;
             }
 
             const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            
+
             if (res.status === 401) {
                 router.replace('/login');
                 return;
             }
-            
+
             const data = await res.json();
             const detailedRecords = data.detailedRecords || [];
 
-            // Filter by stream if selected
             let filteredRecords = detailedRecords;
-            if (selectedStream !== 'all') {
-                filteredRecords = detailedRecords.filter((r: any) => 
-                    r.studentCustomId && r.studentCustomId.toUpperCase().startsWith(selectedStream)
-                );
-            }
 
             if (filteredRecords.length === 0) {
                 alert('No attendance records found for the selected date and filters.');
@@ -308,7 +311,7 @@ export default function DailyReportPage() {
                 document.body.removeChild(link);
             } else if (format === 'excel') {
                 const headers = ['S.No', 'Student ID', 'Roll Number', 'Student Name', 'Department', 'Paper/Subject Code', 'Subject Name', 'Lecture', 'Status'];
-            const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+                const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
                 // Set column widths
                 worksheet['!cols'] = [
                     { wch: 5 },  // S.No
@@ -326,11 +329,12 @@ export default function DailyReportPage() {
                 XLSX.writeFile(workbook, `${filename}.xlsx`);
             } else if (format === 'pdf') {
                 // Group students by status for summary
-            const presentCount = filteredRecords.filter((r: any) => r.status === 'present').length;
+                const presentCount = filteredRecords.filter((r: any) => r.status === 'present').length;
                 const absentCount = filteredRecords.filter((r: any) => r.status === 'absent').length;
                 const lateCount = filteredRecords.filter((r: any) => r.status === 'late').length;
                 const totalEntries = filteredRecords.length;
                 const attendancePercentage = totalEntries > 0 ? Math.round((presentCount / totalEntries) * 100) : 0;
+                const logoUrl = typeof window !== 'undefined' ? `${window.location.origin}/college-logo.png` : '/college-logo.png';
 
                 const printContent = `
 <!DOCTYPE html>
@@ -338,13 +342,19 @@ export default function DailyReportPage() {
 <head>
     <title>Daily Attendance Report - ${formatDateDisplay(selectedDate)}</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600;700&display=swap');
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; padding: 30px; background: #fff; color: #1f2937; font-size: 12px; }
+        body { font-family: 'Inter', Arial, sans-serif; padding: 30px; background: #fff; color: #1f2937; font-size: 12px; }
         .container { max-width: 100%; margin: 0 auto; }
-        .header { text-align: center; border-bottom: 3px solid #6366f1; padding-bottom: 15px; margin-bottom: 20px; }
-        .college-name { font-size: 24px; font-weight: bold; color: #4f46e5; margin-bottom: 5px; }
-        .report-title { font-size: 18px; color: #6b7280; margin-top: 8px; }
-        .report-date { font-size: 14px; color: #374151; margin-top: 6px; font-weight: 600; }
+        .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 25px; }
+        .logo-section { display: flex; align-items: center; gap: 15px; }
+        .logo-img { height: 60px; width: auto; object-fit: contain; }
+        .college-info h1 { font-family: 'Playfair Display', serif; font-size: 20px; color: #1e3a8a; text-transform: uppercase; margin-bottom: 2px; letter-spacing: 0.5px; }
+        .college-info p { font-size: 10px; color: #64748b; margin-bottom: 1px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+        .report-title-box { text-align: right; }
+        .report-title-box h2 { color: #1e3a8a; font-size: 16px; margin: 0 0 4px 0; }
+        .report-title-box p { color: #6b7280; font-size: 11px; margin: 0; }
+        .report-title-box strong { display: inline-block; background: #4f46e5; color: white; padding: 4px 10px; border-radius: 20px; font-size: 10px; margin-top: 8px; }
         .summary-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
         .summary-card { background: #f9fafb; padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; text-align: center; }
         .summary-value { font-size: 22px; font-weight: bold; }
@@ -374,16 +384,24 @@ export default function DailyReportPage() {
 <body>
     <div class="container">
         <div class="header">
-            <div class="college-name">Yogoda Satsanga Mahavidyalaya</div>
-            <div class="report-title">DAILY ATTENDANCE REPORT - DETAILED</div>
-            <div class="report-date">📅 ${formatDateDisplay(selectedDate)}</div>
-            <div class="role-badge">${user?.role?.replace('_', ' ').toUpperCase() || 'USER'}</div>
+            <div class="logo-section">
+                <img src="${logoUrl}" class="logo-img" alt="YSM Logo">
+                <div class="college-info">
+                    <h1>Yogoda Satsanga Mahavidyalaya</h1>
+                    <p>Established 1967 | NAAC Accredited Grade 'B'++</p>
+                    <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
+                </div>
+            </div>
+            <div class="report-title-box">
+                <h2>DAILY ATTENDANCE REPORT</h2>
+                <p>📅 ${formatDateDisplay(selectedDate)}</p>
+                <strong>${user?.role?.replace('_', ' ').toUpperCase() || 'USER'}</strong>
+            </div>
         </div>
         <div class="filters-info">
             <strong>Filters Applied:</strong> 
             Subject: ${getSelectedSubjectName()} | 
             Semester: ${selectedSemester || 'All'} | 
-            Stream: ${selectedStream === 'all' ? 'All' : selectedStream} | 
             Department: ${selectedDepartmentId ? departments.find(d => d.id === selectedDepartmentId)?.name || 'Selected' : 'All'}
         </div>
         <div class="summary-cards">
@@ -590,7 +608,7 @@ export default function DailyReportPage() {
                                 <div className="relative">
                                     <select
                                         value={selectedDepartmentId}
-                                        onChange={(e) => { setSelectedDepartmentId(e.target.value); setSelectedStream('all'); }}
+                                        onChange={(e) => { setSelectedDepartmentId(e.target.value); }}
                                         className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-blue-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium"
                                     >
                                         <option value="">All Departments</option>
@@ -613,39 +631,19 @@ export default function DailyReportPage() {
                                     className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-blue-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium"
                                 >
                                     <option value="">All Semesters</option>
-                                    {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
-                                        <option key={sem} value={sem}>Semester {sem}</option>
-                                    ))}
+                                    {getActiveSemesters(getDeptType(departments.find(d => d.id === selectedDepartmentId))).map((sem) => {
+                                        const dt = getDeptType(departments.find(d => d.id === selectedDepartmentId));
+                                        const label = getBatchLabel(sem, dt);
+                                        return (
+                                            <option key={sem} value={sem}>Sem {sem}{label ? ` (${label})` : ''}</option>
+                                        );
+                                    })}
                                 </select>
                                 <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
                             </div>
                         </div>
 
-                        {/* Stream Filter (only for IT department) */}
-                        {(() => {
-                            const activeDept = selectedDepartmentId 
-                                ? departments.find(d => d.id === selectedDepartmentId) 
-                                : departments.length === 1 ? departments[0] : null;
-                            const showStream = activeDept && activeDept.code?.toUpperCase() === 'IT';
-                            if (!showStream) return null;
-                            return (
-                                <div className="w-full">
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Stream</label>
-                                    <div className="relative">
-                                        <select
-                                            value={selectedStream}
-                                            onChange={(e) => setSelectedStream(e.target.value)}
-                                            className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-blue-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium"
-                                        >
-                                            <option value="all">All Streams</option>
-                                            <option value="BCA">BCA</option>
-                                            <option value="BSCIT">BSc IT</option>
-                                        </select>
-                                        <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
-                                    </div>
-                                </div>
-                            );
-                        })()}
+
 
                         {/* Subject Filter */}
                         <div className="w-full">
@@ -669,14 +667,13 @@ export default function DailyReportPage() {
 
                         {/* Reset Button */}
                         <div className="w-full lg:w-auto">
-                            <Button 
+                            <Button
                                 variant="outline"
                                 className="w-full lg:w-auto mt-6 bg-white hover:bg-red-50 text-gray-600 hover:text-red-600 border-gray-200 hover:border-red-200 rounded-xl transition-colors h-[42px]"
                                 onClick={() => {
                                     setSelectedSemester('');
                                     setSelectedDepartmentId('');
                                     setSelectedSubjectId('');
-                                    setSelectedStream('all');
                                 }}
                             >
                                 Reset Filters
@@ -710,7 +707,7 @@ export default function DailyReportPage() {
                                             <table className="w-full table-auto">
                                                 <thead className="bg-gray-50/80 backdrop-blur-sm border-b border-gray-100">
                                                     <tr>
-                                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date & Session</th>
+                                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date & Lecture</th>
                                                         <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Total</th>
                                                         <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Present</th>
                                                         <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Absent</th>
@@ -735,16 +732,14 @@ export default function DailyReportPage() {
                                                             <td className="px-6 py-4 whitespace-nowrap text-center">
                                                                 <div className="flex flex-col items-center gap-1">
                                                                     <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                                                        <div 
-                                                                            className={`h-full rounded-full ${
-                                                                                record.attendancePercentage >= 75 ? 'bg-emerald-500' : 'bg-red-500'
-                                                                            }`}
+                                                                        <div
+                                                                            className={`h-full rounded-full ${record.attendancePercentage >= 75 ? 'bg-emerald-500' : 'bg-red-500'
+                                                                                }`}
                                                                             style={{ width: `${Math.min(record.attendancePercentage, 100)}%` }}
                                                                         ></div>
                                                                     </div>
-                                                                    <span className={`text-xs font-bold ${
-                                                                        record.attendancePercentage >= 75 ? 'text-emerald-600' : 'text-red-600'
-                                                                    }`}>
+                                                                    <span className={`text-xs font-bold ${record.attendancePercentage >= 75 ? 'text-emerald-600' : 'text-red-600'
+                                                                        }`}>
                                                                         {record.attendancePercentage}%
                                                                     </span>
                                                                 </div>
@@ -761,9 +756,8 @@ export default function DailyReportPage() {
                                                 <div key={index} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
                                                     <div className="flex justify-between items-center mb-3">
                                                         <span className="font-semibold text-gray-900">{formatDateDisplay(record.date)}</span>
-                                                        <span className={`px-2 py-1 rounded-md text-xs font-bold ${
-                                                            record.attendancePercentage >= 75 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
-                                                        }`}>
+                                                        <span className={`px-2 py-1 rounded-md text-xs font-bold ${record.attendancePercentage >= 75 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                                                            }`}>
                                                             {record.attendancePercentage}%
                                                         </span>
                                                     </div>
@@ -792,5 +786,13 @@ export default function DailyReportPage() {
                 </div>
             </main>
         </div>
+    );
+}
+
+export default function DailyReportPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full"></div></div>}>
+            <DailyReportContent />
+        </Suspense>
     );
 }

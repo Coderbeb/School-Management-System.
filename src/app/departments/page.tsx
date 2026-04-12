@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ import {
 import { AccessDenied } from '@/components/ui/access-denied';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
 import { getInitials } from '@/lib/utils';
+import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface Department {
     id: string;
@@ -66,6 +67,15 @@ export default function DepartmentsPage() {
 
         fetchDepartments(token);
     }, [router]);
+
+    // Real-time updates
+    useRealtimeData({
+        tables: ['departments'],
+        onTableChange: useCallback(() => {
+            const token = localStorage.getItem('token');
+            if (token) fetchDepartments(token);
+        }, []),
+    });
 
     const fetchDepartments = async (token: string) => {
         try {

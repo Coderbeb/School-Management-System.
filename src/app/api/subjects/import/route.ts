@@ -21,7 +21,7 @@ export async function POST(req: Request) {
             errors: [] as { row: number; name: string; error: string }[]
         };
 
-        const validDegreeTypes = ['ba', 'bsc', 'bcom', 'it', 'bba', 'mcom'];
+        const validDegreeTypes = ['ba', 'bsc', 'bcom', 'bca', 'it', 'bba', 'mcom'];
 
         // Pre-fetch existing subjects (code + degree_type)
         const existingResult = await client.query(

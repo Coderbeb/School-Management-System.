@@ -59,9 +59,17 @@ const REGULAR_PREFIXES = ['BA', 'BSC', 'BCOM'];
 const VOCATIONAL_PREFIXES = ['BCOMCA', 'BSCCA', 'BSCIT', 'BCA', 'BBA'];
 
 /**
- * Parse a Student ID and extract all relevant information
+ * Batch config type: mapping of semester number (as string) to batch year (or null)
+ * Example: { "regular": { "1": 2025, "2": 2024, "3": 2023, ... }, "vocational": { ... } }
  */
-export function parseStudentId(studentId: string): ParsedStudentId {
+export type BatchConfig = Record<string, Record<string, number | null>>;
+
+/**
+ * Parse a Student ID and extract all relevant information.
+ * @param studentId - The student ID string
+ * @param batchConfig - Optional batch config from admin settings for accurate semester mapping
+ */
+export function parseStudentId(studentId: string, batchConfig?: BatchConfig): ParsedStudentId {
     const result: ParsedStudentId = {
         isValid: false,
         courseType: null,
@@ -162,46 +170,49 @@ export function parseStudentId(studentId: string): ParsedStudentId {
     }
 
     // Calculate semester based on admission year
-    // Late schedule: 2025 batch → Sem 1, 2024 batch → Sem 2
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1; // 1-12
+    // Priority: 1) Admin's saved batch config  2) Dynamic year-diff calculation
+    const maxSem = isVocational ? 6 : 8;
+    let semesterFound = false;
 
-    // Simple calculation: year difference * 2, adjusted for late schedule
-    let yearDiff = currentYear - result.admissionYear;
-
-    // Late schedule adjustment: if in first half of year, they're still in odd semester
-    // 2025 admission in Jan 2026 = Sem 1 (first semester, not completed)
-    // 2024 admission in Jan 2026 = Sem 2 (second year, first half = odd semester of 2nd year? No, 2nd semester)
-    // Based on user input: 2024 → Sem 2, 2025 → Sem 1
-    // So semester = yearDiff * 2 + (currentMonth <= 6 ? 0 : 1) but capped
-
-    // Simplified: Each year = 2 semesters
-    // 2025 batch in 2026 = completed 0-1 semesters → currently in Sem 1
-    // 2024 batch in 2026 = completed 1-2 semesters → currently in Sem 2 (late schedule)
-
-    // User confirmed: 2024 → Sem 2, 2025 → Sem 1 (as of Jan 2026)
-    if (yearDiff === 0) {
-        result.semester = 1;
-    } else if (yearDiff === 1) {
-        result.semester = currentMonth <= 6 ? 2 : 3;
-    } else if (yearDiff === 2) {
-        result.semester = currentMonth <= 6 ? 4 : 5;
-    } else if (yearDiff === 3) {
-        result.semester = currentMonth <= 6 ? 6 : 7;
-    } else {
-        result.semester = Math.min(yearDiff * 2, isVocational ? 6 : 8);
+    // 1) Try admin's batch config (reverse lookup: find semester where batch year matches admission year)
+    if (batchConfig && result.admissionYear) {
+        const courseType = isVocational ? 'vocational' : 'regular';
+        const mappings = batchConfig[courseType];
+        if (mappings && Object.keys(mappings).length > 0) {
+            for (const [semStr, batchYear] of Object.entries(mappings)) {
+                if (batchYear === result.admissionYear) {
+                    result.semester = parseInt(semStr);
+                    semesterFound = true;
+                    break;
+                }
+            }
+            // If admission year not found in config, it may be an older/newer batch
+            // Fall through to dynamic calculation
+        }
     }
 
-    // For user's specific case (late schedule in Jan 2026):
-    // Override with simpler logic based on user's confirmation
-    // 2025 → Sem 1, 2024 → Sem 2
-    if (currentYear === 2026 && currentMonth <= 6) {
-        if (result.admissionYear === 2025) result.semester = 1;
-        else if (result.admissionYear === 2024) result.semester = 2;
-        else if (result.admissionYear === 2023) result.semester = 4;
+    // 2) Fallback: Dynamic calculation based on year difference
+    if (!semesterFound) {
+        const currentYear = new Date().getFullYear();
+        const currentMonth = new Date().getMonth() + 1; // 1-12
+
+        // Each academic year has 2 semesters
+        // Jan-Jun = even semester (2nd half of academic year)
+        // Jul-Dec = odd semester (1st half of new academic year)
+        const yearDiff = currentYear - result.admissionYear;
+
+        if (yearDiff <= 0) {
+            result.semester = 1;
+        } else {
+            // In first half of year (Jan-Jun): yearDiff * 2 (even semester)
+            // In second half of year (Jul-Dec): yearDiff * 2 + 1 (odd semester)
+            result.semester = currentMonth <= 6
+                ? Math.min(yearDiff * 2, maxSem)
+                : Math.min(yearDiff * 2 + 1, maxSem);
+        }
     }
 
-    // Calculate batch
+    // Calculate batch label
     const duration = isVocational ? 3 : 4;
     result.batch = `${result.admissionYear}-${(result.admissionYear + duration).toString().slice(-2)}`;
 
@@ -244,11 +255,14 @@ export function findDepartmentByCode(
             d.code.toUpperCase().startsWith(parsed.deptCode?.toUpperCase() || '')
         ) || null;
     } else if (parsed.courseType === 'vocational') {
-        // For vocational, they belong to BCA & IT or BBA department
+        // For vocational, each program maps to its own department
         if (parsed.prefix === 'BBA') {
             return departments.find(d => d.code === 'BBA') || null;
-        } else {
+        } else if (parsed.prefix === 'BSCIT') {
             return departments.find(d => d.code === 'IT') || null;
+        } else {
+            // BCA, BSCCA, BCOMCA all go to BCA department
+            return departments.find(d => d.code === 'BCA') || null;
         }
     }
 

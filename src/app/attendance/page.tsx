@@ -10,6 +10,7 @@ import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { useOfflineStatus } from '@/components/ServiceWorkerProvider';
 import { addToQueue, getQueueCount } from '@/lib/offlineQueue';
+import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface Student {
     id: string;
@@ -38,6 +39,7 @@ interface Subject {
     academicYear: string;
     departmentId?: string;
     departmentName?: string;
+    degreeType?: string;
 }
 
 interface Department {
@@ -45,6 +47,7 @@ interface Department {
     name: string;
     code: string;
     deptType: string;
+    degreeType?: string;
 }
 
 interface Holiday {
@@ -52,6 +55,7 @@ interface Holiday {
     name: string;
     date: string;
     description?: string;
+    department_id: string | null;
 }
 
 export default function AttendancePage() {
@@ -71,7 +75,6 @@ export default function AttendancePage() {
     const [selectedSubjectId, setSelectedSubjectId] = useState('');
     const [selectedSection, setSelectedSection] = useState(''); // Optional section
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
-    const [selectedStream, setSelectedStream] = useState<string>('all');
 
     const [loading, setLoading] = useState(true);
     // Initialize with local date (IST) to prevent previous day issue in early morning
@@ -98,9 +101,22 @@ export default function AttendancePage() {
     const [currentLectureNumber, setCurrentLectureNumber] = useState<number | null>(null);
     const [totalLecturesToday, setTotalLecturesToday] = useState<number>(0);
 
+    // Search buffer for keyboard shortcut
+    const [searchBuffer, setSearchBuffer] = useState('');
+    const [searchError, setSearchError] = useState('');
+    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
     // Auto-save timer ref
     const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
     const pendingChangesRef = useRef(false);
+
+    // Session-based lecture number: persists across dept/subject switches within same page visit.
+    // Resets to null when page remounts (e.g., navigating back from dashboard).
+    const sessionLectureNumberRef = useRef<number | null>(null);
+
+    // Topic state for lecture topic input (optional)
+    const [topic, setTopic] = useState('');
+    const topicRef = useRef('');
 
     const handleLogout = () => {
         localStorage.removeItem('token');
@@ -130,6 +146,24 @@ export default function AttendancePage() {
         fetchBatchConfig(token);
         setLoading(false);
     }, [router]);
+
+    // Real-time updates: refresh holidays and subjects when changed
+    // (Don't auto-refresh student list during active marking)
+    useRealtimeData({
+        tables: ['holidays', 'subjects', 'teacher_subjects'],
+        onTableChange: useCallback((table: string) => {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+            if (table === 'holidays') fetchHolidays(token);
+            if (table === 'subjects' || table === 'teacher_subjects') {
+                const userData = localStorage.getItem('user');
+                if (userData) {
+                    const u = JSON.parse(userData);
+                    fetchTeacherSubjects(token, u.id);
+                }
+            }
+        }, []),
+    });
 
     // ========================
     // OFFLINE CACHE HELPERS
@@ -185,7 +219,8 @@ export default function AttendancePage() {
                 id: d.id,
                 name: d.name,
                 code: d.code || '',
-                deptType: d.deptType || 'regular'
+                deptType: d.deptType || 'regular',
+                degreeType: d.degreeType
             }));
 
             // Update with fresh data
@@ -202,9 +237,16 @@ export default function AttendancePage() {
     };
 
     const applySubjects = (assignments: Subject[]) => {
-        setSubjects(assignments);
+        // Deduplicate strictly by subject mapping ID to prevent breaking degree mapping
+        // We do NOT deduplicate by code here because different departments might assign 
+        // completely different backend subject records even if they share a paper code
+        const uniqueAssignments = Array.from(
+            new Map(assignments.map((a: any) => [a.subjectId || a.id, a])).values()
+        ) as Subject[];
+
+        setSubjects(uniqueAssignments);
         const semesterSet = new Set<number>();
-        assignments.forEach((s: Subject) => s.subjectSemesters.forEach((sem: number) => semesterSet.add(sem)));
+        uniqueAssignments.forEach((s: Subject) => s.subjectSemesters.forEach((sem: number) => semesterSet.add(sem)));
         const semesters = Array.from(semesterSet).sort((a, b) => a - b);
         setAvailableSemesters(semesters);
     };
@@ -297,14 +339,18 @@ export default function AttendancePage() {
         return `${batchStart}-${String(batchEnd).padStart(2, '0')}`;
     };
 
+    // Helper: check if a semester is active (not disabled by admin in settings)
+    // If admin has saved config and set a semester to null/empty, it's inactive
+    const isSemesterActive = (sem: number, deptType: string): boolean => {
+        const savedMappings = batchConfig[deptType];
+        // If no saved config exists yet, all semesters are active (first-time setup)
+        if (!savedMappings || Object.keys(savedMappings).length === 0) return true;
+        // If config exists, semester is active only if it has a truthy (non-null) value
+        return !!savedMappings[sem.toString()];
+    };
+
     // Check if selected date is a holiday
     useEffect(() => {
-        if (holidays.length === 0) {
-            setIsHoliday(false);
-            setHolidayName('');
-            return;
-        }
-
         // Helper function to normalize date to YYYY-MM-DD in LOCAL timezone
         const normalizeDate = (dateInput: string | Date): string => {
             // Always parse through Date object and extract LOCAL date parts
@@ -319,31 +365,69 @@ export default function AttendancePage() {
         // The selected date is already in YYYY-MM-DD format from the input
         const selectedDateNormalized = selectedDate;
 
+        // Determine currently active department block
+        const activeDeptId = selectedDepartmentId || subjects.find(s => s.subjectId === selectedSubjectId)?.departmentId || teacherDepartmentIds[0];
+
         // Find matching holiday
         const holiday = holidays.find(h => {
             const holidayDateNormalized = normalizeDate(h.date);
-            return holidayDateNormalized === selectedDateNormalized;
+            const isDateMatch = holidayDateNormalized === selectedDateNormalized;
+            const isDeptMatch = !h.department_id || h.department_id === activeDeptId;
+            return isDateMatch && isDeptMatch;
         });
+
+        // Check if Sunday (Using UTC since the date string YYYY-MM-DD is parsed as UTC midnight)
+        const dateObj = new Date(selectedDateNormalized);
+        const isSunday = dateObj.getUTCDay() === 0;
 
         if (holiday) {
             setIsHoliday(true);
             setHolidayName(holiday.name);
+        } else if (isSunday) {
+            setIsHoliday(true);
+            setHolidayName('Sunday (Weekend)');
         } else {
             setIsHoliday(false);
             setHolidayName('');
         }
-    }, [selectedDate, holidays]);
+    }, [selectedDate, holidays, selectedDepartmentId, selectedSubjectId, subjects, teacherDepartmentIds]);
 
-    // Filter subjects by department if selected
+    // Filter subjects by matching department degree_type
     const filteredSubjects = selectedDepartmentId
-        ? subjects.filter(s => s.departmentId === selectedDepartmentId)
+        ? subjects.filter(s => {
+              const selectedDept = departments.find(d => d.id === selectedDepartmentId);
+              if (!selectedDept) return true;
+              
+              // Fallback to inferring degree type from code if API cache is stale
+              let expectedDegreeType = selectedDept.degreeType;
+              if (!expectedDegreeType) {
+                  const upperCode = selectedDept.code.toUpperCase();
+                  if (upperCode === 'BCA') expectedDegreeType = 'bca';
+                  else if (upperCode === 'IT') expectedDegreeType = 'it';
+                  else if (upperCode === 'BBA') expectedDegreeType = 'bba';
+              }
+              
+              return expectedDegreeType ? s.degreeType === expectedDegreeType : true;
+          })
         : subjects;
 
     // Get semesters for filtered subjects. If filtering resulted in empty, fall back to all subjects
     const subjectsToUse = filteredSubjects.length > 0 ? filteredSubjects : subjects;
+
+    // Determine active dept type for semester filtering
+    const activeDeptTypeForFilter = selectedDepartmentId
+        ? (departments.find(d => d.id === selectedDepartmentId)?.deptType || primaryDeptType)
+        : primaryDeptType;
+
     const filteredSemesters = Array.from(
         new Set(subjectsToUse.flatMap((s: Subject) => s.subjectSemesters))
-    ).sort((a, b) => a - b);
+    ).filter(sem => isSemesterActive(sem, activeDeptTypeForFilter))
+     .sort((a, b) => a - b);
+
+    // Also filter the base availableSemesters (used when no dept filter is active)
+    const activeAvailableSemesters = availableSemesters.filter(sem =>
+        isSemesterActive(sem, primaryDeptType)
+    );
 
     // Auto-select subject when semester changes
     useEffect(() => {
@@ -419,14 +503,53 @@ export default function AttendancePage() {
         const token = localStorage.getItem('token');
         if (!token || !subjectId) return;
 
-        setLoading(true);
         const semesterSubjects = subjectsToUse.filter(s => s.subjectSemesters.includes(parseInt(selectedSemester)));
         const semesterSubjectIds = semesterSubjects.map(s => s.subjectId);
+
+        let hasValidCache = false;
+        
+        // --- INSTANT LOAD (SWR) ---
+        const cachedEnrollments = getFromCache<any[]>(CACHE_KEYS.ENROLLMENTS);
+        if (cachedEnrollments && cachedEnrollments.length > 0) {
+            const studentMap = filterEnrollmentsToStudents(cachedEnrollments, semesterSubjectIds);
+            const cachedEnrolledStudents = Array.from(studentMap.values());
+            
+            if (cachedEnrolledStudents.length > 0) {
+                 hasValidCache = true;
+                 const attCacheKey = `cache_att_${subjectId}_${selectedDate}`;
+                 const cachedRawAtt = getFromCache<any[]>(attCacheKey);
+                 const cachedAttendance = cachedRawAtt || [];
+                 
+                 const teacherCachedAtt = user ? cachedAttendance.filter((r: any) => r.teacher_id === user.id) : cachedAttendance;
+
+                 const instantRenderData = cachedEnrolledStudents.map((student: Student) => {
+                     const record = teacherCachedAtt.find((r: any) =>
+                         (r.student_id === student.id) || (r.studentId === student.id)
+                     );
+                     return {
+                         ...student,
+                         attendance: record ? (record.status as 'present' | 'absent') : 'absent'
+                     };
+                 });
+                 
+                 instantRenderData.sort((a, b) =>
+                     String(a.roll_number || '').localeCompare(String(b.roll_number || ''), undefined, { numeric: true, sensitivity: 'base' })
+                 );
+                 
+                 setStudents(instantRenderData);
+                 if (loading) setLoading(false);
+            }
+        }
+
+        // Show spinner only if no cache to instantly render
+        if (!hasValidCache) {
+            setLoading(true);
+        }
 
         let enrolledStudents: Student[] = [];
 
         try {
-            // === BATCH FETCH: 1 call instead of N (Always fresh data) ===
+            // === BACKGROUND FETCH: Always fresh data overlay ===
             const batchIds = semesterSubjectIds.join(',');
             const res = await fetch(`/api/student-subjects?subjectIds=${batchIds}`, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -463,20 +586,21 @@ export default function AttendancePage() {
             });
             enrolledStudents = Array.from(allStudentsMap.values());
 
-            // Save to localStorage ONLY for offline fallback
+            // Save to localStorage for instant SWR loads
             cacheToStorage(CACHE_KEYS.ENROLLMENTS, data.enrollments || []);
         } catch (err) {
-            // OFFLINE FALLBACK: Use cached enrollment data
-            console.warn('Network failed, using cached student data');
-            const cachedEnrollments = getFromCache<any[]>(CACHE_KEYS.ENROLLMENTS);
-            if (cachedEnrollments) {
-                const studentMap = filterEnrollmentsToStudents(cachedEnrollments, semesterSubjectIds);
+            console.warn('Network failed, background student fetch canceled');
+            if (hasValidCache) return; // Silent fail if we have cache
+            const cachedFallback = getFromCache<any[]>(CACHE_KEYS.ENROLLMENTS);
+            if (cachedFallback) {
+                const studentMap = filterEnrollmentsToStudents(cachedFallback, semesterSubjectIds);
                 enrolledStudents = Array.from(studentMap.values());
             }
         }
 
-        // Fetch existing attendance (SW will serve from cache if offline)
+        // Fetch existing attendance in background
         let existingAttendance: any[] = [];
+        const attCacheKey = `cache_att_${subjectId}_${selectedDate}`;
         try {
             const attRes = await fetch(`/api/attendance?subjectId=${subjectId}&date=${selectedDate}`, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -487,6 +611,9 @@ export default function AttendancePage() {
             }
             const attData = await attRes.json();
             existingAttendance = attData.records || [];
+            if (existingAttendance.length > 0) {
+                 cacheToStorage(attCacheKey, existingAttendance);
+            }
         } catch (err) {
             console.warn('Could not fetch attendance records (offline)');
         }
@@ -533,6 +660,9 @@ export default function AttendancePage() {
         );
 
         setStudents(studentsWithAttendance);
+
+        // Reset pending changes on fresh load
+        pendingChangesRef.current = false;
 
         // Fetch history (non-critical, skip gracefully if offline)
         fetchAttendanceHistory(studentsWithAttendance, subjectId);
@@ -587,8 +717,9 @@ export default function AttendancePage() {
             const token = localStorage.getItem('token');
             if (!token || !selectedSubjectId) return;
 
-            // Use ref to get latest students state
+            // Use ref to get latest students
             const currentStudents = studentsRef.current;
+
             const attendanceData = currentStudents
                 .filter(s => s.attendance)
                 .map(s => ({ studentId: s.id, status: s.attendance }));
@@ -606,7 +737,9 @@ export default function AttendancePage() {
                     body: JSON.stringify({
                         records: attendanceData,
                         subjectId: selectedSubjectId,
-                        date: selectedDate
+                        date: selectedDate,
+                        sessionLectureNumber: sessionLectureNumberRef.current,
+                        topic: topicRef.current || undefined
                     }),
                 });
 
@@ -617,6 +750,11 @@ export default function AttendancePage() {
 
                 if (res.ok) {
                     pendingChangesRef.current = false;
+                    const data = await res.json();
+                    // Store session lecture number for cross-subject reuse
+                    if (data.lectureNumber && sessionLectureNumberRef.current === null) {
+                        sessionLectureNumberRef.current = data.lectureNumber;
+                    }
                 }
             } catch (err) {
                 console.error('Auto-save error:', err);
@@ -629,7 +767,9 @@ export default function AttendancePage() {
                             body: {
                                 records: attendanceData as { studentId: string; status: string }[],
                                 subjectId: selectedSubjectId,
-                                date: selectedDate
+                                date: selectedDate,
+                                sessionLectureNumber: sessionLectureNumberRef.current,
+                                topic: topicRef.current || undefined
                             },
                             authHeader: `Bearer ${token}`,
                             timestamp: Date.now(),
@@ -653,11 +793,94 @@ export default function AttendancePage() {
         triggerAutoSave();
     };
 
-    // Toggle attendance: undefined/absent -> present, present -> absent
+    const markAttendanceRef = useRef(markAttendance);
+    useEffect(() => {
+        markAttendanceRef.current = markAttendance;
+    }, [markAttendance]);
+
+    useEffect(() => {
+        const executeSearch = (buffer: string) => {
+            const currentStudents = studentsRef.current;
+            if (!buffer || currentStudents.length === 0) return;
+            
+            let matchedStudent = currentStudents.find(s => String(s.roll_number).trim() === buffer);
+            if (!matchedStudent) {
+                const targetNum = parseInt(buffer, 10);
+                matchedStudent = currentStudents.find(s => {
+                    const rollStr = String(s.roll_number).trim();
+                    // Extract exactly the numerical trailing part of the string
+                    const suffixMatch = rollStr.match(/\d+$/);
+                    if (suffixMatch) {
+                        return parseInt(suffixMatch[0], 10) === targetNum;
+                    }
+                    return false;
+                });
+            }
+            
+            if (matchedStudent) {
+                if (matchedStudent.attendance !== 'present') {
+                    markAttendanceRef.current(matchedStudent.id, 'present');
+                }
+                
+                setSearchError(''); // Clear error if match is found
+
+                // Scroll to student row
+                const rows = document.querySelectorAll(`tr[data-student-row="${matchedStudent.id}"]`);
+                // Use Array.from to filter visible rows, as multiple DOM structures exist
+                const visibleRow = Array.from(rows).find(row => {
+                     // Check if an ancestor or the element itself is completely hidden
+                     return (row as HTMLElement).offsetParent !== null;
+                });
+
+                if (visibleRow) {
+                    visibleRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    visibleRow.classList.add('bg-green-100');
+                    setTimeout(() => visibleRow.classList.remove('bg-green-100'), 2000);
+                }
+            } else {
+                setSearchError(`Roll '${buffer}' not found`);
+                setTimeout(() => setSearchError(''), 2500);
+            }
+        };
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) {
+                return;
+            }
+
+            if (/^\d$/.test(e.key)) {
+                setSearchError('');
+                setSearchBuffer(prev => {
+                    const newBuffer = prev + e.key;
+                    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+                    searchTimeoutRef.current = setTimeout(() => {
+                        executeSearch(newBuffer);
+                        setSearchBuffer('');
+                    }, 800);
+                    return newBuffer;
+                });
+            } else if (e.key === 'Enter') {
+                setSearchBuffer(prev => {
+                    if (prev) {
+                        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+                        executeSearch(prev);
+                        return '';
+                    }
+                    return prev;
+                });
+            } else if (e.key === 'Escape') {
+                setSearchBuffer('');
+                if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
+
     const toggleAttendance = (studentId: string) => {
         setStudents(prev => prev.map(s => {
             if (s.id !== studentId) return s;
-            // If not marked or absent, toggle to present; if present, toggle to absent
             const newStatus = s.attendance === 'present' ? 'absent' : 'present';
             return { ...s, attendance: newStatus };
         }));
@@ -666,19 +889,13 @@ export default function AttendancePage() {
     };
 
     const markAllPresent = () => {
-        setStudents(prev => prev.map(s => {
-            if (selectedStream !== 'all' && (!s.student_custom_id || !s.student_custom_id.toUpperCase().startsWith(selectedStream))) return s;
-            return { ...s, attendance: 'present' as const };
-        }));
+        setStudents(prev => prev.map(s => ({ ...s, attendance: 'present' as const })));
         setMessage('');
         triggerAutoSave();
     };
 
     const markAllAbsent = () => {
-        setStudents(prev => prev.map(s => {
-            if (selectedStream !== 'all' && (!s.student_custom_id || !s.student_custom_id.toUpperCase().startsWith(selectedStream))) return s;
-            return { ...s, attendance: 'absent' as const };
-        }));
+        setStudents(prev => prev.map(s => ({ ...s, attendance: 'absent' as const })));
         setMessage('');
         triggerAutoSave();
     };
@@ -707,7 +924,9 @@ export default function AttendancePage() {
                 body: JSON.stringify({
                     records: attendanceData,
                     subjectId: selectedSubjectId,
-                    date: selectedDate
+                    date: selectedDate,
+                    sessionLectureNumber: sessionLectureNumberRef.current,
+                    topic: topicRef.current || undefined
                 }),
             });
 
@@ -726,6 +945,10 @@ export default function AttendancePage() {
                     // Update lecture number from response
                     if (data.lectureNumber) {
                         setCurrentLectureNumber(data.lectureNumber);
+                        // Store session lecture number for cross-subject reuse
+                        if (sessionLectureNumberRef.current === null) {
+                            sessionLectureNumberRef.current = data.lectureNumber;
+                        }
                     }
                     setMessage('✅ Attendance saved successfully!');
                 }
@@ -741,7 +964,9 @@ export default function AttendancePage() {
                     body: {
                         records: attendanceData as { studentId: string; status: string }[],
                         subjectId: selectedSubjectId,
-                        date: selectedDate
+                        date: selectedDate,
+                        sessionLectureNumber: sessionLectureNumberRef.current,
+                        topic: topicRef.current || undefined
                     },
                     authHeader: `Bearer ${token}`,
                     timestamp: Date.now(),
@@ -765,37 +990,9 @@ export default function AttendancePage() {
         };
     }, []);
 
-    const [availableStreams, setAvailableStreams] = useState<string[]>([]);
-
-    useEffect(() => {
-        const deptIdsToFetch = selectedDepartmentId 
-            ? [selectedDepartmentId] 
-            : teacherDepartmentIds;
-
-        if (deptIdsToFetch.length === 0) {
-            setAvailableStreams([]);
-            return;
-        }
-
-        const activeDepts = departments.filter(d => deptIdsToFetch.includes(d.id));
-        const hasIT = activeDepts.some(d => d.code.toUpperCase() === 'IT');
-        
-        if (hasIT) {
-            setAvailableStreams(['BCA', 'BSCIT']);
-        } else {
-            setAvailableStreams([]);
-        }
-    }, [selectedDepartmentId, teacherDepartmentIds, departments]);
-
     const displayStudents = useMemo(() => {
-        if (selectedStream === 'all') return students;
-        return students.filter(s => s.student_custom_id && s.student_custom_id.toUpperCase().startsWith(selectedStream));
-    }, [students, selectedStream]);
-
-    // reset stream when department changes
-    useEffect(() => {
-        setSelectedStream('all');
-    }, [selectedDepartmentId]);
+        return students;
+    }, [students]);
 
     if (loading && !students.length && !subjects.length) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
@@ -821,35 +1018,68 @@ export default function AttendancePage() {
             {/* Navbar */}
             <Navbar user={user} onMenuClick={() => setSidebarOpen(true)} />
 
+            {/* Keyboard Entry Feedback */}
+            {searchBuffer && !searchError && (
+                <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-in fade-in zoom-in duration-200">
+                    <span className="text-gray-400 text-sm font-medium">Mark Roll:</span>
+                    <span className="text-2xl font-mono font-bold tracking-widest">{searchBuffer}</span>
+                </div>
+            )}
+            
+            {searchError && (
+                <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 bg-red-600 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 animate-in fade-in zoom-in duration-200">
+                    <X className="w-5 h-5" />
+                    <span className="text-sm font-medium">{searchError}</span>
+                </div>
+            )}
+
             {/* Main Content Wrapper */}
             <div className="flex flex-col flex-1 pt-20 h-screen overflow-hidden">
                 {/* Page Header (Sub-header) */}
                 <div className="bg-white shadow-sm z-10 px-4 py-3 border-b border-gray-200">
                     <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
-                            <span className="p-2 rounded-lg bg-emerald-100 text-emerald-600 hidden md:block">
-                                <ClipboardCheck className="w-6 h-6" />
-                            </span>
-                            Mark Attendance
-                            {autoSaving && (
-                                <span className="text-sm font-normal text-blue-500 animate-pulse ml-2">Saving...</span>
-                            )}
-                            {!navigator.onLine && (
-                                <span className="flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-200 ml-2">
-                                    <WifiOff className="w-3 h-3" /> Offline
+                        <div className="flex items-center justify-between w-full md:w-auto">
+                            <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+                                <span className="p-2 rounded-lg bg-emerald-100 text-emerald-600 hidden md:block">
+                                    <ClipboardCheck className="w-6 h-6" />
                                 </span>
-                            )}
-                        </h1>
-                        <div className="flex items-center gap-3">
-                            <Label htmlFor="date" className="whitespace-nowrap text-sm font-medium text-gray-700">Date:</Label>
-                            <input
-                                id="date"
-                                type="date"
-                                value={selectedDate}
-                                onChange={(e) => setSelectedDate(e.target.value)}
-                                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
-                                disabled={user?.role === 'teacher' || user?.role === 'hod'} // Only super_admin can change date? Wait, logic was teacher/hod specific in original code
-                            />
+                                Mark Attendance
+                                {autoSaving && (
+                                    <span className="text-sm font-normal text-blue-500 animate-pulse ml-2 hidden md:inline">Saving...</span>
+                                )}
+                            </h1>
+                            <div className="flex items-center gap-2">
+                                {autoSaving && (
+                                    <span className="text-sm font-normal text-blue-500 animate-pulse md:hidden">Saving...</span>
+                                )}
+                                {!navigator.onLine && (
+                                    <span className="flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-200">
+                                        <WifiOff className="w-3 h-3" /> Offline
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 w-full md:w-auto">
+                            <div className="flex items-center gap-3">
+                                <Label htmlFor="date" className="whitespace-nowrap text-sm font-medium text-gray-700">Date:</Label>
+                                <input
+                                    id="date"
+                                    type="date"
+                                    value={selectedDate}
+                                    onChange={(e) => setSelectedDate(e.target.value)}
+                                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500 w-[140px]"
+                                    disabled={user?.role === 'teacher' || user?.role === 'hod'} 
+                                />
+                            </div>
+                            
+                            {/* Subject display for Mobile */}
+                            <div className="md:hidden flex-1 shrink min-w-0 flex justify-end">
+                                {currentSubject && (
+                                    <span className="text-xs font-semibold bg-gray-100 px-2.5 py-1.5 rounded-lg text-gray-700 block truncate max-w-full border border-gray-200">
+                                        {currentSubject.subjectName} ({currentSubject.subjectPaperCode || currentSubject.subjectCode})
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -869,6 +1099,7 @@ export default function AttendancePage() {
                                             setSelectedDepartmentId(e.target.value);
                                             // Keep selected semester as requested
                                             setSelectedSubjectId('');
+                                            e.target.blur();
                                         }}
                                     >
                                         <option value="">All Depts</option>
@@ -879,27 +1110,18 @@ export default function AttendancePage() {
                                         ))}
                                     </select>
                                 )}
-                                {/* Stream filter if multiple */}
-                                {availableStreams.length > 1 && (
-                                    <select
-                                        className="flex-1 px-3 py-2.5 bg-white border rounded-xl text-sm font-medium"
-                                        value={selectedStream}
-                                        onChange={(e) => setSelectedStream(e.target.value)}
-                                    >
-                                        <option value="all">All Streams</option>
-                                        {availableStreams.map(stream => (
-                                            <option key={stream} value={stream}>{stream}</option>
-                                        ))}
-                                    </select>
-                                )}
+
                                 {/* Semester dropdown */}
                                 <select
                                     className={`${departments.length > 1 ? 'flex-1' : 'w-full'} px-3 py-2.5 bg-white border rounded-xl text-sm font-medium`}
                                     value={selectedSemester}
-                                    onChange={(e) => setSelectedSemester(e.target.value)}
+                                    onChange={(e) => {
+                                        setSelectedSemester(e.target.value);
+                                        e.target.blur();
+                                    }}
                                 >
                                     <option value="">Select Semester</option>
-                                    {(departments.length > 1 && selectedDepartmentId ? filteredSemesters : availableSemesters).map(sem => {
+                                    {(departments.length > 1 && selectedDepartmentId ? filteredSemesters : activeAvailableSemesters).map(sem => {
                                         const activeDept = selectedDepartmentId
                                             ? departments.find(d => d.id === selectedDepartmentId)
                                             : departments[0] || null;
@@ -934,17 +1156,17 @@ export default function AttendancePage() {
                         </div>
                     )}
 
-                    {/* Lecture Number Indicator */}
+                    {/* Lecture Number Indicator + Topic Input */}
                     {selectedSemester && !isHoliday && (
                         <div className="px-4 mb-3">
                             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 rounded-lg p-3 shadow-sm">
-                                <div className="flex items-center justify-between">
+                                <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-2">
                                         <BookOpen className="w-5 h-5 text-blue-600" />
                                         <span className="font-semibold text-blue-900">
                                             {currentLectureNumber
-                                                ? `You are marking: Lecture ${currentLectureNumber}`
-                                                : 'Ready to mark new lecture'
+                                                ? `Lecture ${currentLectureNumber}`
+                                                : 'New Lecture'
                                             }
                                         </span>
                                     </div>
@@ -954,6 +1176,13 @@ export default function AttendancePage() {
                                         </span>
                                     )}
                                 </div>
+                                <input
+                                    type="text"
+                                    placeholder="Enter Topic"
+                                    value={topic}
+                                    onChange={(e) => { setTopic(e.target.value); topicRef.current = e.target.value; }}
+                                    className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none"
+                                />
                             </div>
                         </div>
                     )}
@@ -1027,7 +1256,7 @@ export default function AttendancePage() {
                                             <table className="w-full">
                                                 <tbody className="divide-y divide-gray-100">
                                                     {displayStudents.map((student) => (
-                                                        <tr key={student.id} className="hover:bg-gray-50">
+                                                        <tr key={student.id} data-student-row={student.id} className="hover:bg-gray-50 transition-colors duration-500">
                                                             <td className="px-2 py-2 text-sm font-mono font-bold text-gray-900">{student.roll_number}</td>
                                                             <td className="px-2 py-2 text-sm font-medium text-gray-900 truncate max-w-[120px]">
                                                                 {student.first_name} {student.last_name}
@@ -1091,6 +1320,7 @@ export default function AttendancePage() {
                                                 setSelectedDepartmentId(e.target.value);
                                                 // Keep selected semester as requested
                                                 setSelectedSubjectId('');
+                                                e.target.blur();
                                             }}
                                         >
                                             <option value="">All Departments</option>
@@ -1103,23 +1333,7 @@ export default function AttendancePage() {
                                     </div>
                                 )}
 
-                                {/* Stream Filter */}
-                                {availableStreams.length > 1 && (
-                                    <div className="w-1/2 sm:flex-1 sm:min-w-[120px] px-1 sm:px-0">
-                                        <label htmlFor="stream-select" className="block text-xs text-gray-500 mb-1">Stream</label>
-                                        <select
-                                            id="stream-select"
-                                            className="w-full p-2 border rounded bg-white text-sm"
-                                            value={selectedStream}
-                                            onChange={(e) => setSelectedStream(e.target.value)}
-                                        >
-                                            <option value="all">All Streams</option>
-                                            {availableStreams.map(stream => (
-                                                <option key={stream} value={stream}>{stream}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
+
 
                                 {/* Semester Selection */}
                                 <div className="w-1/2 sm:flex-1 sm:min-w-[120px] pr-1 sm:pr-0">
@@ -1128,10 +1342,13 @@ export default function AttendancePage() {
                                         id="semester-select"
                                         className="w-full p-2 border rounded bg-white text-sm"
                                         value={selectedSemester}
-                                        onChange={(e) => setSelectedSemester(e.target.value)}
+                                        onChange={(e) => {
+                                            setSelectedSemester(e.target.value);
+                                            e.target.blur();
+                                        }}
                                     >
                                         <option value="">Select...</option>
-                                        {(departments.length > 1 && selectedDepartmentId ? filteredSemesters : availableSemesters).map(sem => {
+                                        {(departments.length > 1 && selectedDepartmentId ? filteredSemesters : activeAvailableSemesters).map(sem => {
                                             const activeDept = selectedDepartmentId
                                                 ? departments.find(d => d.id === selectedDepartmentId)
                                                 : departments[0] || null;
@@ -1169,6 +1386,19 @@ export default function AttendancePage() {
                                             <span className="text-gray-400">Select semester...</span>
                                         )}
                                     </div>
+                                </div>
+
+                                {/* Topic Input (Optional) */}
+                                <div className="w-full sm:flex-1 sm:min-w-[160px]">
+                                    <label htmlFor="topic-input" className="block text-xs text-gray-500 mb-1">Topic</label>
+                                    <input
+                                        id="topic-input"
+                                        type="text"
+                                        placeholder="Enter Topic"
+                                        className="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none"
+                                        value={topic}
+                                        onChange={(e) => { setTopic(e.target.value); topicRef.current = e.target.value; }}
+                                    />
                                 </div>
                             </div>
 
@@ -1258,7 +1488,7 @@ export default function AttendancePage() {
                                             </thead>
                                             <tbody className="divide-y">
                                                 {displayStudents.map((student) => (
-                                                    <tr key={student.id} className="hover:bg-gray-50">
+                                                    <tr key={student.id} data-student-row={student.id} className="hover:bg-gray-50 transition-colors duration-500">
                                                         <td className="px-3 sm:px-6 py-3 text-xs sm:text-sm font-mono font-bold">{student.roll_number}</td>
                                                         <td className="px-3 sm:px-6 py-3 text-xs sm:text-sm font-medium">{student.first_name} <span className="hidden sm:inline">{student.last_name}</span></td>
                                                         <td className="px-3 sm:px-6 py-3 text-center">

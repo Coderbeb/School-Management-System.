@@ -55,6 +55,40 @@ export function ServiceWorkerProvider({ children }: { children: React.ReactNode 
     }
   }, []);
 
+  // Check for new deployment and force refresh + logout
+  useEffect(() => {
+    const currentBuild = process.env.NEXT_PUBLIC_BUILD_ID || '';
+    const storedBuild = localStorage.getItem('app_build_id');
+    
+    if (storedBuild && storedBuild !== currentBuild) {
+      console.log(`[Version] New build detected: ${storedBuild} → ${currentBuild}. Clearing session...`);
+      // Clear all user data (forces re-login)
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      // Clear session caches
+      try { sessionStorage.clear(); } catch {}
+      // Clear service worker caches
+      if ('caches' in window) {
+        caches.keys().then(names => names.forEach(name => caches.delete(name)));
+      }
+      // Unregister old service worker
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+          registrations.forEach(r => r.unregister());
+        });
+      }
+      // Save new build ID and hard reload
+      localStorage.setItem('app_build_id', currentBuild);
+      window.location.reload();
+      return;
+    }
+
+    // First visit or same build — just store it
+    if (!storedBuild) {
+      localStorage.setItem('app_build_id', currentBuild);
+    }
+  }, []);
+
   // Register Service Worker
   useEffect(() => {
     if ('serviceWorker' in navigator) {
@@ -62,6 +96,8 @@ export function ServiceWorkerProvider({ children }: { children: React.ReactNode 
         .register('/sw.js')
         .then((registration) => {
           console.log('SW registered:', registration.scope);
+          // Check for updates on every load
+          registration.update();
         })
         .catch((err) => {
           console.error('SW registration failed:', err);

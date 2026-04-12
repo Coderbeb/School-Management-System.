@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +29,8 @@ import { Navbar } from '@/components/ui/Navbar';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { parseStudentId, findDepartmentByCode, type ParsedStudentId } from '@/lib/parseStudentId';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
+import { useActiveSemesters } from '@/hooks/useActiveSemesters';
+import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface Student {
     id: string;
@@ -48,6 +50,7 @@ interface Department {
     name: string;
     code: string;
     dept_type: 'regular' | 'vocational' | 'pg';
+    deptType?: string;
     degree_type: string;
 }
 
@@ -77,13 +80,15 @@ export default function StudentsPage() {
     const [showModal, setShowModal] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [batchConfig, setBatchConfig] = useState<Record<string, Record<string, number>>>({});
+    const { getActiveSemesters, getBatchLabel } = useActiveSemesters();
+
+    const getDeptType = (dept?: Department) => dept?.deptType || dept?.dept_type;
 
     // Form States
     const [formData, setFormData] = useState({
         studentId: '',
         rollNumber: '',
-        firstName: '',
-        lastName: '',
+        name: '',
         email: '',
         semester: '1',
         departmentId: ''
@@ -92,33 +97,14 @@ export default function StudentsPage() {
     const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
     const [parsedInfo, setParsedInfo] = useState<ParsedStudentId | null>(null);
 
-    // Categorized subject selections
-    // For Regular: major (auto), minor, mdc, vac, aec
-    // For Vocational: core1, core2, generic1, generic2, aecc
-    const [subjectSelections, setSubjectSelections] = useState<{
-        major: string;
-        minor: string;
-        mdc: string;
-        vac: string;
-        aec: string;
-        core1: string;
-        core2: string;
-        core3: string;
-        generic1: string;
-        generic2: string;
-        aecc: string;
-    }>({
-        major: '', minor: '', mdc: '', vac: '', aec: '',
-        core1: '', core2: '', core3: '', generic1: '', generic2: '', aecc: ''
-    });
+    // Number of visible subject dropdowns (dynamic "Add Subject" feature)
+    const [subjectFieldCount, setSubjectFieldCount] = useState(1);
 
     // Filter States
     const [searchTerm, setSearchTerm] = useState('');
     const [filterDeptType, setFilterDeptType] = useState('');
     const [filterDepartmentId, setFilterDepartmentId] = useState('');
     const [filterSemester, setFilterSemester] = useState('');
-    const [filterStream, setFilterStream] = useState('all');
-    const [availableStreams, setAvailableStreams] = useState<string[]>([]);
 
 
     // Import States
@@ -168,23 +154,20 @@ export default function StudentsPage() {
         fetchBatchConfig(token);
     }, [router]);
 
-    useEffect(() => {
-        let activeDepts = departments;
-        if (filterDepartmentId) {
-            activeDepts = departments.filter(d => d.id === filterDepartmentId);
-        } else if (user?.departmentId) {
-            activeDepts = departments.filter(d => d.id === user.departmentId);
-        }
+    // Real-time updates: silently re-fetch when DB tables change
+    useRealtimeData({
+        tables: ['students', 'student_subjects', 'departments', 'subjects'],
+        onTableChange: useCallback(() => {
+            const token = localStorage.getItem('token');
+            if (token) {
+                fetchStudents(token);
+                fetchDepartments(token);
+                fetchSubjects(token);
+            }
+        }, []),
+    });
 
-        const hasIT = activeDepts.some(d => d.code && d.code.toUpperCase() === 'IT');
-        
-        if (hasIT) {
-            setAvailableStreams(['BCA', 'BSCIT']);
-        } else {
-            setAvailableStreams([]);
-        }
-        setFilterStream('all');
-    }, [departments, filterDepartmentId, user]);
+
 
     const safeJson = async (res: Response) => {
         const contentType = res.headers.get('content-type');
@@ -197,6 +180,7 @@ export default function StudentsPage() {
     const fetchStudents = async (token: string) => {
         try {
             const res = await fetch('/api/students', {
+                cache: 'no-store',
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
@@ -216,6 +200,7 @@ export default function StudentsPage() {
     const fetchDepartments = async (token: string) => {
         try {
             const res = await fetch('/api/departments', {
+                cache: 'no-store',
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) { router.replace('/login'); return; }
@@ -231,6 +216,7 @@ export default function StudentsPage() {
     const fetchSubjects = async (token: string) => {
         try {
             const res = await fetch('/api/subjects', {
+                cache: 'no-store',
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) { router.replace('/login'); return; }
@@ -283,17 +269,12 @@ export default function StudentsPage() {
         setFormData({
             studentId: student.student_id || '',
             rollNumber: student.roll_number,
-            firstName: student.first_name,
-            lastName: student.last_name,
+            name: [student.first_name, student.last_name].filter(Boolean).join(' ').trim(),
             email: student.email || '',
             semester: student.current_semester.toString(),
             departmentId: student.department_id
         });
         setSelectedStudentId(student.id);
-
-        // Get department type for this student
-        const studentDept = departments.find(d => d.id === student.department_id);
-        const deptType = studentDept?.dept_type;
 
         // Fetch existing subject enrollments
         try {
@@ -306,63 +287,10 @@ export default function StudentsPage() {
                 if (data.enrollments && data.enrollments.length > 0) {
                     const enrolledIds = data.enrollments.map((s: any) => s.subjectId);
                     setSelectedSubjects(enrolledIds);
-
-                    // Populate subjectSelections based on department type
-                    // For edit mode, we assign enrolled subjects to categories in order
-                    if (deptType === 'regular' || deptType === 'pg') {
-                        setSubjectSelections({
-                            major: enrolledIds[0] || '',
-                            minor: enrolledIds[1] || '',
-                            mdc: enrolledIds[2] || '',
-                            vac: enrolledIds[3] || '',
-                            aec: enrolledIds[4] || '',
-                            core1: '', core2: '', core3: '', generic1: '', generic2: '', aecc: ''
-                        });
-                    } else if (deptType === 'vocational') {
-                        let core1 = '', core2 = '', core3 = '', generic1 = '', generic2 = '', aecc = '';
-                        const unassignedIds: string[] = [];
-
-                        data.enrollments.forEach((s: any) => {
-                            const name = (s.subjectName || '').toLowerCase();
-                            const code = (s.subjectCode || '').toLowerCase();
-                            
-                            if (code.includes('aecc') || code.includes('sec') || name.includes('environmental') || name.includes('communication') || name.includes('aecc')) {
-                                if (!aecc) aecc = s.subjectId; else unassignedIds.push(s.subjectId);
-                            } else if (code.includes('ge') || name.includes('generic')) {
-                                if (!generic1) generic1 = s.subjectId;
-                                else if (!generic2) generic2 = s.subjectId;
-                                else unassignedIds.push(s.subjectId);
-                            } else if (code.includes('c') || name.includes('core')) {
-                                if (!core1) core1 = s.subjectId;
-                                else if (!core2) core2 = s.subjectId;
-                                else if (!core3) core3 = s.subjectId;
-                                else unassignedIds.push(s.subjectId);
-                            } else {
-                                unassignedIds.push(s.subjectId);
-                            }
-                        });
-
-                        // Fallback: sequentially fill any empty slots to ensure no subject is lost from the UI
-                        unassignedIds.forEach(id => {
-                            if (!core1) core1 = id;
-                            else if (!core2) core2 = id;
-                            else if (!generic1) generic1 = id;
-                            else if (!generic2) generic2 = id;
-                            else if (!aecc) aecc = id;
-                            else if (!core3) core3 = id;
-                        });
-
-                        setSubjectSelections({
-                            major: '', minor: '', mdc: '', vac: '', aec: '',
-                            core1, core2, core3, generic1, generic2, aecc
-                        });
-                    }
+                    setSubjectFieldCount(enrolledIds.length);
                 } else {
                     setSelectedSubjects([]);
-                    setSubjectSelections({
-                        major: '', minor: '', mdc: '', vac: '', aec: '',
-                        core1: '', core2: '', core3: '', generic1: '', generic2: '', aecc: ''
-                    });
+                    setSubjectFieldCount(1);
                 }
             }
         } catch (err) {
@@ -379,18 +307,14 @@ export default function StudentsPage() {
         setFormData({
             studentId: '',
             rollNumber: '',
-            firstName: '',
-            lastName: '',
+            name: '',
             email: '',
             semester: '1',
             departmentId: defaultDeptId
         });
         setSelectedStudentId(null);
         setSelectedSubjects([]);
-        setSubjectSelections({
-            major: '', minor: '', mdc: '', vac: '', aec: '',
-            core1: '', core2: '', core3: '', generic1: '', generic2: '', aecc: ''
-        });
+        setSubjectFieldCount(1);
         setParsedInfo(null);
         setError('');
         setSuccess('');
@@ -444,11 +368,12 @@ export default function StudentsPage() {
             }
 
             // Auto-select subjects based on parsed info
-            autoSelectSubjects(parsed, parseInt(newSemester), newDeptId);
+            // autoSelectSubjects(parsed, parseInt(newSemester), newDeptId);
         }
     };
 
     // Auto-select subjects based on student ID parsing
+    /*
     const autoSelectSubjects = (parsed: ParsedStudentId, semester: number, deptId: string) => {
         if (!parsed.isValid) return;
 
@@ -507,7 +432,6 @@ export default function StudentsPage() {
             // For regular students, match subjects by name using the dept code mapping
             // e.g., BA2025HIS001 -> deptCode 'HIS' -> subject name 'History'
             if (parsed.deptCode) {
-                // Import the DEPT_CODE_MAP to get subject name from code
                 const DEPT_CODE_TO_NAME: Record<string, string> = {
                     'HIS': 'History',
                     'POL': 'Political Science',
@@ -528,46 +452,39 @@ export default function StudentsPage() {
                     const matchingSubject = findSubjectByName(subjectName);
                     if (matchingSubject) {
                         subjectsToSelect.push(matchingSubject.id);
-                        // Set as major in categorized selections
-                        setSubjectSelections(prev => ({ ...prev, major: matchingSubject.id }));
                     }
                 }
             }
         } else if (parsed.courseType === 'vocational') {
-            // For vocational students, select:
-            // 1. Core paper for the semester - match by name pattern like "Core Paper 1" or just "Core"
+            // For vocational students, auto-select core paper + GE subjects
             const coreSubject = availableSubjects.find(s =>
                 s.name.toLowerCase().includes('core') &&
                 (s.name.includes(semester.toString()) || s.code.includes(semester.toString()))
             );
             if (coreSubject) {
                 subjectsToSelect.push(coreSubject.id);
-                setSubjectSelections(prev => ({ ...prev, core1: coreSubject.id }));
             }
 
-            // 2. GE subjects based on stream - match by subject name
             if (parsed.geSubjects) {
-                // ge1 could be "Physics" or "Accounts"
                 const ge1Subject = findSubjectByName(parsed.geSubjects.ge1);
                 if (ge1Subject) {
                     subjectsToSelect.push(ge1Subject.id);
-                    setSubjectSelections(prev => ({ ...prev, generic1: ge1Subject.id }));
                 }
 
-                // ge2 could be "Mathematics" or "Business Studies"
                 const ge2Subject = findSubjectByName(parsed.geSubjects.ge2);
                 if (ge2Subject) {
                     subjectsToSelect.push(ge2Subject.id);
-                    setSubjectSelections(prev => ({ ...prev, generic2: ge2Subject.id }));
                 }
             }
         }
 
-        // Set the selected subjects
+        // Set the selected subjects and adjust field count
         if (subjectsToSelect.length > 0) {
             setSelectedSubjects(subjectsToSelect);
+            setSubjectFieldCount(Math.max(subjectsToSelect.length, 1));
         }
     };
+    */
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -601,7 +518,12 @@ export default function StudentsPage() {
                     },
                     body: JSON.stringify({
                         id: selectedStudentId,
-                        ...formData,
+                        ...(() => {
+                            const parts = formData.name.trim().split(/\s+/);
+                            const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0];
+                            const lastName = parts.length > 1 ? parts[parts.length - 1] : '';
+                            return { ...formData, firstName, lastName };
+                        })(),
                         currentSemester: parseInt(formData.semester)
                     }),
                 });
@@ -646,7 +568,12 @@ export default function StudentsPage() {
                         Authorization: `Bearer ${token}`,
                     },
                     body: JSON.stringify({
-                        ...formData,
+                        ...(() => {
+                            const parts = formData.name.trim().split(/\s+/);
+                            const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0];
+                            const lastName = parts.length > 1 ? parts[parts.length - 1] : '';
+                            return { ...formData, firstName, lastName };
+                        })(),
                         currentSemester: parseInt(formData.semester)
                     }),
                 });
@@ -727,91 +654,19 @@ export default function StudentsPage() {
         );
     };
 
-    // Get ALL subjects for the semester (for generic/minor electives that can be from any degree)
-    const getAllSemesterSubjects = () => {
-        const semester = parseInt(formData.semester);
-        return subjects.filter(s => s.semesters.includes(semester));
+    // Add a new empty subject field
+    const addSubjectField = () => {
+        setSubjectFieldCount(c => c + 1);
     };
 
-    // Get selected department's type (regular/vocational/pg)
-    const getSelectedDeptType = (): 'regular' | 'vocational' | 'pg' | null => {
-        const selectedDept = departments.find(d => d.id === formData.departmentId);
-        return selectedDept?.dept_type || null;
-    };
-
-    // Sync categorized selections to selectedSubjects array
-    const syncSubjectSelections = () => {
-        const deptType = getSelectedDeptType();
-        const ids: string[] = [];
-
-        if (deptType === 'regular' || deptType === 'pg') {
-            // Regular/PG: major, minor, mdc, vac, aec
-            if (subjectSelections.major) ids.push(subjectSelections.major);
-            if (subjectSelections.minor) ids.push(subjectSelections.minor);
-            if (subjectSelections.mdc) ids.push(subjectSelections.mdc);
-            if (subjectSelections.vac) ids.push(subjectSelections.vac);
-            if (subjectSelections.aec) ids.push(subjectSelections.aec);
-        } else if (deptType === 'vocational') {
-            // Vocational: core1, core2, core3, generic1, generic2, aecc
-            if (subjectSelections.core1) ids.push(subjectSelections.core1);
-            if (subjectSelections.core2) ids.push(subjectSelections.core2);
-            if (subjectSelections.core3) ids.push(subjectSelections.core3);
-            if (subjectSelections.generic1) ids.push(subjectSelections.generic1);
-            if (subjectSelections.generic2) ids.push(subjectSelections.generic2);
-            if (subjectSelections.aecc) ids.push(subjectSelections.aecc);
-        }
-
-        setSelectedSubjects(ids);
-    };
-
-    // Update a subject selection and sync
-    const updateSubjectSelection = (field: keyof typeof subjectSelections, value: string) => {
-        const newSelections = { ...subjectSelections, [field]: value };
-        setSubjectSelections(newSelections);
-
-        // Sync to selectedSubjects
-        const deptType = getSelectedDeptType();
-        const ids: string[] = [];
-
-        if (deptType === 'regular' || deptType === 'pg') {
-            if (field === 'major' ? value : newSelections.major) ids.push(field === 'major' ? value : newSelections.major);
-            if (field === 'minor' ? value : newSelections.minor) ids.push(field === 'minor' ? value : newSelections.minor);
-            if (field === 'mdc' ? value : newSelections.mdc) ids.push(field === 'mdc' ? value : newSelections.mdc);
-            if (field === 'vac' ? value : newSelections.vac) ids.push(field === 'vac' ? value : newSelections.vac);
-            if (field === 'aec' ? value : newSelections.aec) ids.push(field === 'aec' ? value : newSelections.aec);
-        } else if (deptType === 'vocational') {
-            if (field === 'core1' ? value : newSelections.core1) ids.push(field === 'core1' ? value : newSelections.core1);
-            if (field === 'core2' ? value : newSelections.core2) ids.push(field === 'core2' ? value : newSelections.core2);
-            if (field === 'core3' ? value : newSelections.core3) ids.push(field === 'core3' ? value : newSelections.core3);
-            if (field === 'generic1' ? value : newSelections.generic1) ids.push(field === 'generic1' ? value : newSelections.generic1);
-            if (field === 'generic2' ? value : newSelections.generic2) ids.push(field === 'generic2' ? value : newSelections.generic2);
-            if (field === 'aecc' ? value : newSelections.aecc) ids.push(field === 'aecc' ? value : newSelections.aecc);
-        }
-
-        setSelectedSubjects(ids.filter(id => id !== ''));
-    };
-
-    // Get excluded subject IDs (already selected in other dropdowns)
-    const getExcludedIds = (currentField: keyof typeof subjectSelections): string[] => {
-        const excluded: string[] = [];
-        const deptType = getSelectedDeptType();
-
-        if (deptType === 'regular' || deptType === 'pg') {
-            if (currentField !== 'major' && subjectSelections.major) excluded.push(subjectSelections.major);
-            if (currentField !== 'minor' && subjectSelections.minor) excluded.push(subjectSelections.minor);
-            if (currentField !== 'mdc' && subjectSelections.mdc) excluded.push(subjectSelections.mdc);
-            if (currentField !== 'vac' && subjectSelections.vac) excluded.push(subjectSelections.vac);
-            if (currentField !== 'aec' && subjectSelections.aec) excluded.push(subjectSelections.aec);
-        } else if (deptType === 'vocational') {
-            if (currentField !== 'core1' && subjectSelections.core1) excluded.push(subjectSelections.core1);
-            if (currentField !== 'core2' && subjectSelections.core2) excluded.push(subjectSelections.core2);
-            if (currentField !== 'core3' && subjectSelections.core3) excluded.push(subjectSelections.core3);
-            if (currentField !== 'generic1' && subjectSelections.generic1) excluded.push(subjectSelections.generic1);
-            if (currentField !== 'generic2' && subjectSelections.generic2) excluded.push(subjectSelections.generic2);
-            if (currentField !== 'aecc' && subjectSelections.aecc) excluded.push(subjectSelections.aecc);
-        }
-
-        return excluded;
+    // Remove a subject at index
+    const removeSubjectAtIndex = (index: number) => {
+        setSelectedSubjects(prev => {
+            const newArr = [...prev];
+            newArr.splice(index, 1);
+            return newArr;
+        });
+        setSubjectFieldCount(c => Math.max(c - 1, 1));
     };
 
     // Import Logic
@@ -862,12 +717,12 @@ export default function StudentsPage() {
 
     // Template for Regular students (BA/BSC/BCOM)
     const downloadRegularTemplate = () => {
-        const headers = ['student_id*', 'first_name*', 'last_name', 'email', 'subject_codes'];
+        const headers = ['student_id*', 'name*', 'email', 'subject_codes'];
         const dummyData = [
-            ['BA2025HIS001', 'John', 'Doe', 'john@example.com', '"History,Political Science,Hindi,Environmental Studies,English Communication"'],
-            ['BSC2025PHY002', 'Jane', 'Smith', 'jane@example.com', '"Physics,Chemistry,Mathematics"'],
-            ['BCOM2025COM003', 'Bob', 'Wilson', 'bob@example.com', '"Commerce,Economics"'],
-            ['BA2025ECO004', 'Alice', 'Brown', 'alice@example.com', '"Economics,History,Philosophy"']
+            ['BA2025HIS001', 'John Doe', 'john@example.com', '"History,Political Science,Hindi,Environmental Studies,English Communication"'],
+            ['BSC2025PHY002', 'Jane Smith', 'jane@example.com', '"Physics,Chemistry,Mathematics"'],
+            ['BCOM2025COM003', 'Bob Wilson', 'bob@example.com', '"Commerce,Economics"'],
+            ['BA2025ECO004', 'Alice Brown', 'alice@example.com', '"Economics,History,Philosophy"']
         ];
         const csvContent = [headers.join(','), ...dummyData.map(row => row.join(','))].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -880,14 +735,14 @@ export default function StudentsPage() {
 
     // Template for Vocational students (BCA/BSCIT/BBA)
     const downloadVocationalTemplate = () => {
-        const headers = ['student_id*', 'first_name*', 'last_name', 'email', 'subject_codes'];
+        const headers = ['student_id*', 'name*', 'email', 'subject_codes'];
         const dummyData = [
-            ['BCA2025SC001', 'Rahul', 'Kumar', 'rahul@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
-            ['BSCIT2025IT002', 'Priya', 'Sharma', 'priya@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
-            ['BBA2025BA003', 'Amit', 'Singh', 'amit@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
-            ['BCA2024SC004', 'Neha', 'Gupta', 'neha@example.com', '"C5,C6,C7,GE3A,GE3B,SEC1"'],
-            ['BCA2023SC005', 'Deepak', 'Roy', 'deepak@example.com', '"C11,C12,DSE1,DSE2"'],
-            ['BCA2022SC006', 'Anita', 'Das', 'anita@example.com', '"C13,C14,DSE3,DSE4"']
+            ['BCA2025SC001', 'Rahul Kumar', 'rahul@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
+            ['BSCIT2025IT002', 'Priya Sharma', 'priya@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
+            ['BBA2025BA003', 'Amit Singh', 'amit@example.com', '"C1,C2,GE1A,GE1B,AECC1"'],
+            ['BCA2024SC004', 'Neha Gupta', 'neha@example.com', '"C5,C6,C7,GE3A,GE3B,SEC1"'],
+            ['BCA2023SC005', 'Deepak Roy', 'deepak@example.com', '"C11,C12,DSE1,DSE2"'],
+            ['BCA2022SC006', 'Anita Das', 'anita@example.com', '"C13,C14,DSE3,DSE4"']
         ];
         const csvContent = [headers.join(','), ...dummyData.map(row => row.join(','))].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -903,8 +758,9 @@ export default function StudentsPage() {
             'student id': 'student_id', 'studentid': 'student_id', 'id': 'student_id',
             'student_id*': 'student_id', 'studentid*': 'student_id',
             'roll number': 'roll_number', 'rollnumber': 'roll_number', 'roll': 'roll_number', 'roll_no': 'roll_number',
-            'first name': 'first_name', 'firstname': 'first_name', 'name': 'first_name',
-            'first_name*': 'first_name', 'firstname*': 'first_name',
+            'first name': 'name', 'firstname': 'name', 'name': 'name',
+            'first_name*': 'name', 'firstname*': 'name', 'name*': 'name',
+            'first_name': 'name', 'full name': 'name', 'fullname': 'name', 'student name': 'name',
             'last name': 'last_name', 'lastname': 'last_name', 'surname': 'last_name',
             'last_name*': 'last_name', 'lastname*': 'last_name',
             'email': 'email', 'email address': 'email', 'email*': 'email',
@@ -1038,10 +894,7 @@ export default function StudentsPage() {
         const matchesDept = !filterDepartmentId || student.department_id === filterDepartmentId;
         const matchesSem = !filterSemester || student.current_semester.toString() === filterSemester;
 
-        const matchesStream = filterStream === 'all' || 
-            (student.student_id ? student.student_id.toUpperCase().startsWith(filterStream) : false);
-
-        return matchesSearch && matchesDept && matchesSem && matchesStream;
+        return matchesSearch && matchesDept && matchesSem;
     }).sort((a, b) =>
         String(a.roll_number || '').localeCompare(String(b.roll_number || ''), undefined, { numeric: true, sensitivity: 'base' })
     );
@@ -1107,8 +960,8 @@ export default function StudentsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6">
                     {/* Filters */}
                     <div className="md:col-span-4 flex gap-2">
-                        {isSuperAdmin && (
-                            <>
+                        {/* Always show department filters for Admins and HODs */}
+                            {new Set(departments.map(d => d.dept_type)).size > 1 && (
                                 <div className="relative w-full">
                                     <select
                                         className="w-full bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none cursor-pointer"
@@ -1125,6 +978,8 @@ export default function StudentsPage() {
                                     </select>
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                 </div>
+                            )}
+                            {departments.length > 1 && (
                                 <div className="relative w-full">
                                     <select
                                         className="w-full bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none cursor-pointer"
@@ -1140,8 +995,7 @@ export default function StudentsPage() {
                                     </select>
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                 </div>
-                            </>
-                        )}
+                            )}
                         <div className="relative w-full">
                             <select
                                 className="w-full bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none cursor-pointer"
@@ -1149,29 +1003,20 @@ export default function StudentsPage() {
                                 onChange={(e) => setFilterSemester(e.target.value)}
                             >
                                 <option value="">All Semesters</option>
-                                {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Sem {s}</option>)}
+                                {(() => {
+                                    const effectiveDeptType = filterDeptType || (filterDepartmentId ? getDeptType(departments.find(d => d.id === filterDepartmentId)) : (isSuperAdmin ? 'regular' : (departments.length > 0 ? getDeptType(departments[0]) : 'regular')));
+                                    return getActiveSemesters(effectiveDeptType).map(s => {
+                                        const label = getBatchLabel(s, effectiveDeptType);
+                                        return <option key={s} value={s}>Sem {s}{label ? ` (${label})` : ''}</option>;
+                                    });
+                                })()}
                             </select>
                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                         </div>
-                        {availableStreams.length > 0 && (
-                            <div className="relative w-full">
-                                <select
-                                    className="w-full bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none cursor-pointer"
-                                    value={filterStream}
-                                    onChange={(e) => setFilterStream(e.target.value)}
-                                >
-                                    <option value="all">All Streams</option>
-                                    {availableStreams.map(stream => (
-                                        <option key={stream} value={stream}>{stream}</option>
-                                    ))}
-                                </select>
-                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                            </div>
-                        )}
                     </div>
 
                     {/* Search Bar */}
-                    <div className={`relative ${isSuperAdmin ? 'md:col-span-8' : 'md:col-span-8'}`}>
+                    <div className={`relative md:col-span-8`}>
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                         <Input
                             placeholder="Search by name, roll no, or ID..."
@@ -1414,11 +1259,6 @@ export default function StudentsPage() {
                                                     {parsedInfo.programVariant}
                                                 </span>
                                             )}
-                                            {parsedInfo.geSubjects && (
-                                                <span className="px-2 py-1 text-xs bg-pink-100 text-pink-700 rounded-full">
-                                                    GE: {parsedInfo.geSubjects.ge1} + {parsedInfo.geSubjects.ge2}
-                                                </span>
-                                            )}
                                         </div>
                                         {/* HOD Warning - if parsed department doesn't match their department */}
                                         {user?.role === 'hod' && parsedInfo.isValid && (() => {
@@ -1437,27 +1277,16 @@ export default function StudentsPage() {
                                         })()}
                                     </div>
                                 )}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <Label htmlFor="firstName">First Name *</Label>
-                                        <Input
-                                            id="firstName"
-                                            value={formData.firstName}
-                                            onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                                            className="rounded-xl border-gray-200"
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <Label htmlFor="lastName">Last Name *</Label>
-                                        <Input
-                                            id="lastName"
-                                            value={formData.lastName}
-                                            onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                                            className="rounded-xl border-gray-200"
-                                            required
-                                        />
-                                    </div>
+                                <div>
+                                    <Label htmlFor="studentName">Name *</Label>
+                                    <Input
+                                        id="studentName"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                        placeholder="Full name"
+                                        className="rounded-xl border-gray-200"
+                                        required
+                                    />
                                 </div>
                                 <div>
                                     <Label htmlFor="email">Email</Label>
@@ -1502,235 +1331,90 @@ export default function StudentsPage() {
                                             if (!selectedStudentId) setSelectedSubjects([]);
                                         }}
                                     >
-                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
-                                            <option key={s} value={s}>Semester {s}</option>
-                                        ))}
+                                        {getActiveSemesters(getDeptType(departments.find(d => d.id === formData.departmentId))).map(s => {
+                                            const dt = getDeptType(departments.find(d => d.id === formData.departmentId));
+                                            const label = getBatchLabel(s, dt);
+                                            return (
+                                                <option key={s} value={s}>Sem {s}{label ? ` (${label})` : ''}</option>
+                                            );
+                                        })}
                                     </select>
                                 </div>
 
                                 {/* Subject Selection */}
                                 {formData.departmentId ? (
                                     <div className="pt-4 border-t">
-                                        <Label className="font-medium">Select Subjects *</Label>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <Label className="font-medium">Subjects <span className="text-red-500">*</span></Label>
+                                        </div>
                                         {getFilteredSubjects().length === 0 ? (
                                             <p className="text-gray-500 text-sm p-2 mt-2 bg-gray-50 rounded-xl">No subjects available for Semester {formData.semester}.</p>
                                         ) : (
-                                            <div className="mt-2 space-y-3">
-                                                {/* Regular/PG Course Subject Selection */}
-                                                {(getSelectedDeptType() === 'regular' || getSelectedDeptType() === 'pg') && (
-                                                    <>
-                                                        {/* Major - Auto-selected or first selection */}
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                                Major <span className="text-red-500">*</span>
-                                                                {parsedInfo?.isValid && <span className="text-green-600 ml-1">(Auto-selected)</span>}
-                                                            </label>
-                                                            <select
-                                                                className="w-full p-2 border border-gray-200 rounded-xl bg-white text-sm"
-                                                                value={subjectSelections.major}
-                                                                onChange={(e) => updateSubjectSelection('major', e.target.value)}
-                                                            >
-                                                                <option value="">Select Major Subject</option>
-                                                                {getFilteredSubjects()
-                                                                    .filter(s => !getExcludedIds('major').includes(s.id))
-                                                                    .map(s => (
-                                                                        <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
-                                                                    ))}
-                                                            </select>
-                                                        </div>
+                                            <div className="mt-2 space-y-2">
+                                                {/* Dynamic subject fields */}
+                                                {Array.from({ length: subjectFieldCount }).map((_, idx) => {
+                                                    const currentValue = selectedSubjects[idx] || '';
+                                                    // Exclude subjects already selected in OTHER dropdowns
+                                                    const otherSelectedIds = selectedSubjects.filter((_, i) => i !== idx);
+                                                    const availableOptions = getFilteredSubjects().filter(s => !otherSelectedIds.includes(s.id));
 
-                                                        {/* Minor - Optional */}
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-700 mb-1">Minor</label>
+                                                    return (
+                                                        <div key={idx} className="flex items-center gap-2">
+                                                            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-xs font-bold shrink-0">
+                                                                {idx + 1}
+                                                            </div>
                                                             <select
-                                                                className="w-full p-2 border border-gray-200 rounded-xl bg-white text-sm"
-                                                                value={subjectSelections.minor}
-                                                                onChange={(e) => updateSubjectSelection('minor', e.target.value)}
+                                                                className="flex-1 p-2 border border-gray-200 rounded-xl bg-white text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                                                value={currentValue}
+                                                                onChange={(e) => {
+                                                                    const newVal = e.target.value;
+                                                                    setSelectedSubjects(prev => {
+                                                                        const newArr = [...prev];
+                                                                        // Pad with empty strings if needed
+                                                                        while (newArr.length <= idx) newArr.push('');
+                                                                        newArr[idx] = newVal;
+                                                                        return newArr.filter(Boolean);
+                                                                    });
+                                                                }}
                                                             >
-                                                                <option value="">Select Minor (Optional)</option>
-                                                                {getFilteredSubjects()
-                                                                    .filter(s => !getExcludedIds('minor').includes(s.id))
-                                                                    .map(s => (
-                                                                        <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
-                                                                    ))}
+                                                                <option value="">Select Subject</option>
+                                                                {availableOptions.map(s => (
+                                                                    <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
+                                                                ))}
+                                                                {/* Keep current value visible even if it's from a different degree type */}
+                                                                {currentValue && !availableOptions.find(s => s.id === currentValue) && (() => {
+                                                                    const found = subjects.find(s => s.id === currentValue);
+                                                                    return found ? <option key={found.id} value={found.id}>{found.code} - {found.name}</option> : null;
+                                                                })()}
                                                             </select>
+                                                            {/* Remove button — only show if more than 1 field */}
+                                                            {subjectFieldCount > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeSubjectAtIndex(idx)}
+                                                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                                                                    title="Remove subject"
+                                                                >
+                                                                    <X className="w-4 h-4" />
+                                                                </button>
+                                                            )}
                                                         </div>
+                                                    );
+                                                })}
 
-                                                        {/* MDC - Optional */}
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-700 mb-1">MDC</label>
-                                                            <select
-                                                                className="w-full p-2 border border-gray-200 rounded-xl bg-white text-sm"
-                                                                value={subjectSelections.mdc}
-                                                                onChange={(e) => updateSubjectSelection('mdc', e.target.value)}
-                                                            >
-                                                                <option value="">Select MDC (Optional)</option>
-                                                                {getFilteredSubjects()
-                                                                    .filter(s => !getExcludedIds('mdc').includes(s.id))
-                                                                    .map(s => (
-                                                                        <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
-                                                                    ))}
-                                                            </select>
-                                                        </div>
-
-                                                        {/* VAC - Optional */}
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-700 mb-1">VAC</label>
-                                                            <select
-                                                                className="w-full p-2 border border-gray-200 rounded-xl bg-white text-sm"
-                                                                value={subjectSelections.vac}
-                                                                onChange={(e) => updateSubjectSelection('vac', e.target.value)}
-                                                            >
-                                                                <option value="">Select VAC (Optional)</option>
-                                                                {getFilteredSubjects()
-                                                                    .filter(s => !getExcludedIds('vac').includes(s.id))
-                                                                    .map(s => (
-                                                                        <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
-                                                                    ))}
-                                                            </select>
-                                                        </div>
-
-                                                        {/* AEC - Optional */}
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-700 mb-1">AEC</label>
-                                                            <select
-                                                                className="w-full p-2 border border-gray-200 rounded-xl bg-white text-sm"
-                                                                value={subjectSelections.aec}
-                                                                onChange={(e) => updateSubjectSelection('aec', e.target.value)}
-                                                            >
-                                                                <option value="">Select AEC (Optional)</option>
-                                                                {getFilteredSubjects()
-                                                                    .filter(s => !getExcludedIds('aec').includes(s.id))
-                                                                    .map(s => (
-                                                                        <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
-                                                                    ))}
-                                                            </select>
-                                                        </div>
-                                                    </>
-                                                )}
-
-                                                {/* Vocational Course Subject Selection */}
-                                                {getSelectedDeptType() === 'vocational' && (
-                                                    <>
-                                                        {/* Core Paper 1 */}
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                                Core Paper 1 <span className="text-red-500">*</span>
-                                                            </label>
-                                                            <select
-                                                                className="w-full p-2 border border-gray-200 rounded-xl bg-white text-sm"
-                                                                value={subjectSelections.core1}
-                                                                onChange={(e) => updateSubjectSelection('core1', e.target.value)}
-                                                            >
-                                                                <option value="">Select Core Paper 1</option>
-                                                                {getFilteredSubjects()
-                                                                    .filter(s => !getExcludedIds('core1').includes(s.id))
-                                                                    .map(s => (
-                                                                        <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
-                                                                    ))}
-                                                            </select>
-                                                        </div>
-
-                                                        {/* Core Paper 2 */}
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                                Core Paper 2 <span className="text-red-500">*</span>
-                                                            </label>
-                                                            <select
-                                                                className="w-full p-2 border border-gray-200 rounded-xl bg-white text-sm"
-                                                                value={subjectSelections.core2}
-                                                                onChange={(e) => updateSubjectSelection('core2', e.target.value)}
-                                                            >
-                                                                <option value="">Select Core Paper 2</option>
-                                                                {getFilteredSubjects()
-                                                                    .filter(s => !getExcludedIds('core2').includes(s.id))
-                                                                    .map(s => (
-                                                                        <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
-                                                                    ))}
-                                                            </select>
-                                                        </div>
-
-                                                        {/* Core Paper 3 (NOT MANDATORY) */}
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                                Core Paper 3 (NOT MANDATORY)
-                                                            </label>
-                                                            <select
-                                                                className="w-full p-2 border border-gray-200 rounded-xl bg-white text-sm"
-                                                                value={subjectSelections.core3}
-                                                                onChange={(e) => updateSubjectSelection('core3', e.target.value)}
-                                                            >
-                                                                <option value="">Select Core Paper 3</option>
-                                                                {getFilteredSubjects()
-                                                                    .filter(s => !getExcludedIds('core3').includes(s.id))
-                                                                    .map(s => (
-                                                                        <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
-                                                                    ))}
-                                                            </select>
-                                                        </div>
-
-                                                        {/* Generic Paper 1 */}
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                                Generic Paper 1 <span className="text-red-500">*</span>
-                                                            </label>
-                                                            <select
-                                                                className="w-full p-2 border border-gray-200 rounded-xl bg-white text-sm"
-                                                                value={subjectSelections.generic1}
-                                                                onChange={(e) => updateSubjectSelection('generic1', e.target.value)}
-                                                            >
-                                                                <option value="">Select Generic Paper 1</option>
-                                                                {getFilteredSubjects()
-                                                                    .filter(s => !getExcludedIds('generic1').includes(s.id))
-                                                                    .map(s => (
-                                                                        <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
-                                                                    ))}
-                                                            </select>
-                                                        </div>
-
-                                                        {/* Generic Paper 2 */}
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                                Generic Paper 2 <span className="text-red-500">*</span>
-                                                            </label>
-                                                            <select
-                                                                className="w-full p-2 border border-gray-200 rounded-xl bg-white text-sm"
-                                                                value={subjectSelections.generic2}
-                                                                onChange={(e) => updateSubjectSelection('generic2', e.target.value)}
-                                                            >
-                                                                <option value="">Select Generic Paper 2</option>
-                                                                {getFilteredSubjects()
-                                                                    .filter(s => !getExcludedIds('generic2').includes(s.id))
-                                                                    .map(s => (
-                                                                        <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
-                                                                    ))}
-                                                            </select>
-                                                        </div>
-
-                                                        {/* AECC */}
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                                AECC <span className="text-red-500">*</span>
-                                                            </label>
-                                                            <select
-                                                                className="w-full p-2 border border-gray-200 rounded-xl bg-white text-sm"
-                                                                value={subjectSelections.aecc}
-                                                                onChange={(e) => updateSubjectSelection('aecc', e.target.value)}
-                                                            >
-                                                                <option value="">Select AECC</option>
-                                                                {getFilteredSubjects()
-                                                                    .filter(s => !getExcludedIds('aecc').includes(s.id))
-                                                                    .map(s => (
-                                                                        <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
-                                                                    ))}
-                                                            </select>
-                                                        </div>
-                                                    </>
-                                                )}
+                                                {/* Add Subject button */}
+                                                <button
+                                                    type="button"
+                                                    onClick={addSubjectField}
+                                                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-2 rounded-xl transition-colors w-full justify-center border border-dashed border-blue-200 mt-1"
+                                                >
+                                                    <Plus className="w-4 h-4" />
+                                                    Add Subject
+                                                </button>
                                             </div>
                                         )}
                                         <p className="text-xs text-gray-500 mt-2 ml-1">
-                                            Selected: {selectedSubjects.length} subject(s)
+                                            Selected: {selectedSubjects.filter(Boolean).length} subject(s)
                                         </p>
                                     </div>
                                 ) : (

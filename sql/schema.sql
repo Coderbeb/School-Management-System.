@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS departments (
     name VARCHAR(100) NOT NULL UNIQUE,
     code VARCHAR(20) NOT NULL UNIQUE,
     dept_type VARCHAR(20) NOT NULL DEFAULT 'regular' CHECK (dept_type IN ('regular', 'vocational', 'pg')),
-    degree_type VARCHAR(20) NOT NULL DEFAULT 'ba' CHECK (degree_type IN ('ba', 'bsc', 'bcom', 'it', 'bba', 'mcom')),
+    degree_type VARCHAR(20) NOT NULL DEFAULT 'ba' CHECK (degree_type IN ('ba', 'bsc', 'bcom', 'bca', 'it', 'bba', 'mcom')),
     description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS subjects (
     code VARCHAR(20) NOT NULL,
     paper_code VARCHAR(20),
     name VARCHAR(200) NOT NULL,
-    degree_type VARCHAR(20) NOT NULL CHECK (degree_type IN ('ba', 'bsc', 'bcom', 'it', 'bba', 'mcom')),
+    degree_type VARCHAR(20) NOT NULL CHECK (degree_type IN ('ba', 'bsc', 'bcom', 'bca', 'it', 'bba', 'mcom')),
     credits INTEGER NOT NULL DEFAULT 3,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS attendance_records (
     lecture_number INTEGER NOT NULL DEFAULT 1,
     semester INTEGER DEFAULT 1,
     status VARCHAR(20) NOT NULL CHECK (status IN ('present', 'absent', 'late', 'excused')),
+    topic VARCHAR(255),
     remarks VARCHAR(255),
     recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT attendance_records_unique_with_semester UNIQUE(subject_id, student_id, teacher_id, date, lecture_number, semester)
@@ -110,8 +111,9 @@ CREATE TABLE IF NOT EXISTS attendance_records (
 CREATE TABLE IF NOT EXISTS holidays (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(100) NOT NULL,
-    date DATE NOT NULL UNIQUE,
+    date DATE NOT NULL,
     description TEXT,
+    department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -166,3 +168,38 @@ CREATE INDEX IF NOT EXISTS idx_attendance_session_count ON attendance_records(da
 -- Teacher-subjects table
 CREATE INDEX IF NOT EXISTS idx_teacher_subjects_teacher_id ON teacher_subjects(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_teacher_subjects_subject_id ON teacher_subjects(subject_id);
+
+-- ============================================================
+-- Class Schedule Tables
+-- ============================================================
+
+-- Class time slots: persists across days (HOD sets once, reused daily)
+CREATE TABLE IF NOT EXISTS class_time_slots (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
+    slot_number INTEGER NOT NULL CHECK (slot_number >= 1 AND slot_number <= 6),
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(department_id, slot_number)
+);
+
+-- Daily class assignments: teacher+subject per semester+slot, resets daily
+CREATE TABLE IF NOT EXISTS daily_class_assignments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
+    semester INTEGER NOT NULL,
+    slot_number INTEGER NOT NULL CHECK (slot_number >= 1 AND slot_number <= 6),
+    teacher_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    subject_id UUID REFERENCES subjects(id) ON DELETE CASCADE,
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(department_id, semester, slot_number, date)
+);
+
+-- Class schedule indexes
+CREATE INDEX IF NOT EXISTS idx_class_time_slots_dept ON class_time_slots(department_id);
+CREATE INDEX IF NOT EXISTS idx_daily_assignments_dept_date ON daily_class_assignments(department_id, date);
+CREATE INDEX IF NOT EXISTS idx_daily_assignments_teacher_date ON daily_class_assignments(teacher_id, date);

@@ -31,22 +31,38 @@ export async function GET(request: NextRequest) {
         const { role, departmentId: userDeptId, userId } = payload;
 
         const { searchParams } = new URL(request.url);
-        const subjectId = searchParams.get('subjectId');
+        const subjectIdsParam = searchParams.get('subjectIds'); // allows comma-separated string
         const departmentId = searchParams.get('departmentId');
         const semester = searchParams.get('semester');
+        const startDate = searchParams.get('startDate');
+        const endDate = searchParams.get('endDate');
+
+        // Allow HOD to view as teacher (for My Reports)
+        const view = searchParams.get('view');
+        const effectiveRole = (role === 'hod' && view === 'teacher') ? 'teacher' : role;
 
         // Build filters
         const filters: string[] = [];
         const params: (string | number)[] = [];
 
         // Role-based restrictions
-        if (role === 'hod' && userDeptId) {
-            // HOD: filter by their department (students.department_id)
-            params.push(userDeptId);
-            filters.push(`s.department_id = $${params.length}`);
-        } else if (role === 'teacher') {
+        if (effectiveRole === 'hod') {
+            if (departmentId) {
+                params.push(departmentId);
+                params.push(userId);
+                filters.push(`s.department_id = $${params.length - 1} AND s.department_id IN (
+                    SELECT department_id FROM users WHERE id = $${params.length}
+                    UNION SELECT department_id FROM user_departments WHERE user_id = $${params.length}
+                )`);
+            } else {
+                params.push(userId);
+                filters.push(`s.department_id IN (
+                    SELECT department_id FROM users WHERE id = $${params.length}
+                    UNION SELECT department_id FROM user_departments WHERE user_id = $${params.length}
+                )`);
+            }
+        } else if (effectiveRole === 'teacher') {
             // Teacher: Only show students who are enrolled in subjects this teacher teaches
-            // This matches: teacher's assigned subjects (teacher_subjects) ↔ student enrollments (student_subjects)
             params.push(userId);
             const teacherParamIdx = params.length;
             filters.push(`s.id IN (
@@ -54,35 +70,47 @@ export async function GET(request: NextRequest) {
                 JOIN teacher_subjects ts ON ts.subject_id = ss.subject_id
                 WHERE ts.teacher_id = $${teacherParamIdx}
             )`);
-            // Additionally filter by department if provided
             if (departmentId) {
                 params.push(departmentId);
                 filters.push(`s.department_id = $${params.length}`);
             }
-        } else if (role === 'super_admin' && departmentId) {
-            // Super admin with department filter (students.department_id)
+        } else if (effectiveRole === 'super_admin' && departmentId) {
             params.push(departmentId);
             filters.push(`s.department_id = $${params.length}`);
         }
 
-        // Semester filter (applies to all roles)
         if (semester) {
             params.push(parseInt(semester));
             filters.push(`s.current_semester = $${params.length}`);
         }
 
         // Subject filter
-        if (subjectId) {
-            params.push(subjectId);
-            filters.push(`ar.subject_id = $${params.length}`);
+        if (subjectIdsParam) {
+            const subjectIds = subjectIdsParam.split(',').filter(id => id.trim() !== '');
+            if (subjectIds.length > 0) {
+                const placeholders = subjectIds.map(id => {
+                    params.push(id);
+                    return `$${params.length}`;
+                }).join(', ');
+                filters.push(`ar.subject_id IN (${placeholders})`);
+            }
+        }
+
+        // Date filter
+        if (startDate) {
+            params.push(startDate);
+            filters.push(`ar.date >= $${params.length}`);
+        }
+        if (endDate) {
+            params.push(endDate);
+            filters.push(`ar.date <= $${params.length}`);
         }
 
         const filterClause = filters.length > 0 ? 'AND ' + filters.join(' AND ') : '';
 
         // For teachers, we also need to filter the COUNTs to only their subjects/records
-        // Strict Isolation: Only count records marked by THIS teacher
         let teacherSubjectFilter = '1=1';
-        if (role === 'teacher' && !subjectId) {
+        if (role === 'teacher' && !subjectIdsParam) {
             // finding the param index for userId
             let uIdIndex = params.indexOf(userId);
             if (uIdIndex === -1) {

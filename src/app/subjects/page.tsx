@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,8 @@ import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { Navbar } from '@/components/ui/Navbar';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
+import { useActiveSemesters } from '@/hooks/useActiveSemesters';
+import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface Subject {
     id: string;
@@ -78,6 +80,7 @@ export default function SubjectsPage() {
     const [selectedDegreeTypes, setSelectedDegreeTypes] = useState<string[]>(['it']); // For multi-select degree types (vocational)
     const [editingGroup, setEditingGroup] = useState<GroupedSubject | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const { getActiveSemesters, getBatchLabel } = useActiveSemesters();
 
     // Search & Filter
     const [searchTerm, setSearchTerm] = useState('');
@@ -117,6 +120,18 @@ export default function SubjectsPage() {
         fetchSubjects(token);
         fetchDepartments(token);
     }, [router]);
+
+    // Real-time updates
+    useRealtimeData({
+        tables: ['subjects', 'departments'],
+        onTableChange: useCallback(() => {
+            const token = localStorage.getItem('token');
+            if (token) {
+                fetchSubjects(token);
+                fetchDepartments(token);
+            }
+        }, []),
+    });
 
     const fetchSubjects = async (token: string) => {
         try {
@@ -241,7 +256,8 @@ export default function SubjectsPage() {
             'ba': 'BA',
             'bsc': 'B.Sc',
             'bcom': 'B.Com',
-            'it': 'BCA/IT',
+            'bca': 'BCA',
+            'it': 'BSc IT',
             'bba': 'BBA',
             'mcom': 'M.Com'
         };
@@ -251,7 +267,7 @@ export default function SubjectsPage() {
     // Get default degree type based on course type
     const getDefaultDegreeType = (deptType: string) => {
         if (deptType === 'regular') return 'ba';
-        if (deptType === 'vocational') return 'it';
+        if (deptType === 'vocational') return 'bca'; // Default to bca if unspecified vocational
         if (deptType === 'pg') return 'mcom';
         return 'ba';
     };
@@ -296,7 +312,7 @@ export default function SubjectsPage() {
 
         // For vocational, require at least one degree type selected
         if (formData.deptType === 'vocational' && selectedDegreeTypes.length === 0) {
-            setError('Please select at least one degree type (BCA/IT or BBA)');
+            setError('Please select at least one degree type (BCA, BSc IT, or BBA)');
             return;
         }
 
@@ -511,7 +527,7 @@ export default function SubjectsPage() {
             ['ENG101', '', 'English Literature', 'ba', '1,2,3,4,5', '4'],
             ['MATH101', 'PC-MATH-101', 'Mathematics', 'bsc', '1,2,3', '4'],
             ['ACC101', '', 'Accountancy', 'bcom', '1,2,3,4,5,6', '3'],
-            ['PROG101', 'BCA-PROG', 'Programming in C', 'it,bba', '1,2', '4'],
+            ['PROG101', 'BCA-PROG', 'Programming in C', 'bca,it,bba', '1,2', '4'],
             ['EVS101', '', 'Environmental Studies', 'ba,bsc,bcom', '1', '2'],
             ['MGT101', '', 'Management Principles', 'bba', '1,2,3', '3']
         ];
@@ -648,24 +664,24 @@ export default function SubjectsPage() {
                 {/* Search & Filter Controls */}
                 <div className="mb-6 flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
                     <div className="flex gap-2 w-full md:w-auto">
-                        {user?.role === 'super_admin' && (
-                            <div className="relative w-full md:w-auto">
-                                <select
-                                    className="w-full md:w-48 bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none cursor-pointer"
-                                    value={filterDegreeType}
-                                    onChange={(e) => setFilterDegreeType(e.target.value)}
-                                >
-                                    <option value="">All Degrees</option>
-                                    <option value="ba">BA (Bachelor of Arts)</option>
-                                    <option value="bsc">B.Sc (Bachelor of Science)</option>
-                                    <option value="bcom">B.Com (Bachelor of Commerce)</option>
-                                    <option value="it">BCA / IT</option>
-                                    <option value="bba">BBA</option>
-                                    <option value="mcom">M.Com (Master of Commerce)</option>
-                                </select>
-                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                            </div>
-                        )}
+                        {/* Always show degree filter for Admins and HODs */}
+                        <div className="relative w-full md:w-auto">
+                            <select
+                                className="w-full md:w-48 bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none cursor-pointer"
+                                value={filterDegreeType}
+                                onChange={(e) => setFilterDegreeType(e.target.value)}
+                            >
+                                <option value="">All Degrees</option>
+                                <option value="ba">BA (Bachelor of Arts)</option>
+                                <option value="bsc">B.Sc (Bachelor of Science)</option>
+                                <option value="bcom">B.Com (Bachelor of Commerce)</option>
+                                <option value="bca">BCA</option>
+                                <option value="it">BSc IT</option>
+                                <option value="bba">BBA</option>
+                                <option value="mcom">M.Com (Master of Commerce)</option>
+                            </select>
+                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                        </div>
                         <div className="relative w-full md:w-auto">
                             <select
                                 className="w-full md:w-40 bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none cursor-pointer"
@@ -673,9 +689,12 @@ export default function SubjectsPage() {
                                 onChange={(e) => setFilterSemester(e.target.value)}
                             >
                                 <option value="">All Semesters</option>
-                                {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
-                                    <option key={s} value={s}>Sem {s}</option>
-                                ))}
+                                {getActiveSemesters().map(s => {
+                                    const label = getBatchLabel(s);
+                                    return (
+                                        <option key={s} value={s}>Sem {s}{label ? ` (${label})` : ''}</option>
+                                    );
+                                })}
                             </select>
                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                         </div>
@@ -1002,14 +1021,14 @@ export default function SubjectsPage() {
                                                 });
                                                 // Reset selectedDegreeTypes based on course type
                                                 if (newDeptType === 'vocational') {
-                                                    setSelectedDegreeTypes(['it']); // Default to BCA/IT selected
+                                                    setSelectedDegreeTypes(['bca']); // Default to BCA selected
                                                 } else {
                                                     setSelectedDegreeTypes([newDegreeType]);
                                                 }
                                             }}
                                         >
                                             <option value="regular">Regular (BA/BSc/BCom)</option>
-                                            <option value="vocational">Vocational (BCA/IT, BBA)</option>
+                                            <option value="vocational">Vocational (BCA, BSc IT, BBA)</option>
                                             <option value="pg">Postgraduate (MCom)</option>
                                         </select>
                                     </div>
@@ -1025,7 +1044,8 @@ export default function SubjectsPage() {
                                             <>
                                                 <div className="grid grid-cols-2 gap-2 mt-2">
                                                     {[
-                                                        { value: 'it', label: 'BCA / IT' },
+                                                        { value: 'bca', label: 'BCA' },
+                                                        { value: 'it', label: 'BSc IT' },
                                                         { value: 'bba', label: 'BBA' }
                                                     ].map(opt => (
                                                         <label
@@ -1052,7 +1072,7 @@ export default function SubjectsPage() {
                                                     ))}
                                                 </div>
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    Selected: {selectedDegreeTypes.length === 0 ? 'None' : selectedDegreeTypes.map(dt => dt === 'it' ? 'BCA/IT' : 'BBA').join(', ')}
+                                                    Selected: {selectedDegreeTypes.length === 0 ? 'None' : selectedDegreeTypes.map(dt => dt === 'bca' ? 'BCA' : dt === 'it' ? 'BSc IT' : 'BBA').join(', ')}
                                                 </p>
                                             </>
                                         ) : (

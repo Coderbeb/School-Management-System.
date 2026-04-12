@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,7 @@ import { Navbar } from '@/components/ui/Navbar';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
 import { getInitials } from '@/lib/utils';
+import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface DepartmentInfo {
     id: string;
@@ -69,7 +70,7 @@ interface GroupedSubject {
     code: string;
     paperCode?: string | null;
     name: string;
-    degreeType: string;
+    degreeTypes: string[];
     semesters: number[];
 }
 
@@ -93,11 +94,12 @@ export default function TeachersPage() {
 
     // Form States
     const [formData, setFormData] = useState({
-        firstName: '', lastName: '', email: '', role: 'teacher', password: ''
+        name: '', email: '', role: 'teacher', password: ''
     });
     const [selectedDepartmentIds, setSelectedDepartmentIds] = useState<string[]>([]);
     const [selectedSubjectKeys, setSelectedSubjectKeys] = useState<string[]>([]);
     const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
+    const [enablePasswordUpdate, setEnablePasswordUpdate] = useState(false);
 
     // Search & Filter
     const [searchTerm, setSearchTerm] = useState('');
@@ -114,15 +116,18 @@ export default function TeachersPage() {
     // Default academic year
     const [academicYear] = useState('2025-2026');
 
-    // Group subjects by code + degreeType for dropdown
+    // Group subjects by code for dropdown
     const groupedSubjects = useMemo(() => {
         const groups: Map<string, GroupedSubject> = new Map();
 
         subjects.forEach(subject => {
-            const key = `${subject.code}|${subject.degreeType}`;
+            const key = subject.code; // Group ONLY by code
 
             if (groups.has(key)) {
                 const group = groups.get(key)!;
+                if (!group.degreeTypes.includes(subject.degreeType)) {
+                    group.degreeTypes.push(subject.degreeType);
+                }
                 for (const sem of subject.semesters) {
                     if (!group.semesters.includes(sem)) {
                         group.semesters.push(sem);
@@ -133,7 +138,7 @@ export default function TeachersPage() {
                     code: subject.code,
                     paperCode: subject.paperCode || null,
                     name: subject.name,
-                    degreeType: subject.degreeType,
+                    degreeTypes: [subject.degreeType],
                     semesters: [...subject.semesters]
                 });
             }
@@ -152,7 +157,18 @@ export default function TeachersPage() {
         const selectedDegreeTypes = departments
             .filter(d => selectedDepartmentIds.includes(d.id))
             .map(d => d.degree_type);
-        return groupedSubjects.filter(([, g]) => selectedDegreeTypes.includes(g.degreeType));
+        
+        // Include if the grouped subject contains ANY of the selected degree types
+        const filtered = groupedSubjects.filter(([, g]) => 
+            g.degreeTypes.some(dt => selectedDegreeTypes.includes(dt))
+        );
+        
+        // Sort according to paper code
+        return filtered.sort(([, a], [, b]) => {
+            const paperA = (a.paperCode || a.code || '').toLowerCase();
+            const paperB = (b.paperCode || b.code || '').toLowerCase();
+            return paperA.localeCompare(paperB, undefined, { numeric: true, sensitivity: 'base' });
+        });
     }, [groupedSubjects, selectedDepartmentIds, departments]);
 
     const [error, setError] = useState('');
@@ -185,9 +201,23 @@ export default function TeachersPage() {
         fetchSubjects(token);
     }, [router]);
 
+    // Real-time updates: silently re-fetch when DB tables change
+    useRealtimeData({
+        tables: ['users', 'teacher_subjects', 'teacher_departments', 'departments', 'subjects'],
+        onTableChange: useCallback(() => {
+            const token = localStorage.getItem('token');
+            if (token) {
+                fetchTeachers(token);
+                fetchDepartments(token);
+                fetchSubjects(token);
+            }
+        }, []),
+    });
+
     const fetchTeachers = async (token: string) => {
         try {
             const res = await fetch('/api/teachers', {
+                cache: 'no-store',
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
@@ -207,6 +237,7 @@ export default function TeachersPage() {
     const fetchDepartments = async (token: string) => {
         try {
             const res = await fetch('/api/departments', {
+                cache: 'no-store',
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
@@ -221,6 +252,7 @@ export default function TeachersPage() {
     const fetchSubjects = async (token: string) => {
         try {
             const res = await fetch('/api/subjects', {
+                cache: 'no-store',
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
@@ -241,10 +273,11 @@ export default function TeachersPage() {
     const resetForm = () => {
         // For HOD users, auto-set their departmentId
         const defaultDeptIds = user?.role === 'hod' && user.departmentId ? [user.departmentId] : [];
-        setFormData({ firstName: '', lastName: '', email: '', role: 'teacher', password: '' });
+        setFormData({ name: '', email: '', role: 'teacher', password: '' });
         setSelectedDepartmentIds(defaultDeptIds);
         setSelectedSubjectKeys([]);
         setSelectedTeacherId(null);
+        setEnablePasswordUpdate(false);
         setError('');
         setSuccess('');
     };
@@ -257,7 +290,7 @@ export default function TeachersPage() {
                 const dept = departments.find(d => d.id === deptId);
                 if (dept) {
                     const deptSubjectKeys = groupedSubjects
-                        .filter(([, g]) => g.degreeType === dept.degree_type)
+                        .filter(([, g]) => g.degreeTypes.includes(dept.degree_type) && g.degreeTypes.length === 1)
                         .map(([key]) => key);
                     setSelectedSubjectKeys(prevSubs => prevSubs.filter(k => !deptSubjectKeys.includes(k)));
                 }
@@ -280,12 +313,12 @@ export default function TeachersPage() {
 
     const handleEdit = (teacher: Teacher) => {
         setFormData({
-            firstName: teacher.first_name,
-            lastName: teacher.last_name,
+            name: [teacher.first_name, teacher.last_name].filter(Boolean).join(' ').trim(),
             email: teacher.email,
             role: teacher.role,
             password: ''
         });
+        setEnablePasswordUpdate(false);
 
         // Set selected departments
         const deptIds: string[] = [];
@@ -304,7 +337,7 @@ export default function TeachersPage() {
             teacher.subjects.forEach(sub => {
                 const matchingSubject = subjects.find(s => s.id === sub.subjectId);
                 if (matchingSubject) {
-                    subjectKeys.add(`${matchingSubject.code}|${matchingSubject.degreeType}`);
+                    subjectKeys.add(matchingSubject.code);
                 }
             });
             setSelectedSubjectKeys(Array.from(subjectKeys));
@@ -338,14 +371,18 @@ export default function TeachersPage() {
                         'Content-Type': 'application/json',
                         Authorization: `Bearer ${token}`,
                     },
-                    body: JSON.stringify({
-                        id: selectedTeacherId,
-                        firstName: formData.firstName,
-                        lastName: formData.lastName,
-                        email: formData.email,
-                        role: formData.role,
-                        departmentIds: selectedDepartmentIds
-                    }),
+                    body: JSON.stringify((() => {
+                        const parts = formData.name.trim().split(/\s+/);
+                        return {
+                            id: selectedTeacherId,
+                            firstName: parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0],
+                            lastName: parts.length > 1 ? parts[parts.length - 1] : '',
+                            email: formData.email,
+                            role: formData.role,
+                            password: formData.password || undefined,
+                            departmentIds: selectedDepartmentIds
+                        };
+                    })()),
                 });
 
                 const data = await res.json();
@@ -365,14 +402,17 @@ export default function TeachersPage() {
                         'Content-Type': 'application/json',
                         Authorization: `Bearer ${token}`,
                     },
-                    body: JSON.stringify({
-                        firstName: formData.firstName,
-                        lastName: formData.lastName,
-                        email: formData.email,
-                        role: formData.role,
-                        password: formData.password || undefined,
-                        departmentIds: selectedDepartmentIds
-                    }),
+                    body: JSON.stringify((() => {
+                        const parts = formData.name.trim().split(/\s+/);
+                        return {
+                            firstName: parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0],
+                            lastName: parts.length > 1 ? parts[parts.length - 1] : '',
+                            email: formData.email,
+                            role: formData.role,
+                            password: formData.password || undefined,
+                            departmentIds: selectedDepartmentIds
+                        };
+                    })()),
                 });
 
                 const data = await res.json();
@@ -411,54 +451,54 @@ export default function TeachersPage() {
         try {
             // Get current teacher's assignments
             const currentTeacher = teachers.find(t => t.id === teacherId);
-            const currentSubjectKeys = new Set<string>();
+            const currentAssignmentSubjectIds = new Set<string>();
 
             if (currentTeacher?.subjects) {
                 currentTeacher.subjects.forEach(sub => {
-                    const matchingSubject = subjects.find(s => s.id === sub.subjectId);
-                    if (matchingSubject) {
-                        currentSubjectKeys.add(`${matchingSubject.code}|${matchingSubject.degreeType}`);
-                    }
+                    currentAssignmentSubjectIds.add(sub.subjectId);
                 });
             }
 
-            // Find subjects to remove
-            const keysToRemove = [...currentSubjectKeys].filter(k => !selectedSubjectKeys.includes(k));
+            // Determine which exact subject IDs they SHOULD have based on selected codes AND selected departments
+            const targetDegreeTypes = departments
+                .filter(d => selectedDepartmentIds.includes(d.id))
+                .map(d => d.degree_type);
 
-            // Remove assignments for unselected subjects
+            const targetSubjectIds = new Set<string>();
+            const targetSubjects = subjects.filter(s => 
+                selectedSubjectKeys.includes(s.code) && targetDegreeTypes.includes(s.degreeType)
+            );
+            targetSubjects.forEach(s => targetSubjectIds.add(s.id));
+
+            // Find assignments to remove (in current, not in target)
             if (currentTeacher?.subjects) {
                 for (const sub of currentTeacher.subjects) {
-                    const matchingSubject = subjects.find(s => s.id === sub.subjectId);
-                    if (matchingSubject) {
-                        const key = `${matchingSubject.code}|${matchingSubject.degreeType}`;
-                        if (keysToRemove.includes(key)) {
-                            await fetch(`/api/teacher-subjects?id=${sub.assignmentId}`, {
-                                method: 'DELETE',
-                                headers: { Authorization: `Bearer ${token}` }
-                            });
-                        }
+                    if (!targetSubjectIds.has(sub.subjectId)) {
+                        await fetch(`/api/teacher-subjects?id=${sub.assignmentId}`, {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
                     }
                 }
             }
 
-            // Add new subject assignments
-            const keysToAdd = selectedSubjectKeys.filter(k => !currentSubjectKeys.has(k));
-
-            for (const key of keysToAdd) {
-                const [subjectCode, degreeType] = key.split('|');
-                await fetch('/api/teacher-subjects', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        teacherId,
-                        subjectCode,
-                        degreeType,
-                        academicYear
-                    }),
-                });
+            // Find assignments to add (in target, not in current)
+            for (const subject of targetSubjects) {
+                if (!currentAssignmentSubjectIds.has(subject.id)) {
+                    await fetch('/api/teacher-subjects', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Authorization: `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({
+                            teacherId,
+                            subjectCode: subject.code,
+                            degreeType: subject.degreeType,
+                            academicYear
+                        }),
+                    });
+                }
             }
 
             return true;
@@ -472,7 +512,8 @@ export default function TeachersPage() {
     const normalizeData = (data: any[]) => {
         const keyMap: { [key: string]: string } = {
             'email': 'email', 'email address': 'email', 'mail': 'email', 'email*': 'email',
-            'first name': 'first_name', 'firstname': 'first_name', 'name': 'first_name', 'first_name': 'first_name', 'first_name*': 'first_name',
+            'first name': 'name', 'firstname': 'name', 'name': 'name', 'first_name': 'name', 'first_name*': 'name',
+            'full name': 'name', 'fullname': 'name', 'teacher name': 'name', 'name*': 'name',
             'last name': 'last_name', 'lastname': 'last_name', 'surname': 'last_name', 'last_name': 'last_name', 'last_name*': 'last_name',
             'department': 'department_code', 'dept': 'department_code', 'department code': 'department_code', 'department_code': 'department_code', 'department_code*': 'department_code',
             'role': 'role', 'position': 'role', 'type': 'role', 'role*': 'role',
@@ -544,12 +585,12 @@ export default function TeachersPage() {
 
     const downloadTemplate = () => {
         // Teachers template - all mandatory except password and subjects
-        const headers = ['email*', 'first_name*', 'last_name*', 'department_code*', 'role*', 'password', 'subject_codes'];
+        const headers = ['email*', 'name*', 'department_code*', 'role*', 'password', 'subject_codes'];
         const dummyData = [
-            ['teacher1@college.edu', 'Amit', 'Sharma', 'IT', 'teacher', '', 'Programming,DBMS'],
-            ['teacher2@college.edu', 'Priya', 'Verma', 'HIS', 'teacher', '', 'History,Political Science'],
-            ['hod.physics@college.edu', 'Dr. Rajesh', 'Kumar', 'PHY', 'hod', 'custom123', 'Physics,Mathematics'],
-            ['hod.bba@college.edu', 'Dr. Neha', 'Singh', 'BBA', 'hod', '', 'Management,Marketing,Accounts']
+            ['teacher1@college.edu', 'Amit Sharma', 'IT', 'teacher', '', 'Programming,DBMS'],
+            ['teacher2@college.edu', 'Priya Verma', 'HIS', 'teacher', '', 'History,Political Science'],
+            ['hod.physics@college.edu', 'Dr. Rajesh Kumar', 'PHY', 'hod', 'custom123', 'Physics,Mathematics'],
+            ['hod.bba@college.edu', 'Dr. Neha Singh', 'BBA', 'hod', '', 'Management,Marketing,Accounts']
         ];
 
         const csvContent = [
@@ -961,27 +1002,16 @@ export default function TeachersPage() {
                         <CardContent className="pt-6 pb-6 overflow-y-auto custom-scrollbar">
                             <form onSubmit={handleSubmit} className="space-y-4">
                                 {/* Basic Info Section */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="firstName">First Name *</Label>
-                                        <Input
-                                            id="firstName"
-                                            value={formData.firstName}
-                                            onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                                            required
-                                            className="rounded-xl border-gray-200"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="lastName">Last Name *</Label>
-                                        <Input
-                                            id="lastName"
-                                            value={formData.lastName}
-                                            onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                                            required
-                                            className="rounded-xl border-gray-200"
-                                        />
-                                    </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="teacherName">Name *</Label>
+                                    <Input
+                                        id="teacherName"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                        placeholder="Full name"
+                                        required
+                                        className="rounded-xl border-gray-200"
+                                    />
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -996,20 +1026,40 @@ export default function TeachersPage() {
                                             className="rounded-xl border-gray-200"
                                         />
                                     </div>
-                                    {!selectedTeacherId && (
-                                        <div className="space-y-2">
-                                            <Label htmlFor="password">Password</Label>
-                                            <Input
-                                                id="password"
-                                                type="password"
-                                                value={formData.password || ''}
-                                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                                placeholder="Leave blank for default"
-                                                className="rounded-xl border-gray-200"
-                                            />
-                                            <p className="text-xs text-gray-400">Default: Welcome@123</p>
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            {selectedTeacherId && (
+                                                <input
+                                                    type="checkbox"
+                                                    id="enablePasswordUpdate"
+                                                    checked={enablePasswordUpdate}
+                                                    onChange={(e) => {
+                                                        setEnablePasswordUpdate(e.target.checked);
+                                                        if (!e.target.checked) setFormData({ ...formData, password: '' });
+                                                    }}
+                                                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                                />
+                                            )}
+                                            <Label 
+                                                htmlFor={selectedTeacherId ? "enablePasswordUpdate" : "password"} 
+                                                className={selectedTeacherId ? "cursor-pointer" : ""}
+                                            >
+                                                {selectedTeacherId ? 'Update Password (Optional)' : 'Password'}
+                                            </Label>
                                         </div>
-                                    )}
+                                        <Input
+                                            id="password"
+                                            type="password"
+                                            value={formData.password || ''}
+                                            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                            placeholder={selectedTeacherId ? (enablePasswordUpdate ? "Enter new password" : "Check box to edit") : "Leave blank for default"}
+                                            className="rounded-xl border-gray-200 disabled:opacity-50 disabled:bg-gray-50"
+                                            disabled={selectedTeacherId ? !enablePasswordUpdate : false}
+                                        />
+                                        <p className="text-xs text-gray-400">
+                                            {selectedTeacherId ? "Check the box to enable password update" : "Default: Welcome@123"}
+                                        </p>
+                                    </div>
                                 </div>
 
                                 {isSuperAdmin && (
@@ -1128,7 +1178,12 @@ export default function TeachersPage() {
                                                             className="w-4 h-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500"
                                                         />
                                                         <div>
-                                                            <div className="text-sm font-medium text-gray-900">{group.name}</div>
+                                                            <div className="text-sm font-medium text-gray-900">
+                                                                {group.degreeTypes.length > 0 && (
+                                                                    <span className="text-amber-600 font-bold mr-1">[{group.degreeTypes.map(d => d.toUpperCase()).join(', ')}]</span>
+                                                                )}
+                                                                {group.name}
+                                                            </div>
                                                             <div className="text-xs text-gray-500">{group.paperCode || group.code} • Sem {group.semesters.join(', ')}</div>
                                                         </div>
                                                     </div>

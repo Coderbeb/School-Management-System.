@@ -3,6 +3,8 @@ import { query } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 import { parseStudentId } from '@/lib/parseStudentId';
 
+export const dynamic = 'force-dynamic';
+
 interface StudentRow {
     id: string;
     roll_number: number;
@@ -38,10 +40,12 @@ export async function GET(request: NextRequest) {
              LEFT JOIN departments d ON s.department_id = d.id`;
         const params: string[] = [];
 
-        // HODs can only see their department's students
-        if (payload.role === 'hod' && payload.departmentId) {
-            queryText += ' WHERE s.department_id = $1';
-            params.push(payload.departmentId);
+        // HODs can see students from all their assigned departments
+        if (payload.role === 'hod' && payload.userId) {
+            queryText += ` WHERE s.department_id IN (
+                SELECT department_id FROM user_departments WHERE user_id = $1
+            ) OR s.department_id = $2`;
+            params.push(payload.userId, payload.departmentId || '00000000-0000-0000-0000-000000000000');
         }
 
         queryText += ' ORDER BY s.roll_number ASC';
@@ -70,8 +74,8 @@ export async function POST(request: NextRequest) {
 
         const { studentId, rollNumber, firstName, lastName, email, semester, departmentId } = await request.json();
 
-        if (!studentId || !rollNumber || !firstName || !lastName || !departmentId) {
-            return NextResponse.json({ error: 'Student ID, roll number, first name, last name, and department are required' }, { status: 400 });
+        if (!studentId || !rollNumber || !firstName || !departmentId) {
+            return NextResponse.json({ error: 'Student ID, roll number, first name, and department are required' }, { status: 400 });
         }
 
         // Extract batch_year from the student ID (e.g., BCA2025SC001 → 2025)
@@ -82,7 +86,7 @@ export async function POST(request: NextRequest) {
             `INSERT INTO students (roll_number, roll_number_old, first_name, last_name, email, current_semester, batch_year, department_id, student_id)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              RETURNING *`,
-            [parseInt(rollNumber), rollNumber.toString(), firstName, lastName, email || null, parseInt(semester) || 1, batchYear, departmentId, studentId]
+            [parseInt(rollNumber), rollNumber.toString(), firstName, lastName || '', email || null, parseInt(semester) || 1, batchYear, departmentId, studentId]
         );
 
         return NextResponse.json({ student: students[0] }, { status: 201 });
@@ -121,7 +125,7 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ error: 'Student ID required' }, { status: 400 });
         }
 
-        // Check if student belongs to HOD's department
+        // Check if student belongs to HOD's departments
         if (payload.role === 'hod') {
             const student = await query<{ department_id: string }>(
                 'SELECT department_id FROM students WHERE id = $1',
@@ -130,7 +134,14 @@ export async function DELETE(request: NextRequest) {
             if (student.length === 0) {
                 return NextResponse.json({ error: 'Student not found' }, { status: 404 });
             }
-            if (student[0].department_id !== payload.departmentId) {
+
+            const allowedDepts = await query<{ department_id: string }>(
+                'SELECT department_id FROM user_departments WHERE user_id = $1',
+                [payload.userId]
+            );
+            const allowedDeptIds = [payload.departmentId, ...allowedDepts.map(d => d.department_id)].filter(Boolean);
+
+            if (!allowedDeptIds.includes(student[0].department_id)) {
                 return NextResponse.json({ error: 'Access denied' }, { status: 403 });
             }
         }
@@ -168,7 +179,7 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'Student ID required' }, { status: 400 });
         }
 
-        // HOD can only edit students in their own department
+        // HOD can only edit students in their own departments
         if (payload.role === 'hod') {
             const student = await query<{ department_id: string }>(
                 'SELECT department_id FROM students WHERE id = $1',
@@ -177,7 +188,14 @@ export async function PUT(request: NextRequest) {
             if (student.length === 0) {
                 return NextResponse.json({ error: 'Student not found' }, { status: 404 });
             }
-            if (student[0].department_id !== payload.departmentId) {
+
+            const allowedDepts = await query<{ department_id: string }>(
+                'SELECT department_id FROM user_departments WHERE user_id = $1',
+                [payload.userId]
+            );
+            const allowedDeptIds = [payload.departmentId, ...allowedDepts.map(d => d.department_id)].filter(Boolean);
+
+            if (!allowedDeptIds.includes(student[0].department_id)) {
                 return NextResponse.json({ error: 'Access denied' }, { status: 403 });
             }
         }
@@ -189,7 +207,7 @@ export async function PUT(request: NextRequest) {
         if (studentId) { updateFields.push(`student_id = $${++paramCount}`); params.push(studentId); }
         if (rollNumber) { updateFields.push(`roll_number = $${++paramCount}`); params.push(parseInt(rollNumber)); }
         if (firstName) { updateFields.push(`first_name = $${++paramCount}`); params.push(firstName); }
-        if (lastName) { updateFields.push(`last_name = $${++paramCount}`); params.push(lastName); }
+        if (lastName !== undefined) { updateFields.push(`last_name = $${++paramCount}`); params.push(lastName); }
         if (email) { updateFields.push(`email = $${++paramCount}`); params.push(email); }
         if (semester) { updateFields.push(`current_semester = $${++paramCount}`); params.push(parseInt(semester)); }
         if (departmentId) { updateFields.push(`department_id = $${++paramCount}`); params.push(departmentId); }

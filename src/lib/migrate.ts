@@ -62,17 +62,118 @@ const MIGRATIONS: { name: string; sql: string }[] = [
                 ON attendance_records(date, subject_id, semester, lecture_number);
         `
     },
-    // Add future migrations here as new entries:
-    // { name: '002_next_migration', sql: `...` },
+    {
+        name: '002_holidays_department_id',
+        sql: `
+            -- Add department_id to holidays for department-specific holidays
+            ALTER TABLE holidays
+            ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE CASCADE;
+
+            -- Drop unique date constraint so multiple departments can have holidays on the same date
+            ALTER TABLE holidays
+            DROP CONSTRAINT IF EXISTS holidays_date_key;
+        `
+    },
+    {
+        name: '003_add_topic_column',
+        sql: `
+            -- Add optional topic column to attendance_records
+            ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS topic VARCHAR(255);
+        `
+    },
+    {
+        name: '004_class_schedule',
+        sql: `
+            -- Class time slots: persists across days (HOD sets once, reused daily)
+            CREATE TABLE IF NOT EXISTS class_time_slots (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
+                slot_number INTEGER NOT NULL CHECK (slot_number >= 1 AND slot_number <= 6),
+                start_time TIME NOT NULL,
+                end_time TIME NOT NULL,
+                updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(department_id, slot_number)
+            );
+
+            -- Daily class assignments: teacher+subject per semester+slot, resets daily
+            CREATE TABLE IF NOT EXISTS daily_class_assignments (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
+                semester INTEGER NOT NULL,
+                slot_number INTEGER NOT NULL CHECK (slot_number >= 1 AND slot_number <= 6),
+                teacher_id UUID REFERENCES users(id) ON DELETE CASCADE,
+                subject_id UUID REFERENCES subjects(id) ON DELETE CASCADE,
+                date DATE NOT NULL DEFAULT CURRENT_DATE,
+                created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(department_id, semester, slot_number, date)
+            );
+
+            -- Indexes for fast lookups
+            CREATE INDEX IF NOT EXISTS idx_class_time_slots_dept ON class_time_slots(department_id);
+            CREATE INDEX IF NOT EXISTS idx_daily_assignments_dept_date ON daily_class_assignments(department_id, date);
+            CREATE INDEX IF NOT EXISTS idx_daily_assignments_teacher_date ON daily_class_assignments(teacher_id, date);
+        `
+    },
+    {
+        name: '005_realtime_notify_triggers',
+        sql: `
+            -- Generic function for real-time NOTIFY on table changes
+            CREATE OR REPLACE FUNCTION notify_table_change()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                PERFORM pg_notify(
+                    'table_changes',
+                    json_build_object('table', TG_TABLE_NAME, 'op', TG_OP)::text
+                );
+                RETURN COALESCE(NEW, OLD);
+            END;
+            $$ LANGUAGE plpgsql;
+
+            -- Attach triggers to all key tables
+            DO $$
+            DECLARE
+                tbl TEXT;
+            BEGIN
+                FOR tbl IN
+                    SELECT unnest(ARRAY[
+                        'students', 'users', 'departments', 'subjects',
+                        'student_subjects', 'teacher_subjects', 'teacher_departments',
+                        'holidays', 'attendance_records',
+                        'class_time_slots', 'daily_class_assignments',
+                        'batch_semester_config'
+                    ])
+                LOOP
+                    -- Only add trigger if table exists
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_name = tbl AND table_schema = 'public'
+                    ) THEN
+                        EXECUTE format(
+                            'DROP TRIGGER IF EXISTS trg_notify_%I ON %I; ' ||
+                            'CREATE TRIGGER trg_notify_%I ' ||
+                            'AFTER INSERT OR UPDATE OR DELETE ON %I ' ||
+                            'FOR EACH ROW EXECUTE FUNCTION notify_table_change();',
+                            tbl, tbl, tbl, tbl
+                        );
+                    END IF;
+                END LOOP;
+            END $$;
+        `
+    },
 ];
 
 export async function runMigrations() {
+    // Prefer direct connection for migrations (triggers/DO blocks may not work through PgBouncer)
+    const dbUrl = process.env.DATABASE_URL_DIRECT || process.env.DATABASE_URL;
+
     const isLocalhost =
-        process.env.DATABASE_URL?.includes('localhost') ||
-        process.env.DATABASE_URL?.includes('127.0.0.1');
+        dbUrl?.includes('localhost') ||
+        dbUrl?.includes('127.0.0.1');
 
     const pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
+        connectionString: dbUrl,
         ...(isLocalhost ? {} : { ssl: { rejectUnauthorized: false } }),
     });
 

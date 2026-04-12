@@ -29,11 +29,13 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
-        const { records, subjectId, date, lectureNumber = 1 } = await request.json() as {
+        const { records, subjectId, date, lectureNumber = 1, sessionLectureNumber, topic } = await request.json() as {
             records: AttendanceInput[];
             subjectId?: string;
             date?: string;
             lectureNumber?: number;
+            sessionLectureNumber?: number | null;
+            topic?: string;
         };
 
         if (!records || records.length === 0) {
@@ -60,15 +62,20 @@ export async function POST(request: NextRequest) {
 
         let assignedLectureNumber: number;
         if (existingLecture.length > 0) {
-            // Teacher already marked - reuse their lecture number
+            // Teacher already marked this subject today - reuse their lecture number
             assignedLectureNumber = existingLecture[0].lecture_number;
+        } else if (sessionLectureNumber && sessionLectureNumber > 0) {
+            // Same page session (teacher switched dept/subject without navigating away)
+            // Reuse the session's lecture number for continuity
+            assignedLectureNumber = sessionLectureNumber;
         } else {
-            // Find the next available lecture number for this subject/date
+            // New session: find the next available lecture number across ALL this teacher's records today
+            // This ensures proper incrementing even when marking different subjects in new sessions
             const maxLecture = await query<{ max_lecture: string | null }>(
                 `SELECT COALESCE(MAX(lecture_number), 0) as max_lecture
                  FROM attendance_records
-                 WHERE subject_id = $1 AND date = $2`,
-                [batchSubjectId, batchDate]
+                 WHERE teacher_id = $1 AND date = $2`,
+                [payload.userId, batchDate]
             );
             assignedLectureNumber = (parseInt(maxLecture[0]?.max_lecture || '0')) + 1;
         }
@@ -82,6 +89,12 @@ export async function POST(request: NextRequest) {
 
         if (batchDate > todayStr) {
             return NextResponse.json({ error: `Cannot mark attendance for future date: ${batchDate}` }, { status: 400 });
+        }
+
+        // 1.5 Prevent Sunday Attendance
+        const batchDateObj = new Date(batchDate);
+        if (batchDateObj.getUTCDay() === 0) {
+            return NextResponse.json({ error: `Cannot mark attendance on Sunday (Weekend Holiday)` }, { status: 400 });
         }
 
         // 2. Verify Teacher Assignment ONCE (not per record)
@@ -118,12 +131,15 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'No valid attendance records' }, { status: 400 });
         }
 
+        // Trim topic — store null if empty
+        const topicValue = topic?.trim() || null;
+
         const result = await query(
-            `INSERT INTO attendance_records (subject_id, student_id, teacher_id, date, lecture_number, semester, status)
-             SELECT unnest($1::uuid[]), unnest($2::uuid[]), $3, $4, $5, $6, unnest($7::text[])
+            `INSERT INTO attendance_records (subject_id, student_id, teacher_id, date, lecture_number, semester, status, topic)
+             SELECT unnest($1::uuid[]), unnest($2::uuid[]), $3, $4, $5, $6, unnest($7::text[]), $8
              ON CONFLICT (subject_id, student_id, teacher_id, date, lecture_number, semester)
-             DO UPDATE SET status = EXCLUDED.status`,
-            [subjectIds, studentIds, payload.userId, batchDate, assignedLectureNumber, batchSemester, statuses]
+             DO UPDATE SET status = EXCLUDED.status, topic = EXCLUDED.topic`,
+            [subjectIds, studentIds, payload.userId, batchDate, assignedLectureNumber, batchSemester, statuses, topicValue]
         );
 
         const savedCount = subjectIds.length;

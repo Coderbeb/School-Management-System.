@@ -15,7 +15,7 @@ interface DailyData {
     total_records: string;
     present_count: string;
     absent_count: string;
-    late_count: string;
+    topics: string | null;
 }
 
 interface SubjectData {
@@ -54,23 +54,47 @@ export async function GET(request: NextRequest) {
         const month = searchParams.get('month') || getISTMonthStr();
         const departmentId = searchParams.get('departmentId');
         const semester = searchParams.get('semester');
-        const stream = searchParams.get('stream');
         const [year, monthNum] = month.split('-');
+
+        // Allow HOD to view as teacher (for My Reports)
+        const view = searchParams.get('view');
+        const effectiveRole = (role === 'hod' && view === 'teacher') ? 'teacher' : role;
 
         // Build role-based filter
         const filters: string[] = [];
         const params: (string | number)[] = [parseInt(year), parseInt(monthNum)];
 
         // Role-based restrictions
-        if (role === 'hod' && userDeptId) {
-            filters.push(`ar.student_id IN (
-                SELECT id FROM students WHERE department_id = $${params.length + 1}
-            )`);
-            params.push(userDeptId);
-        } else if (role === 'teacher') {
+        if (effectiveRole === 'hod') {
+            if (departmentId) {
+                filters.push(`ar.student_id IN (
+                    SELECT id FROM students WHERE department_id = $${params.length + 1}
+                    AND department_id IN (
+                        SELECT department_id FROM users WHERE id = $${params.length + 2}
+                        UNION SELECT department_id FROM user_departments WHERE user_id = $${params.length + 2}
+                    )
+                )`);
+                params.push(departmentId);
+                params.push(userId);
+            } else {
+                filters.push(`ar.student_id IN (
+                    SELECT id FROM students WHERE department_id IN (
+                        SELECT department_id FROM users WHERE id = $${params.length + 1}
+                        UNION SELECT department_id FROM user_departments WHERE user_id = $${params.length + 1}
+                    )
+                )`);
+                params.push(userId);
+            }
+        } else if (effectiveRole === 'teacher') {
             filters.push(`ar.teacher_id = $${params.length + 1}`);
             params.push(userId);
-        } else if (role === 'super_admin' && departmentId) {
+            if (departmentId) {
+                filters.push(`ar.student_id IN (
+                    SELECT id FROM students WHERE department_id = $${params.length + 1}
+                )`);
+                params.push(departmentId);
+            }
+        } else if (effectiveRole === 'super_admin' && departmentId) {
             filters.push(`ar.student_id IN (
                 SELECT id FROM students WHERE department_id = $${params.length + 1}
             )`);
@@ -85,13 +109,6 @@ export async function GET(request: NextRequest) {
             params.push(parseInt(semester));
         }
 
-        // Stream filter
-        if (stream && stream !== 'all') {
-            filters.push(`ar.student_id IN (
-                SELECT id FROM students WHERE UPPER(student_id) LIKE $${params.length + 1}
-            )`);
-            params.push(`${stream.toUpperCase()}%`);
-        }
 
         const filterClause = filters.length > 0 ? 'AND ' + filters.join(' AND ') : '';
 
@@ -99,7 +116,7 @@ export async function GET(request: NextRequest) {
         const summaryResult = await query<MonthlyData>(
             `SELECT 
                 COUNT(DISTINCT ar.date) as total_days,
-                COUNT(DISTINCT ar.date || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_lectures,
+                COUNT(DISTINCT ar.teacher_id || '-' || ar.date || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_lectures,
                 COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as present_count,
                 COUNT(CASE WHEN ar.status = 'absent' THEN 1 END) as absent_count,
                 COUNT(*) as total_count
@@ -110,45 +127,20 @@ export async function GET(request: NextRequest) {
             params
         );
 
-        // 2. Day-by-day breakdown
+        // 2. Day-by-day breakdown (with topic names)
         const dailyResult = await query<DailyData>(
             `SELECT 
                 ar.date::text as date,
                 COUNT(*) as total_records,
                 COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as present_count,
                 COUNT(CASE WHEN ar.status = 'absent' THEN 1 END) as absent_count,
-                COUNT(CASE WHEN ar.status = 'late' THEN 1 END) as late_count
+                string_agg(DISTINCT ar.topic, ', ' ORDER BY ar.topic) as topics
             FROM attendance_records ar
             WHERE EXTRACT(YEAR FROM ar.date) = $1 
               AND EXTRACT(MONTH FROM ar.date) = $2
               ${filterClause}
             GROUP BY ar.date
             ORDER BY ar.date ASC`,
-            params
-        );
-
-        // 3. Subject-wise breakdown
-        const subjectResult = await query<SubjectData>(
-            `SELECT 
-                sub.id as subject_id,
-                sub.name as subject_name,
-                sub.code as subject_code,
-                sub.paper_code as subject_paper_code,
-                COALESCE(
-                    (SELECT string_agg(ss.semester::text, ', ' ORDER BY ss.semester)
-                     FROM subject_semesters ss WHERE ss.subject_id = sub.id),
-                    ''
-                ) as semester,
-                COUNT(ar.id) as total_records,
-                COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as present_count,
-                COUNT(CASE WHEN ar.status = 'absent' THEN 1 END) as absent_count
-            FROM attendance_records ar
-            JOIN subjects sub ON sub.id = ar.subject_id
-            WHERE EXTRACT(YEAR FROM ar.date) = $1 
-              AND EXTRACT(MONTH FROM ar.date) = $2
-              ${filterClause}
-            GROUP BY sub.id, sub.name, sub.code, sub.paper_code
-            ORDER BY sub.name`,
             params
         );
 
@@ -189,25 +181,6 @@ export async function GET(request: NextRequest) {
                 const present = parseInt(d.present_count) || 0;
                 return {
                     date: d.date,
-                    total,
-                    present,
-                    absent: parseInt(d.absent_count) || 0,
-                    late: parseInt(d.late_count) || 0,
-                    percentage: total > 0 ? Math.round((present / total) * 100) : 0
-                };
-            }),
-            subjectStats: subjectResult.map(s => {
-                const total = parseInt(s.total_records) || 0;
-                const present = parseInt(s.present_count) || 0;
-                return {
-                    id: s.subject_id,
-                    name: s.subject_name,
-                    code: s.subject_code,
-                    paperCode: s.subject_paper_code || null,
-                    semester: s.semester,
-                    totalRecords: total,
-                    present,
-                    absent: parseInt(s.absent_count) || 0,
                     percentage: total > 0 ? Math.round((present / total) * 100) : 0
                 };
             })

@@ -47,38 +47,37 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
         }
 
-        const { role, departmentId: userDeptId } = payload;
+        const { role, departmentId: userDeptId, userId } = payload;
 
         // Teachers cannot access department reports
         if (role === 'teacher') {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
-
         const searchParams = request.nextUrl.searchParams;
         const selectedDeptId = searchParams.get('departmentId') || userDeptId;
-        const stream = searchParams.get('stream');
 
         if (!selectedDeptId) {
             return NextResponse.json({ error: 'Department ID required' }, { status: 400 });
         }
 
-        // Setup stream filtering params
-        let streamCondition = '';
-        const params: string[] = [selectedDeptId];
-        
-        let subjectStreamCondition = '';
-        const subjectParams: string[] = [selectedDeptId];
-
-        if (stream && stream !== 'all') {
-            params.push(`${stream}%`);
-            streamCondition = `AND s.student_id ILIKE $${params.length}`;
-            
-            // subjectParams has degree_type at $2
-            subjectParams.push(''); // placeholder for element 2
-            subjectParams.push(`${stream}%`); // element 3
-            subjectStreamCondition = `AND st.student_id ILIKE $3`;
+        // Security check for HOD: Verify they have access to this selectedDeptId
+        if (role === 'hod') {
+            const hasAccess = await queryOne<{ allowed: boolean }>(
+                `SELECT EXISTS (
+                    SELECT 1 FROM users WHERE id = $1 AND department_id = $2
+                    UNION
+                    SELECT 1 FROM user_departments WHERE user_id = $1 AND department_id = $2
+                ) as allowed`,
+                [userId, selectedDeptId]
+            );
+            if (!hasAccess || !hasAccess.allowed) {
+                return NextResponse.json({ error: 'Access denied to this department' }, { status: 403 });
+            }
         }
+
+        const params: string[] = [selectedDeptId];
+        const subjectParams: string[] = [selectedDeptId];
 
         // 1. Get department info including degree_type
         const deptInfo = await queryOne<DepartmentInfo>(
@@ -90,11 +89,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Department not found' }, { status: 404 });
         }
 
-        // 0. Get available streams for this department
-        let availableStreams: string[] = [];
-        if (deptInfo.code.toUpperCase() === 'IT') {
-            availableStreams = ['BCA', 'BSCIT'];
-        }
+
 
         // 2. Get semester-wise stats for students in this department
         const semesterStats = await query<SemesterStats>(
@@ -111,7 +106,7 @@ export async function GET(request: NextRequest) {
                 ) as avg_attendance
             FROM students s
             LEFT JOIN attendance_records ar ON ar.student_id = s.id
-            WHERE s.department_id = $1 ${streamCondition}
+            WHERE s.department_id = $1
             GROUP BY s.current_semester
             ORDER BY s.current_semester`,
             params
@@ -122,7 +117,7 @@ export async function GET(request: NextRequest) {
             `SELECT 
                 sub.id,
                 sub.name,
-                sub.code,
+                COALESCE(sub.paper_code, sub.code) as code,
                 COALESCE(
                     (SELECT string_agg(ss2.semester::text, ', ' ORDER BY ss2.semester)
                      FROM subject_semesters ss2 WHERE ss2.subject_id = sub.id),
@@ -139,7 +134,7 @@ export async function GET(request: NextRequest) {
                 ) as avg_attendance
             FROM subjects sub
             LEFT JOIN student_subjects ss ON ss.subject_id = sub.id
-            LEFT JOIN students st ON ss.student_id = st.id AND st.department_id = $1 ${subjectStreamCondition}
+            LEFT JOIN students st ON ss.student_id = st.id AND st.department_id = $1
             LEFT JOIN attendance_records ar ON ar.subject_id = sub.id AND ar.student_id = st.id
             WHERE sub.degree_type = $2
             GROUP BY sub.id, sub.name, sub.code
@@ -165,7 +160,7 @@ export async function GET(request: NextRequest) {
                 ) as attendance_pct
             FROM students s
             LEFT JOIN attendance_records ar ON ar.student_id = s.id
-            WHERE s.department_id = $1 ${streamCondition}
+            WHERE s.department_id = $1
             GROUP BY s.id, s.student_id, s.roll_number, s.first_name, s.last_name, s.current_semester
             HAVING COUNT(ar.id) > 0 AND 
                 COALESCE(
@@ -199,7 +194,7 @@ export async function GET(request: NextRequest) {
                 ) as attendance_pct
             FROM students s
             LEFT JOIN attendance_records ar ON ar.student_id = s.id
-            WHERE s.department_id = $1 ${streamCondition}
+            WHERE s.department_id = $1
             GROUP BY s.id, s.student_id, s.roll_number, s.first_name, s.last_name, s.current_semester
             HAVING COUNT(ar.id) > 0 AND 
                 COALESCE(
@@ -226,7 +221,7 @@ export async function GET(request: NextRequest) {
                 code: deptInfo.code,
                 degreeType: deptInfo.degree_type,
             },
-            availableStreams,
+
             overallStats: {
                 totalStudents,
                 totalSubjects,

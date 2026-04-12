@@ -70,47 +70,54 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json();
-        const { deptType, mappings } = body;
+        const { deptType, mappings, fullConfig } = body;
 
         // Validation
         if (!deptType || !['regular', 'vocational', 'pg'].includes(deptType)) {
             return NextResponse.json({ error: 'Invalid department type' }, { status: 400 });
         }
 
-        if (!Array.isArray(mappings) || mappings.length === 0) {
-            return NextResponse.json({ error: 'Invalid or empty mappings' }, { status: 400 });
-        }
-
-        // We will execute the updates sequentially (or in parallel) to update current_semester
+        // We will execute student upgrades only for valid (non-empty) mappings
         let totalUpdated = 0;
 
-        for (const mapping of mappings) {
-            const { semester, batchYear } = mapping;
-            
-            if (typeof semester !== 'number' || typeof batchYear !== 'number') {
-                continue; // Skip invalid mappings
+        if (Array.isArray(mappings) && mappings.length > 0) {
+            for (const mapping of mappings) {
+                const { semester, batchYear } = mapping;
+                
+                if (typeof semester !== 'number' || typeof batchYear !== 'number') {
+                    continue; // Skip invalid mappings
+                }
+
+                // Update students belonging to the specific department type and batch year
+                const result = await query(
+                    `UPDATE students 
+                     SET current_semester = $1, updated_at = CURRENT_TIMESTAMP
+                     WHERE batch_year = $2 
+                     AND department_id IN (SELECT id FROM departments WHERE dept_type = $3)
+                     RETURNING id`,
+                    [semester, batchYear, deptType]
+                );
+
+                totalUpdated += result.length;
             }
-
-            // Update students belonging to the specific department type and batch year
-            const result = await query(
-                `UPDATE students 
-                 SET current_semester = $1, updated_at = CURRENT_TIMESTAMP
-                 WHERE batch_year = $2 
-                 AND department_id IN (SELECT id FROM departments WHERE dept_type = $3)
-                 RETURNING id`,
-                [semester, batchYear, deptType]
-            );
-
-            totalUpdated += result.length;
         }
         
-        // Save the desired configuration so it sticks in the UI
+        // Save the full configuration (including null for intentionally empty semesters)
+        // This lets the UI know which semesters are active vs intentionally disabled
         const settingKey = `batch_mapping_${deptType}`;
         
-        // Convert mappings array [{semester: 1, batchYear: 2025}] to object {1: 2025}
-        const mappingObject: Record<string, number> = {};
-        for(const m of mappings) {
-           mappingObject[m.semester.toString()] = m.batchYear;
+        // Use fullConfig if provided (includes nulls for empty semesters),
+        // otherwise fall back to building from valid mappings only
+        let mappingObject: Record<string, number | null>;
+        if (fullConfig && typeof fullConfig === 'object') {
+            mappingObject = fullConfig;
+        } else {
+            mappingObject = {};
+            if (Array.isArray(mappings)) {
+                for (const m of mappings) {
+                    mappingObject[m.semester.toString()] = m.batchYear;
+                }
+            }
         }
 
         await query(

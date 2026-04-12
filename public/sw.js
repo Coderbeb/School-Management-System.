@@ -1,6 +1,6 @@
-const CACHE_NAME = 'ysm-attendance-v5';
-const STATIC_CACHE = 'ysm-static-v5';
-const API_CACHE = 'ysm-api-v5';
+const CACHE_NAME = 'ysm-attendance-v7';
+const STATIC_CACHE = 'ysm-static-v7';
+const API_CACHE = 'ysm-api-v7';
 const OFFLINE_QUEUE_STORE = 'offline-attendance-queue';
 
 // Static assets to pre-cache on install
@@ -126,18 +126,18 @@ async function networkFirstWithCache(request, cacheName) {
         if (urlObj.pathname === '/api/attendance') {
           const subjectId = urlObj.searchParams.get('subjectId');
           const date = urlObj.searchParams.get('date');
-          
+
           if (subjectId && date) {
             const offlineItems = await getAllFromQueue();
-            const pendingUpdates = offlineItems.filter(item => 
-              item.body && 
-              item.body.subjectId === subjectId && 
+            const pendingUpdates = offlineItems.filter(item =>
+              item.body &&
+              item.body.subjectId === subjectId &&
               item.body.date === date
             );
-            
+
             if (pendingUpdates.length > 0) {
               const cachedData = await cachedResponse.clone().json();
-              
+
               if (cachedData.records && Array.isArray(cachedData.records)) {
                 // Map the latest offline status for each student
                 const latestStatusMap = {};
@@ -148,13 +148,13 @@ async function networkFirstWithCache(request, cacheName) {
                     });
                   }
                 });
-                
+
                 // Overwrite the loaded cache rendering visually with our unsynced local changes
                 cachedData.records = cachedData.records.map(record => ({
                   ...record,
                   status: latestStatusMap[record.student_id] || record.status
                 }));
-                
+
                 return new Response(JSON.stringify(cachedData), {
                   status: 200,
                   headers: { 'Content-Type': 'application/json' }

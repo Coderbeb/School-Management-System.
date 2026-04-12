@@ -29,9 +29,14 @@ INSERT INTO departments (name, code, dept_type, degree_type, description) VALUES
 ('Commerce (B.Com.)', 'COM', 'regular', 'bcom', 'Department of Commerce - B.Com')
 ON CONFLICT (code) DO NOTHING;
 
--- Vocational - IT Department (for BCA/IT students and teachers)
+-- Vocational - BCA Department (for BCA students and teachers)
 INSERT INTO departments (name, code, dept_type, degree_type, description) VALUES
-('BCA & IT', 'IT', 'vocational', 'it', 'Department of Computer Applications & Information Technology')
+('BCA', 'BCA', 'vocational', 'bca', 'Department of Computer Applications')
+ON CONFLICT (code) DO NOTHING;
+
+-- Vocational - BSc IT Department (for BSc IT students and teachers)
+INSERT INTO departments (name, code, dept_type, degree_type, description) VALUES
+('BSc IT', 'IT', 'vocational', 'it', 'Department of Information Technology')
 ON CONFLICT (code) DO NOTHING;
 
 -- Vocational - BBA Department (for BBA students and teachers)

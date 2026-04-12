@@ -25,12 +25,12 @@ export async function GET(request: NextRequest) {
         }
 
         // Single query: Get primary department + all additional departments
-        const departments = await query<DepartmentRow>(
-            `SELECT d.id, d.name, d.code, d.dept_type
+        const departments = await query<DepartmentRow & { degree_type: string }>(
+            `SELECT d.id, d.name, d.code, d.dept_type, d.degree_type
              FROM departments d
              WHERE d.id = (SELECT department_id FROM users WHERE id = $1)
              UNION
-             SELECT d.id, d.name, d.code, d.dept_type
+             SELECT d.id, d.name, d.code, d.dept_type, d.degree_type
              FROM departments d
              JOIN user_departments ud ON d.id = ud.department_id
              WHERE ud.user_id = $1`,
@@ -42,7 +42,8 @@ export async function GET(request: NextRequest) {
                 id: d.id,
                 name: d.name,
                 code: d.code,
-                deptType: d.dept_type
+                deptType: d.dept_type,
+                degreeType: d.degree_type
             }))
         });
     } catch (error) {

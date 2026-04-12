@@ -26,13 +26,40 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
         }
 
-        const departments = await query<DepartmentRow>(
-            `SELECT d.id, d.name, d.code, d.dept_type, d.degree_type, d.created_at,
-                    CONCAT(u.first_name, ' ', u.last_name) as hod_name
-             FROM departments d
-             LEFT JOIN users u ON u.department_id = d.id AND u.role = 'hod'
-             ORDER BY d.name ASC`
-        );
+        let departments;
+        if (payload.role === 'super_admin') {
+            departments = await query<DepartmentRow>(
+                `SELECT d.id, d.name, d.code, d.dept_type, d.degree_type, d.created_at,
+                        (
+                            SELECT CONCAT(u.first_name, ' ', u.last_name)
+                            FROM users u
+                            LEFT JOIN user_departments ud ON u.id = ud.user_id
+                            WHERE u.role = 'hod' AND (u.department_id = d.id OR ud.department_id = d.id)
+                            LIMIT 1
+                        ) as hod_name
+                 FROM departments d
+                 ORDER BY d.name ASC`
+            );
+        } else {
+            departments = await query<DepartmentRow>(
+                `SELECT d.id, d.name, d.code, d.dept_type, d.degree_type, d.created_at,
+                        (
+                            SELECT CONCAT(u.first_name, ' ', u.last_name)
+                            FROM users u
+                            LEFT JOIN user_departments ud ON u.id = ud.user_id
+                            WHERE u.role = 'hod' AND (u.department_id = d.id OR ud.department_id = d.id)
+                            LIMIT 1
+                        ) as hod_name
+                 FROM departments d
+                 WHERE d.id IN (
+                     SELECT department_id FROM user_departments WHERE user_id = $1
+                     UNION
+                     SELECT department_id FROM users WHERE id = $1
+                 )
+                 ORDER BY d.name ASC`,
+                 [(payload as any).userId || (payload as any).id]
+            );
+        }
 
         return NextResponse.json({ departments });
     } catch (error) {

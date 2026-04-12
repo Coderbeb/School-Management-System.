@@ -38,6 +38,11 @@ export async function GET(request: NextRequest) {
 
         const { role, departmentId, userId } = payload;
 
+        // Allow HOD to view as teacher (for My Reports)
+        const { searchParams } = new URL(request.url);
+        const view = searchParams.get('view');
+        const effectiveRole = (role === 'hod' && view === 'teacher') ? 'teacher' : role;
+
         // Build role-based filter conditions
         let studentFilter = '';
         let subjectFilter = '';
@@ -46,17 +51,29 @@ export async function GET(request: NextRequest) {
         const subjectParams: string[] = [];
         const attendanceParams: string[] = [];
 
-        if (role === 'hod' && departmentId) {
-            // HOD: filter by their department
-            studentFilter = `AND s.department_id = $1`;
-            studentParams.push(departmentId);
-            subjectFilter = `WHERE department_id = $1`;
-            subjectParams.push(departmentId);
-            attendanceFilter = `AND ar.student_id IN (
-                SELECT id FROM students WHERE department_id = $1
+        if (effectiveRole === 'hod' && userId) {
+            // HOD: filter by ALL their authorized departments (including user_departments)
+            studentFilter = `AND s.department_id IN (
+                SELECT department_id FROM users WHERE id = $1
+                UNION
+                SELECT department_id FROM user_departments WHERE user_id = $1
             )`;
-            attendanceParams.push(departmentId);
-        } else if (role === 'teacher') {
+            studentParams.push(userId);
+            subjectFilter = `WHERE department_id IN (
+                SELECT department_id FROM users WHERE id = $1
+                UNION
+                SELECT department_id FROM user_departments WHERE user_id = $1
+            )`;
+            subjectParams.push(userId);
+            attendanceFilter = `AND ar.student_id IN (
+                SELECT id FROM students WHERE department_id IN (
+                    SELECT department_id FROM users WHERE id = $1
+                    UNION
+                    SELECT department_id FROM user_departments WHERE user_id = $1
+                )
+            )`;
+            attendanceParams.push(userId);
+        } else if (effectiveRole === 'teacher') {
             // Teacher: filter by students in their assigned subjects
             // teacher_subjects.teacher_id references users.id directly
             studentFilter = `AND s.id IN (
@@ -124,7 +141,7 @@ export async function GET(request: NextRequest) {
                 const todayStr = istTime.toISOString().split('T')[0];
 
                 const lectureQuery = `SELECT 
-                    COUNT(DISTINCT ar.date::text || ar.subject_id::text || COALESCE(ar.semester::text, '0') || ar.lecture_number::text) as count,
+                    COUNT(DISTINCT ar.teacher_id || '-' || ar.date::text || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number::text) as count,
                     COUNT(DISTINCT ar.date) as working_days
                     FROM attendance_records ar WHERE 1=1 ${attendanceFilter}`;
                 const lectureCount = await queryOne<CountResult & { working_days: string }>(lectureQuery, attendanceParams);
@@ -135,7 +152,7 @@ export async function GET(request: NextRequest) {
                 const todayParams = [...attendanceParams, todayStr];
                 const todayDateIdx = todayParams.length;
                 const tQuery = `SELECT 
-                    COUNT(DISTINCT ar.subject_id::text || COALESCE(ar.semester::text, '0') || ar.lecture_number::text) as count
+                    COUNT(DISTINCT ar.teacher_id || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number::text) as count
                     FROM attendance_records ar WHERE ar.date = $${todayDateIdx} ${attendanceFilter}`;
                 const tCount = await queryOne<CountResult>(tQuery, todayParams);
                 todaySessions = parseInt(tCount?.count || '0');
@@ -165,7 +182,7 @@ export async function GET(request: NextRequest) {
         let lowAttendanceCount = 0;
         let warningAttendanceCount = 0;
 
-        if (role === 'hod' || role === 'super_admin') {
+        if (effectiveRole === 'hod' || effectiveRole === 'super_admin') {
             promises.push((async () => {
                 try {
                     // Get student-wise attendance percentages
@@ -186,9 +203,9 @@ export async function GET(request: NextRequest) {
                         GROUP BY s.id
                         HAVING COUNT(ar.id) > 0
                     `;
-                    
+
                     const studentStats = await query<StudentAttendanceStatus>(studentAttendanceQuery, studentParams);
-                    
+
                     for (const student of studentStats) {
                         const pct = parseFloat(student.attendance_pct);
                         if (pct < 60) {
@@ -206,7 +223,7 @@ export async function GET(request: NextRequest) {
         // For Super Admin: Get department-wise stats
         let departmentStats: { departmentId: string; departmentName: string; totalStudents: number; avgAttendance: number }[] = [];
 
-        if (role === 'super_admin') {
+        if (effectiveRole === 'super_admin') {
             promises.push((async () => {
                 try {
                     const deptQuery = `
@@ -228,7 +245,7 @@ export async function GET(request: NextRequest) {
                         GROUP BY d.id, d.name
                         ORDER BY d.name
                     `;
-                    
+
                     const deptStats = await query<DepartmentStats>(deptQuery, []);
                     departmentStats = deptStats.map(d => ({
                         departmentId: d.department_id,
@@ -254,11 +271,11 @@ export async function GET(request: NextRequest) {
                 workingDays,
                 averageAttendance,
                 // Role-specific data
-                ...(role === 'hod' || role === 'super_admin' ? {
+                ...(effectiveRole === 'hod' || effectiveRole === 'super_admin' ? {
                     lowAttendanceCount,
                     warningAttendanceCount,
                 } : {}),
-                ...(role === 'super_admin' && departmentStats.length > 0 ? {
+                ...(effectiveRole === 'super_admin' && departmentStats.length > 0 ? {
                     departmentStats,
                 } : {}),
             }

@@ -23,6 +23,16 @@ export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: Navb
     const pathname = usePathname();
     const [showProfileModal, setShowProfileModal] = useState(false);
 
+    const handleLogout = () => {
+        if (onLogout) {
+            onLogout();
+        } else {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            router.replace('/login');
+        }
+    };
+
     return (
         <>
             <header className="fixed top-0 w-full z-30 bg-white/80 backdrop-blur-md border-b border-gray-100">
@@ -86,7 +96,7 @@ export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: Navb
                     isOpen={showProfileModal}
                     onClose={() => setShowProfileModal(false)}
                     user={user as any}
-                    onLogout={onLogout}
+                    onLogout={handleLogout}
                 />
             )}
         </>

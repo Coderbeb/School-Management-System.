@@ -50,7 +50,6 @@ interface StudentAlert {
 
 interface DepartmentData {
     department: Department & { degreeType: string };
-    availableStreams?: string[];
     overallStats: {
         totalStudents: number;
         totalSubjects: number;
@@ -69,7 +68,6 @@ export default function DepartmentOverviewPage() {
     const [loading, setLoading] = useState(true);
     const [departments, setDepartments] = useState<Department[]>([]);
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
-    const [selectedStream, setSelectedStream] = useState<string>('all');
     const [data, setData] = useState<DepartmentData | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'semester' | 'subject' | 'critical' | 'warning'>('semester');
@@ -103,6 +101,8 @@ export default function DepartmentOverviewPage() {
 
         if (parsedUser.role === 'super_admin') {
             fetchDepartments(token);
+        } else if (parsedUser.role === 'hod') {
+            fetchTeacherDepartments(token, parsedUser.id, parsedUser.departmentId);
         } else {
             if (parsedUser.departmentId) {
                 setSelectedDepartmentId(parsedUser.departmentId);
@@ -112,15 +112,13 @@ export default function DepartmentOverviewPage() {
         }
     }, [router]);
 
-    useEffect(() => {
-        setSelectedStream('all');
-    }, [selectedDepartmentId]);
+
 
     useEffect(() => {
         if (selectedDepartmentId) {
             fetchDepartmentData();
         }
-    }, [selectedDepartmentId, selectedStream]);
+    }, [selectedDepartmentId]);
 
     const fetchDepartments = async (token: string) => {
         try {
@@ -141,12 +139,38 @@ export default function DepartmentOverviewPage() {
         }
     };
 
+    const fetchTeacherDepartments = async (token: string, teacherId: string, defaultDeptId?: string) => {
+        try {
+            const res = await fetch('/api/me/departments', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            const depts = data.departments || [];
+            if (depts.length > 0) {
+                setDepartments(depts);
+                if (defaultDeptId && depts.find((d: Department) => d.id === defaultDeptId)) {
+                    setSelectedDepartmentId(defaultDeptId);
+                } else {
+                    setSelectedDepartmentId(depts[0].id);
+                }
+            } else {
+                if (defaultDeptId) {
+                    setSelectedDepartmentId(defaultDeptId);
+                } else {
+                    setLoading(false);
+                }
+            }
+        } catch (err) {
+            console.error('Error fetching teacher departments:', err);
+            setLoading(false);
+        }
+    };
+
     const fetchDepartmentData = async () => {
         setLoading(true);
         try {
             const token = localStorage.getItem('token');
-            const streamQuery = selectedStream !== 'all' ? `&stream=${selectedStream}` : '';
-            const res = await fetch(`/api/reports/department?departmentId=${selectedDepartmentId}${streamQuery}`, {
+            const res = await fetch(`/api/reports/department?departmentId=${selectedDepartmentId}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.status === 401) {
@@ -269,39 +293,22 @@ export default function DepartmentOverviewPage() {
 
                     <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                         {/* Department selector */}
-                        {user.role === 'super_admin' && departments.length > 0 && (
-                            <div className="bg-white/10 p-1.5 rounded-xl backdrop-blur-md border border-white/20">
-                                <select
+                        <div className="flex items-center gap-2 text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full font-medium text-sm">
+                            <Building2 className="w-4 h-4" />
+                            {user?.role === 'super_admin' || departments.length > 1 ? (
+                                <select 
+                                    className="bg-transparent border-none outline-none cursor-pointer focus:ring-0 text-indigo-700 font-semibold"
                                     value={selectedDepartmentId}
                                     onChange={(e) => setSelectedDepartmentId(e.target.value)}
-                                    className="bg-transparent text-white border-0 px-2 py-1 text-sm outline-none cursor-pointer font-medium appearance-none"
                                 >
-                                    {departments.map(dept => (
-                                        <option key={dept.id} value={dept.id} className="text-gray-900">
-                                            {dept.name}
-                                        </option>
+                                    {departments.map(d => (
+                                        <option key={d.id} value={d.id}>{d.name}</option>
                                     ))}
                                 </select>
-                            </div>
-                        )}
-
-                        {/* Stream selector */}
-                        {data?.availableStreams && data.availableStreams.length > 1 && (
-                            <div className="bg-white/10 p-1.5 rounded-xl backdrop-blur-md border border-white/20">
-                                <select
-                                    value={selectedStream}
-                                    onChange={(e) => setSelectedStream(e.target.value)}
-                                    className="bg-transparent text-white border-0 px-2 py-1 text-sm outline-none cursor-pointer font-medium appearance-none"
-                                >
-                                    <option value="all" className="text-gray-900">All Streams</option>
-                                    {data.availableStreams.map(stream => (
-                                        <option key={stream} value={stream} className="text-gray-900">
-                                            {stream}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
+                            ) : (
+                                <span>{data?.department?.name || 'Department'}</span>
+                            )}
+                        </div>
 
                         {/* Export Buttons in Hero */}
                         <div className="flex gap-2 bg-white/10 p-1.5 rounded-xl backdrop-blur-md border border-white/20">

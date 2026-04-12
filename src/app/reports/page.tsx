@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Calendar, BarChart3, Users, UserCheck, TrendingUp, ChevronRight, AlertTriangle, CheckCircle, Clock, BookOpen, Building2, GraduationCap, LayoutDashboard, UsersRound, CalendarDays } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
+import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface User {
     id: string;
@@ -67,6 +68,15 @@ export default function ReportsPage() {
 
         fetchStats(token);
     }, [router]);
+
+    // Real-time updates
+    useRealtimeData({
+        tables: ['attendance_records'],
+        onTableChange: useCallback(() => {
+            const token = localStorage.getItem('token');
+            if (token) fetchStats(token);
+        }, []),
+    });
 
     const fetchStats = async (token: string) => {
         try {
@@ -136,8 +146,8 @@ export default function ReportsPage() {
             bgLight: 'bg-purple-50',
             href: '/reports/students'
         },
-        // My Performance - for HODs only
-        ...(user?.role === 'hod' ? [{
+        // My Performance - for Teachers only (HODs have it in My Reports)
+        ...(user?.role === 'teacher' ? [{
             id: 'my-performance',
             title: 'My Performance',
             description: 'Your teaching statistics',
@@ -186,7 +196,7 @@ export default function ReportsPage() {
                 icon: CalendarDays
             },
             { 
-                label: "Today's Sessions", 
+                label: "Today's Lectures", 
                 value: stats.todaySessions, 
                 gradient: 'from-purple-500 to-purple-600',
                 icon: BookOpen

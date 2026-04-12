@@ -30,6 +30,18 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url);
         const degreeType = searchParams.get('degreeType');
         const semester = searchParams.get('semester');
+        const reqDepartmentId = searchParams.get('departmentId');
+
+        let filterDegreeType = degreeType;
+        if (reqDepartmentId) {
+             const deptResult = await query<{ degree_type: string }>(
+                 'SELECT degree_type FROM departments WHERE id = $1',
+                 [reqDepartmentId]
+             );
+             if (deptResult.length > 0 && deptResult[0].degree_type) {
+                 filterDegreeType = deptResult[0].degree_type;
+             }
+        }
 
         const { role, departmentId } = payload;
 
@@ -45,21 +57,37 @@ export async function GET(request: NextRequest) {
         `;
         const params: (string | number)[] = [];
 
-        // HOD: filter by their department's degree_type
-        if (role === 'hod' && departmentId) {
-            const deptResult = await query<{ degree_type: string }>(
-                'SELECT degree_type FROM departments WHERE id = $1',
-                [departmentId]
-            );
-            if (deptResult.length > 0) {
-                params.push(deptResult[0].degree_type);
-                queryStr += ` AND s.degree_type = $${params.length}`;
+        // HOD: filter by their departments' degree_types
+        if (role === 'hod') {
+            let deptQuery = `
+                SELECT d.degree_type 
+                FROM departments d 
+                JOIN user_departments ud ON d.id = ud.department_id 
+                WHERE ud.user_id = $1
+            `;
+            const deptParams: any[] = [payload.userId];
+            
+            if (payload.departmentId) {
+                deptQuery += ` UNION SELECT degree_type FROM departments WHERE id = $2`;
+                deptParams.push(payload.departmentId);
+            }
+            
+            const deptResult = await query<{ degree_type: string }>(deptQuery, deptParams);
+            const degreeTypes = [...new Set(deptResult.map(d => d.degree_type))].filter(Boolean);
+            
+            if (degreeTypes.length > 0) {
+                const placeholders = degreeTypes.map((_, i) => `$${params.length + i + 1}`).join(',');
+                queryStr += ` AND s.degree_type IN (${placeholders})`;
+                params.push(...degreeTypes);
+            } else {
+                // Return no subjects if they have no degree types assigned somehow
+                queryStr += ` AND 1=0`;
             }
         }
 
-        // Filter by degree type if provided (for super_admin)
-        if (degreeType && role === 'super_admin') {
-            params.push(degreeType);
+        // Filter by specific degree type if resolved
+        if (filterDegreeType) {
+            params.push(filterDegreeType);
             queryStr += ` AND s.degree_type = $${params.length}`;
         }
 
@@ -151,7 +179,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Code must be under 20 characters, name under 100' }, { status: 400 });
         }
 
-        const validDegreeTypes = ['ba', 'bsc', 'bcom', 'it', 'bba', 'mcom'];
+        const validDegreeTypes = ['ba', 'bsc', 'bcom', 'bca', 'it', 'bba', 'mcom'];
         for (const dt of degreeTypeList) {
             if (!validDegreeTypes.includes(dt)) {
                 return NextResponse.json({ error: `Invalid degree type: ${dt}` }, { status: 400 });
