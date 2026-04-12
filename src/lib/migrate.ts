@@ -162,6 +162,17 @@ const MIGRATIONS: { name: string; sql: string }[] = [
             END $$;
         `
     },
+    {
+        name: '006_application_settings',
+        sql: `
+            -- Settings table for email automation config, etc.
+            CREATE TABLE IF NOT EXISTS application_settings (
+                key VARCHAR(255) PRIMARY KEY,
+                value TEXT,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        `
+    },
 ];
 
 export async function runMigrations() {

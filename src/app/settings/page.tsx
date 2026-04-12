@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
-import { Building2, Save, AlertTriangle, ArrowRightCircle, RotateCcw } from 'lucide-react';
+import { Building2, Save, AlertTriangle, ArrowRightCircle, RotateCcw, Mail, Eye, EyeOff, ToggleLeft, ToggleRight, CheckCircle, Shield, Send, Loader2 } from 'lucide-react';
 import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface User {
@@ -21,6 +21,7 @@ export default function SettingsPage() {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState<'email' | 'batch'>('email');
     
     // Batch Manager State
     const [selectedDeptType, setSelectedDeptType] = useState<DeptType>('regular');
@@ -29,6 +30,17 @@ export default function SettingsPage() {
     const [loadingMappings, setLoadingMappings] = useState(false);
     const [refetchTrigger, setRefetchTrigger] = useState(0);
     const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
+
+    // ── Email Automation State ──
+    const [emailAddress, setEmailAddress] = useState('');
+    const [emailPassword, setEmailPassword] = useState('');
+    const [emailEnabled, setEmailEnabled] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [emailPasswordHint, setEmailPasswordHint] = useState('');
+    const [emailPasswordSet, setEmailPasswordSet] = useState(false);
+    const [loadingEmail, setLoadingEmail] = useState(false);
+    const [savingEmail, setSavingEmail] = useState(false);
+    const [emailMessage, setEmailMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -52,7 +64,7 @@ export default function SettingsPage() {
         setLoading(false);
     }, [router]);
 
-    // Fetch mappings when dept type changes
+    // Fetch batch mappings when dept type changes
     useEffect(() => {
         const fetchCurrentMappings = async () => {
             if (!user) return;
@@ -99,6 +111,32 @@ export default function SettingsPage() {
 
         fetchCurrentMappings();
     }, [selectedDeptType, user, refetchTrigger]);
+
+    // ── Fetch Email Config ──
+    useEffect(() => {
+        const fetchEmailConfig = async () => {
+            if (!user) return;
+            setLoadingEmail(true);
+            try {
+                const response = await fetch('/api/settings/email-config', {
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    setEmailAddress(data.email || '');
+                    setEmailPasswordSet(data.passwordSet || false);
+                    setEmailPasswordHint(data.passwordHint || '');
+                    setEmailEnabled(data.enabled || false);
+                }
+            } catch (err) {
+                console.error('Failed to load email config', err);
+            } finally {
+                setLoadingEmail(false);
+            }
+        };
+
+        fetchEmailConfig();
+    }, [user]);
 
     // Real-time updates
     useRealtimeData({
@@ -197,6 +235,43 @@ export default function SettingsPage() {
         }
     };
 
+    // ── Save Email Config ──
+    const handleSaveEmailConfig = async () => {
+        setSavingEmail(true);
+        setEmailMessage(null);
+
+        try {
+            const response = await fetch('/api/settings/email-config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({
+                    email: emailAddress,
+                    password: emailPassword || '', // empty means keep existing
+                    enabled: emailEnabled,
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to save email configuration');
+            }
+
+            setEmailMessage({ type: 'success', text: 'Email configuration saved successfully!' });
+            setEmailPassword(''); // Clear password field after save
+            setEmailPasswordSet(true);
+            setEmailPasswordHint(emailPassword ? `****${emailPassword.slice(-4)}` : emailPasswordHint);
+        } catch (error: any) {
+            setEmailMessage({ type: 'error', text: error.message });
+        } finally {
+            setSavingEmail(false);
+        }
+    };
+
+
     if (loading || !user) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -226,8 +301,208 @@ export default function SettingsPage() {
                         <p className="text-gray-500">Configure global platform configurations and perform batch overrides.</p>
                     </div>
 
-                    {/* Batch Manager Section */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    {/* Navigation Cards (Dashboard Style) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+                        <div 
+                            onClick={() => setActiveTab('email')}
+                            className={`cursor-pointer rounded-xl p-6 border transition-all flex items-start gap-4 ${
+                                activeTab === 'email' 
+                                    ? 'bg-white border-indigo-200 shadow-md ring-1 ring-indigo-100' 
+                                    : 'bg-white border-gray-100 shadow-sm hover:border-gray-300 hover:shadow-md text-opacity-80'
+                            }`}
+                        >
+                            <div className={`p-3 rounded-lg shrink-0 ${activeTab === 'email' ? 'bg-indigo-100 text-indigo-600' : 'bg-blue-50 text-blue-600'}`}>
+                                <Mail className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className={`text-sm font-medium ${activeTab === 'email' ? 'text-indigo-900 font-bold' : 'text-gray-500'}`}>Email Automation</h3>
+                                <p className="text-xs text-gray-500 mt-1">Configure automated monthly report cards.</p>
+                            </div>
+                        </div>
+
+                        <div 
+                            onClick={() => setActiveTab('batch')}
+                            className={`cursor-pointer rounded-xl p-6 border transition-all flex items-start gap-4 ${
+                                activeTab === 'batch' 
+                                    ? 'bg-white border-indigo-200 shadow-md ring-1 ring-indigo-100' 
+                                    : 'bg-white border-gray-100 shadow-sm hover:border-gray-300 hover:shadow-md text-opacity-80'
+                            }`}
+                        >
+                            <div className={`p-3 rounded-lg shrink-0 ${activeTab === 'batch' ? 'bg-indigo-100 text-indigo-600' : 'bg-blue-50 text-blue-600'}`}>
+                                <Building2 className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className={`text-sm font-medium ${activeTab === 'batch' ? 'text-indigo-900 font-bold' : 'text-gray-500'}`}>Semester Manager</h3>
+                                <p className="text-xs text-gray-500 mt-1">Force upgrade students based on admission batch.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ═══════════════════════════════════════════════════════════
+                        Email Automation Section
+                    ═══════════════════════════════════════════════════════════ */}
+                    {activeTab === 'email' && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
+                        <div className="p-4 sm:p-6 border-b border-gray-100 bg-gradient-to-r from-blue-50/80 to-indigo-50/50">
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-lg shrink-0">
+                                    <Mail className="w-5 h-5" />
+                                </div>
+                                <h2 className="text-lg sm:text-xl font-bold text-gray-900">Email Automation</h2>
+                                {/* Toggle pill */}
+                                <div className="ml-auto flex items-center gap-2">
+                                    <span className={`text-xs font-semibold ${emailEnabled ? 'text-green-600' : 'text-gray-400'}`}>
+                                        {emailEnabled ? 'ENABLED' : 'DISABLED'}
+                                    </span>
+                                    <button
+                                        onClick={() => setEmailEnabled(!emailEnabled)}
+                                        className="transition-transform active:scale-95"
+                                        aria-label="Toggle email automation"
+                                    >
+                                        {emailEnabled ? (
+                                            <ToggleRight className="w-10 h-10 text-green-500 drop-shadow-sm" />
+                                        ) : (
+                                            <ToggleLeft className="w-10 h-10 text-gray-300" />
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                            <p className="text-xs sm:text-sm text-gray-500 mt-1">
+                                Automatically send monthly PDF Report Cards via email to students whose attendance falls below 60%. Reports cover the previous month and are sent on the 1st of every month.
+                            </p>
+                        </div>
+
+                        <div className="p-4 sm:p-6">
+                            {emailMessage && (
+                                <div className={`p-4 rounded-xl mb-6 text-sm flex items-start gap-3 ${
+                                    emailMessage.type === 'error' ? 'bg-red-50 text-red-800 border border-red-200' : 'bg-green-50 text-green-800 border border-green-200'
+                                }`}>
+                                    {emailMessage.type === 'error' ? <AlertTriangle className="w-5 h-5 flex-shrink-0" /> : <CheckCircle className="w-5 h-5 flex-shrink-0" />}
+                                    <p className="font-medium mt-0.5">{emailMessage.text}</p>
+                                </div>
+                            )}
+
+                            {loadingEmail ? (
+                                <div className="flex items-center justify-center py-8">
+                                    <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                                    <span className="ml-2 text-sm text-gray-500">Loading email settings...</span>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Info Banner */}
+                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+                                        <div className="flex items-start gap-3">
+                                            <Shield className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                                            <div>
+                                                <p className="text-sm text-amber-800 font-semibold mb-1">Gmail App Password Required</p>
+                                                <p className="text-xs text-amber-700 leading-relaxed">
+                                                    Use a <strong>Gmail App Password</strong> (16 characters), not your regular password.
+                                                    Go to <strong>Google Account → Security → 2-Step Verification → App Passwords</strong> to generate one.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Email Input */}
+                                    <div className="mb-5">
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                            Gmail Address
+                                        </label>
+                                        <div className="relative">
+                                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                            <input
+                                                type="email"
+                                                value={emailAddress}
+                                                onChange={(e) => setEmailAddress(e.target.value)}
+                                                placeholder="your-college-email@gmail.com"
+                                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-colors font-medium text-gray-900"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Password Input */}
+                                    <div className="mb-6">
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                            App Password (16 characters)
+                                            {emailPasswordSet && !emailPassword && (
+                                                <span className="ml-2 text-xs font-normal text-green-600">
+                                                    ✓ Password is saved ({emailPasswordHint})
+                                                </span>
+                                            )}
+                                        </label>
+                                        <div className="relative">
+                                            <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                            <input
+                                                type={showPassword ? 'text' : 'password'}
+                                                value={emailPassword}
+                                                onChange={(e) => setEmailPassword(e.target.value)}
+                                                placeholder={emailPasswordSet ? 'Leave empty to keep current password' : 'xxxx xxxx xxxx xxxx'}
+                                                className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-colors font-medium text-gray-900 font-mono tracking-wider"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassword(!showPassword)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                                            >
+                                                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Enable/Disable Toggle Explanation */}
+                                    <div className={`rounded-xl p-4 mb-6 border transition-colors ${
+                                        emailEnabled 
+                                            ? 'bg-green-50 border-green-200' 
+                                            : 'bg-gray-50 border-gray-200'
+                                    }`}>
+                                        <div className="flex items-center gap-3">
+                                            {emailEnabled ? (
+                                                <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />
+                                            ) : (
+                                                <ToggleLeft className="w-5 h-5 text-gray-400 shrink-0" />
+                                            )}
+                                            <div>
+                                                <p className={`text-sm font-semibold ${emailEnabled ? 'text-green-800' : 'text-gray-600'}`}>
+                                                    {emailEnabled ? 'Monthly Reports Active' : 'Monthly Reports Paused'}
+                                                </p>
+                                                <p className={`text-xs ${emailEnabled ? 'text-green-700' : 'text-gray-500'}`}>
+                                                    {emailEnabled 
+                                                        ? 'PDF report cards will be automatically emailed on the 1st of every month to students with attendance below 60%.'
+                                                        : 'Toggle the switch above to enable automatic monthly email reports.'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex flex-col sm:flex-row gap-3">
+                                        <button
+                                            onClick={handleSaveEmailConfig}
+                                            disabled={savingEmail || !emailAddress}
+                                            className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
+                                                savingEmail || !emailAddress
+                                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                    : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg hover:shadow-indigo-500/20 active:scale-[0.99]'
+                                            }`}
+                                        >
+                                            {savingEmail ? (
+                                                <><Loader2 className="w-5 h-5 animate-spin" /> Saving...</>
+                                            ) : (
+                                                <><Save className="w-5 h-5 shrink-0" /> Save Email Settings</>
+                                            )}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                    )}
+
+                    {/* ═══════════════════════════════════════════════════════════
+                        Batch Manager Section (existing)
+                    ═══════════════════════════════════════════════════════════ */}
+                    {activeTab === 'batch' && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
                         <div className="p-4 sm:p-6 border-b border-gray-100 bg-gray-50/50">
                             <div className="flex items-center gap-3 mb-2">
                                 <div className="p-2 bg-blue-100 text-blue-700 rounded-lg shrink-0">
@@ -329,6 +604,7 @@ export default function SettingsPage() {
                             </div>
                         </div>
                     </div>
+                    )}
 
                 </div>
             </main>
