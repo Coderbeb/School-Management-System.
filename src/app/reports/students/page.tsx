@@ -921,25 +921,25 @@ function StudentReportContent() {
     <title>Student Attendance Report</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600;700&display=swap');
-        body { font-family: 'Inter', Arial, sans-serif; padding: 20px; }
-        .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 25px; }
+        body { font-family: 'Inter', Arial, sans-serif; padding: 15px; }
+        .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 15px; margin-bottom: 15px; }
         .logo-section { display: flex; align-items: center; gap: 15px; }
-        .logo-img { height: 60px; width: auto; object-fit: contain; }
-        .college-info h1 { font-family: 'Playfair Display', serif; font-size: 20px; color: #1e3a8a; text-transform: uppercase; margin-bottom: 2px; letter-spacing: 0.5px; }
-        .college-info p { font-size: 10px; color: #64748b; margin-bottom: 1px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+        .logo-img { height: 50px; width: auto; object-fit: contain; }
+        .college-info h1 { font-family: 'Playfair Display', serif; font-size: 16px; color: #1e3a8a; text-transform: uppercase; margin-bottom: 2px; letter-spacing: 0.5px; }
+        .college-info p { font-size: 9px; color: #64748b; margin-bottom: 1px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
         .report-title-box { text-align: right; }
-        .report-title-box h2 { color: #1e3a8a; font-size: 16px; margin: 0 0 4px 0; }
-        .report-title-box p { color: #6b7280; font-size: 11px; margin: 0; }
-        .meta { color: #666; margin-bottom: 20px; font-size: 12px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th { background-color: #4f46e5; color: white; padding: 12px 8px; text-align: left; }
-        td { padding: 10px 8px; border-bottom: 1px solid #ddd; }
+        .report-title-box h2 { color: #1e3a8a; font-size: 14px; margin: 0 0 4px 0; }
+        .report-title-box p { color: #6b7280; font-size: 10px; margin: 0; }
+        .meta { color: #666; margin-bottom: 15px; font-size: 10px; line-height: 1.4; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10px; }
+        th { background-color: #4f46e5; color: white; padding: 6px 4px; text-align: left; font-weight: 600; }
+        td { padding: 4px; border-bottom: 1px solid #ddd; }
         tr:nth-child(even) { background-color: #f8f9fa; }
         .good { color: #047857; background-color: #d1fae5; }
         .warning { color: #b45309; background-color: #fef3c7; }
         .critical { color: #b91c1c; background-color: #fee2e2; }
-        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+        .status-badge { padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; display: inline-block; }
+        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; } }
     </style>
 </head>
 <body>

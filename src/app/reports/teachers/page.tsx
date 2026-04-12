@@ -574,6 +574,7 @@ export default function TeacherReportPage() {
                 <thead>
                     <tr>
                         <th style="border-radius: 4px 0 0 0;">Subject</th>
+                        <th>Semester & Batch</th>
                         <th>Code</th>
                         <th style="text-align: center;">No. of Lectures</th>
                         <th style="text-align: center;">Attendance</th>
@@ -581,9 +582,20 @@ export default function TeacherReportPage() {
                     </tr>
                 </thead>
                 <tbody>
-                    ${subjects.map(sub => `
+                    ${subjects.map(sub => {
+                        const firstSem = parseInt(sub.semester.toString().split(',')[0]) || 1;
+                        const deptInfo = selectedTeacher.filters.departments.find(d => d.name === sub.department);
+                        const batchLabel = getBatchLabel(firstSem, deptInfo?.deptType);
+                        
+                        return `
                         <tr>
-                            <td style="font-weight: 600;">${sub.name}</td>
+                            <td>
+                                <div style="font-weight: 600; font-size: 11px;">${sub.name} <span style="font-weight: 500; color: var(--text-sub);">(${sub.department})</span></div>
+                            </td>
+                            <td>
+                                <div style="font-size: 11px; font-weight: 600;">Sem ${sub.semester}</div>
+                                ${batchLabel ? `<div style="font-size: 10px; color: var(--text-sub); margin-top: 2px;">${batchLabel}</div>` : ''}
+                            </td>
                             <td style="color: var(--text-sub); font-size: 11px;">${sub.paperCode || sub.code}</td>
                             <td style="text-align: center;">${sub.sessions}</td>
                             <td style="text-align: center; font-weight: 700; color: var(--primary);">${sub.attendance}%</td>
@@ -593,7 +605,8 @@ export default function TeacherReportPage() {
                                 </span>
                             </td>
                         </tr>
-                    `).join('')}
+                    `;
+                    }).join('')}
                 </tbody>
             </table>
             ` : ''}

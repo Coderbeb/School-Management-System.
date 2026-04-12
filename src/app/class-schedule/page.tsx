@@ -8,7 +8,7 @@ import { CustomClockPicker } from '@/components/ui/CustomClockPicker';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
 import { useRealtimeData } from '@/hooks/useRealtimeData';
 import {
-    CalendarClock, Clock, Check, X, Building2, Loader2, AlertCircle, Download
+    CalendarClock, Clock, Check, X, Building2, Loader2, AlertCircle, Download, CalendarOff
 } from 'lucide-react';
 
 interface User {
@@ -91,6 +91,7 @@ export default function ClassSchedulePage() {
     })();
 
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [todayHoliday, setTodayHoliday] = useState<string | null>(null);
 
     const handleLogout = () => {
         localStorage.removeItem('token');
@@ -122,11 +123,38 @@ export default function ClassSchedulePage() {
         (async () => {
             try {
                 // Fetch departments, teachers, batch config in parallel
-                const [deptRes, teacherRes, batchRes] = await Promise.all([
+                const [deptRes, teacherRes, batchRes, holidayRes] = await Promise.all([
                     fetch('/api/me/departments', { headers: { Authorization: `Bearer ${token}` } }),
                     fetch('/api/teachers', { headers: { Authorization: `Bearer ${token}` } }),
                     fetch('/api/settings/batch-config', { headers: { Authorization: `Bearer ${token}` } }),
+                    fetch('/api/holidays', { headers: { Authorization: `Bearer ${token}` } }),
                 ]);
+
+                // Check if today is Sunday or a holiday
+                let isHoliday = false;
+                let holidayName = '';
+                const todayDate = new Date();
+                const isSunday = todayDate.getDay() === 0;
+                if (isSunday) {
+                    isHoliday = true;
+                    holidayName = 'Sunday';
+                    setTodayHoliday('Sunday');
+                }
+
+                // Check if today is a holiday from DB
+                if (!isHoliday && holidayRes.ok) {
+                    const holidayData = await holidayRes.json();
+                    const holidays = holidayData.holidays || [];
+                    const todayHol = holidays.find((h: any) => {
+                        const hDate = new Date(h.date).toISOString().split('T')[0];
+                        return hDate === today;
+                    });
+                    if (todayHol) {
+                        isHoliday = true;
+                        holidayName = todayHol.name;
+                        setTodayHoliday(todayHol.name);
+                    }
+                }
 
                 if (deptRes.status === 401) { router.replace('/login'); return; }
 
@@ -175,16 +203,29 @@ export default function ClassSchedulePage() {
                         );
                         if (assRes.ok) {
                             const assData = await assRes.json();
-                            const assignmentMap = new Map<string, { teacherId: string; subjectId: string }>();
-                            (assData.assignments || []).forEach((a: any) => {
-                                // Default to first department if 'department_id' is missing from old payload logic, but it shouldn't be
-                                const dId = a.department_id || depts[0].id;
-                                assignmentMap.set(cellKey(dId, a.semester, a.slot_number), {
-                                    teacherId: a.teacher_id,
-                                    subjectId: a.subject_id,
+                            const rawAssignments = assData.assignments || [];
+
+                            // If today is a holiday, auto-cleanup existing assignments
+                            if (isHoliday && rawAssignments.length > 0) {
+                                // Delete all assignments for today across all departments
+                                await Promise.all(depts.map(dept =>
+                                    fetch(
+                                        `/api/class-schedule/assignments?departmentId=${dept.id}&date=${today}`,
+                                        { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
+                                    )
+                                ));
+                                setAssignments(new Map());
+                            } else {
+                                const assignmentMap = new Map<string, { teacherId: string; subjectId: string }>();
+                                rawAssignments.forEach((a: any) => {
+                                    const dId = a.department_id || depts[0].id;
+                                    assignmentMap.set(cellKey(dId, a.semester, a.slot_number), {
+                                        teacherId: a.teacher_id,
+                                        subjectId: a.subject_id,
+                                    });
                                 });
-                            });
-                            setAssignments(assignmentMap);
+                                setAssignments(assignmentMap);
+                            }
                         }
                     } catch (err) {
                         console.error('Error fetching assignments:', err);
@@ -410,6 +451,7 @@ export default function ClassSchedulePage() {
 
     // Handle teacher selection for a cell
     const handleTeacherSelect = async (deptId: string, semester: number, slotNumber: number, teacherId: string) => {
+        if (todayHoliday) return; // Block assignments on holidays
         const key = cellKey(deptId, semester, slotNumber);
 
         if (!teacherId) {
@@ -580,6 +622,13 @@ export default function ClassSchedulePage() {
         <thead><tr>${colsHtml}</tr></thead>
         <tbody>${rowsHtml}</tbody>
     </table>
+    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #64748b;">
+        <div>
+            <span style="font-weight: 700; color: #334155;">Generated by:</span>
+            <span style="margin-left: 4px; font-weight: 600;">${user?.role === 'super_admin' ? 'Admin' : 'HOD'}${departments.length > 0 ? ` (${departments.map(d => d.code).join(', ')})` : ''} — ${user?.firstName} ${user?.lastName}</span>
+        </div>
+        <div style="font-style: italic;">Auto-generated on ${new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+    </div>
 </body>
 </html>`;
         const printWindow = window.open('', '_blank');
@@ -636,6 +685,17 @@ export default function ClassSchedulePage() {
                     </div>
                 </div>
 
+                {/* Holiday Banner */}
+                {todayHoliday && (
+                    <div className="p-4 rounded-xl mb-6 text-sm font-semibold flex items-center gap-3 shadow-sm bg-amber-50 text-amber-800 border border-amber-200/60">
+                        <CalendarOff className="w-5 h-5 shrink-0" />
+                        <div>
+                            <p className="font-bold">Holiday — {todayHoliday}</p>
+                            <p className="text-xs font-medium text-amber-600 mt-0.5">Class assignments are disabled for today. Time slots are preserved.</p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Status Message */}
                 {message && (
                     <div className={`p-4 rounded-xl mb-6 text-sm font-semibold flex items-center gap-3 shadow-sm ${
@@ -669,34 +729,34 @@ export default function ClassSchedulePage() {
                         )}
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
                         {timeSlots.map((slot, index) => (
-                            <div key={slot.slotNumber} className="bg-white rounded-2xl p-3 sm:p-4 border border-gray-100 shadow-sm hover:border-teal-200/60 hover:shadow-md transition-all group">
-                                <div className="flex items-center justify-between mb-3">
+                            <div key={slot.slotNumber} className="bg-white rounded-2xl p-2 sm:p-4 border border-gray-100 shadow-sm hover:border-teal-200/60 hover:shadow-md transition-all group overflow-hidden">
+                                <div className="flex items-center justify-between mb-2 sm:mb-3">
                                     <div className="text-xs font-bold text-gray-400 group-hover:text-teal-600 transition-colors">Class {slot.slotNumber}</div>
                                 </div>
                                 <div className="flex flex-col gap-2 mt-1">
-                                    <div className="flex items-center justify-between bg-gray-50/50 p-2 rounded-xl border border-gray-100">
+                                    <div className="flex items-center bg-gray-50/50 p-1 sm:p-2 rounded-xl border border-gray-100 gap-1 sm:gap-1.5">
                                         {/* Start Time Trigger */}
                                         <button
                                             onClick={() => setClockPicker({ isOpen: true, index, type: 'startTime', value: slot.startTime || '08:00' })}
-                                            className="flex-1 bg-white border border-gray-200 hover:border-teal-400 hover:text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500/20 text-gray-700 font-bold text-[13px] py-1.5 px-3 rounded-lg shadow-sm transition-all text-center"
+                                            className="flex-1 bg-white border border-gray-200 hover:border-teal-400 hover:text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500/20 text-gray-700 font-bold text-xs sm:text-[13px] py-1.5 px-1 sm:px-2 rounded-lg shadow-sm transition-all text-center whitespace-nowrap"
                                         >
                                             {slot.startTime || '--:--'}
                                         </button>
 
-                                        <span className="text-gray-300 font-black text-xs mx-1.5 uppercase tracking-widest text-[10px]">to</span>
+                                        <span className="text-gray-300 font-black uppercase tracking-widest text-[9px] sm:text-[10px] shrink-0">to</span>
 
                                         {/* End Time Trigger */}
                                         <button
                                             onClick={() => setClockPicker({ isOpen: true, index, type: 'endTime', value: slot.endTime || '09:00' })}
-                                            className="flex-1 bg-white border border-gray-200 hover:border-teal-400 hover:text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500/20 text-gray-700 font-bold text-[13px] py-1.5 px-3 rounded-lg shadow-sm transition-all text-center"
+                                            className="flex-1 bg-white border border-gray-200 hover:border-teal-400 hover:text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500/20 text-gray-700 font-bold text-xs sm:text-[13px] py-1.5 px-1 sm:px-2 rounded-lg shadow-sm transition-all text-center whitespace-nowrap"
                                         >
                                             {slot.endTime || '--:--'}
                                         </button>
                                     </div>
                                     {slot.startTime && slot.endTime && (
-                                        <div className="text-[10px] sm:text-[11px] text-teal-700 font-bold text-center bg-teal-50/80 py-1.5 px-2 rounded-lg border border-teal-100/50 shadow-sm whitespace-nowrap">
+                                        <div className="text-[9px] sm:text-[11px] text-teal-700 font-bold text-center bg-teal-50/80 py-1.5 px-1 sm:px-2 rounded-lg border border-teal-100/50 shadow-sm whitespace-nowrap">
                                             {formatTime(slot.startTime)} — {formatTime(slot.endTime)}
                                         </div>
                                     )}
@@ -825,7 +885,8 @@ export default function ClassSchedulePage() {
                                                                                     <select
                                                                                         value={assignment.teacherId || ''}
                                                                                         onChange={(e) => handleTeacherSelect(dept.id, sem, slot.slotNumber, e.target.value)}
-                                                                                        className="w-full bg-white border border-blue-200 rounded-md px-2 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer appearance-none shadow-sm transition-all"
+                                                                                        disabled={!!todayHoliday}
+                                                                                        className={`w-full bg-white border border-blue-200 rounded-md px-2 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none shadow-sm transition-all ${todayHoliday ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                                                                                         style={{
                                                                                             backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%233b82f6' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
                                                                                             backgroundPosition: 'right 0.25rem center',
@@ -868,7 +929,8 @@ export default function ClassSchedulePage() {
                                                                                     <select
                                                                                         value=""
                                                                                         onChange={(e) => handleTeacherSelect(dept.id, sem, slot.slotNumber, e.target.value)}
-                                                                                        className="w-full bg-white/50 hover:bg-white border border-slate-200 border-dashed hover:border-solid hover:border-blue-300 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all"
+                                                                                        disabled={!!todayHoliday}
+                                                                                        className={`w-full bg-white/50 hover:bg-white border border-slate-200 border-dashed hover:border-solid hover:border-blue-300 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none transition-all ${todayHoliday ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                                                                                         style={{
                                                                                             backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M12 6v6m0 0v6m0-6h6m-6 0H6'/%3e%3c/svg%3e")`,
                                                                                             backgroundPosition: 'right 0.25rem center',

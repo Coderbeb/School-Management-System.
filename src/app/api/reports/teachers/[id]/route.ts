@@ -142,7 +142,7 @@ export async function GET(
                     ''
                 ) as semester,
                 MIN(d.id::text) as department_id,
-                MIN(d.name) as department_name,
+                string_agg(DISTINCT COALESCE(d.code, d.name), ', ' ORDER BY COALESCE(d.code, d.name)) as department_name,
                 COUNT(DISTINCT ar.date || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_sessions,
                 COUNT(DISTINCT ar.date) as working_days,
                 COUNT(DISTINCT ar.student_id) as total_students,
@@ -163,6 +163,9 @@ export async function GET(
              ORDER BY s.code, s.name`,
             subjectParams
         );
+
+        // Compute totalSessions as sum of subject-wise sessions so it always matches the breakdown
+        const computedTotalSessions = subjectStats.reduce((sum, s) => sum + (parseInt(s.total_sessions) || 0), 0);
 
         // Day-by-day breakdown with topics
         const dailyFilters: string[] = ['ar.teacher_id = $1'];
@@ -265,7 +268,7 @@ export async function GET(
 
         const overallStatsQuery = `
             SELECT 
-                COUNT(DISTINCT ar.date || '-' || ar.subject_id || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_sessions,
+                COUNT(DISTINCT ar.date || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_sessions,
                 COUNT(DISTINCT ar.date) as working_days,
                 COUNT(DISTINCT ar.student_id) as total_students,
                 COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as present_count,
@@ -302,7 +305,7 @@ export async function GET(
                 semesters: semesters.map(s => s.semester)
             },
             summary: {
-                totalSessions: parseInt(overall.total_sessions) || 0,
+                totalSessions: computedTotalSessions,
                 workingDays: parseInt(overall.working_days) || 0,
                 totalStudents: parseInt(overall.total_students) || 0,
                 presentCount: parseInt(overall.present_count) || 0,

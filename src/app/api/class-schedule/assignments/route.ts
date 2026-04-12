@@ -93,6 +93,23 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'departmentId, date, and assignments required' }, { status: 400 });
         }
 
+        // Block assignments on Sundays
+        const assignDate = new Date(date + 'T00:00:00');
+        if (assignDate.getDay() === 0) {
+            return NextResponse.json({ error: 'Cannot assign classes on Sunday' }, { status: 400 });
+        }
+
+        // Block assignments on holidays
+        const holidayCheck = await query<{ id: string }>(
+            `SELECT id FROM holidays
+             WHERE date = $1 AND (department_id IS NULL OR department_id = $2)
+             LIMIT 1`,
+            [date, departmentId]
+        );
+        if (holidayCheck.length > 0) {
+            return NextResponse.json({ error: 'Cannot assign classes on a holiday' }, { status: 400 });
+        }
+
         // HOD must own the department
         if (payload.role === 'hod') {
             const owned = await query<{ department_id: string }>(

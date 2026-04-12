@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
                     STRING_AGG(DISTINCT s.name, ', ' ORDER BY s.name),
                     ''
                 ) as subject_names,
-                COUNT(DISTINCT ar.date || '-' || ar.subject_id || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_sessions,
+                COUNT(DISTINCT ar.date || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_sessions,
                 COUNT(DISTINCT ar.date) as working_days,
                 COALESCE(
                     ROUND(

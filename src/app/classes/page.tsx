@@ -118,7 +118,24 @@ export default function ClassesPage() {
         const permission = await Notification.requestPermission();
         setNotifPermission(permission);
         if (permission === 'granted') {
+            // Immediate test notification to prove it works
+            showNotification('✅ Notifications Enabled', {
+                body: 'You will now receive a reminder 1 minute before your classes start.',
+                icon: '/icons/icon-192x192.png',
+                tag: 'notif-enabled'
+            });
             scheduleNotifications();
+        }
+    };
+
+    // Helper to show notification (Service Worker prioritized)
+    const showNotification = (title: string, options: NotificationOptions) => {
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.ready.then(registration => {
+                registration.showNotification(title, options);
+            });
+        } else {
+            new Notification(title, options);
         }
     };
 
@@ -146,7 +163,7 @@ export default function ClassesPage() {
             if (delay > 0) {
                 const timer = setTimeout(() => {
                     const batchLabel = getBatchLabel(cls.semester, cls.department_code);
-                    new Notification('📚 Class Starting Soon!', {
+                    showNotification('📚 Class Starting Soon!', {
                         body: `Your class is on Semester ${cls.semester} with Batch ${batchLabel}\n${cls.subject_name} — ${cls.department_code}`,
                         icon: '/icons/icon-192x192.png',
                         tag: `class-${cls.id}`,
@@ -321,19 +338,41 @@ export default function ClassesPage() {
                     return (
                         <div className="space-y-3">
                             {Object.values(validClasses.reduce((acc, cls) => {
-                            const key = `${cls.slot_number}-${cls.subject_id}`;
+                            const key = `${cls.slot_number}`; // Group strictly by slot number since a teacher can only be in one physical class at a time
+                            const paperCodeVal = cls.paper_code || cls.subject_code;
+
                             if (!acc[key]) {
-                                acc[key] = { ...cls, department_codes: [cls.department_code], semesters: [cls.semester] };
+                                acc[key] = { 
+                                    ...cls, 
+                                    department_codes: [cls.department_code], 
+                                    semesters: [cls.semester],
+                                    subject_names: [cls.subject_name],
+                                    paper_codes: [paperCodeVal]
+                                };
                             } else {
                                 if (!acc[key].department_codes.includes(cls.department_code)) {
                                     acc[key].department_codes.push(cls.department_code);
                                 }
-                                if (!acc[key].semesters.includes(cls.semester)) {
+                                
+                                const isSemExists = acc[key].semesters.some(s => String(s) === String(cls.semester));
+                                if (!isSemExists) {
                                     acc[key].semesters.push(cls.semester);
+                                }
+                                
+                                const cleanName = cls.subject_name.trim().toLowerCase();
+                                const isNameExists = acc[key].subject_names.some(n => n.trim().toLowerCase() === cleanName);
+                                if (!isNameExists) {
+                                    acc[key].subject_names.push(cls.subject_name);
+                                }
+                                
+                                const cleanPaper = paperCodeVal.trim().toLowerCase();
+                                const isPaperExists = acc[key].paper_codes.some(p => p.trim().toLowerCase() === cleanPaper);
+                                if (!isPaperExists) {
+                                    acc[key].paper_codes.push(paperCodeVal);
                                 }
                             }
                             return acc;
-                        }, {} as Record<string, ClassItem & { department_codes: string[], semesters: number[] }>)).map((cls) => {
+                        }, {} as Record<string, ClassItem & { department_codes: string[], semesters: number[], subject_names: string[], paper_codes: string[] }>)).map((cls) => {
                             const active = isClassActive(cls.start_time, cls.end_time);
                             const upcoming = isClassUpcoming(cls.start_time);
 
@@ -372,21 +411,21 @@ export default function ClassesPage() {
                                                 <div className="flex items-center gap-2 mb-2">
                                                     <BookOpen className="w-4 h-4 text-amber-500 flex-shrink-0" />
                                                     <span className="text-sm font-semibold text-gray-800 truncate">
-                                                        {cls.subject_name}
+                                                        {cls.subject_names.join(' / ')}
                                                     </span>
-                                                    <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded-md flex-shrink-0">
-                                                        {cls.paper_code || cls.subject_code}
+                                                    <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded-md flex-shrink-0 whitespace-nowrap">
+                                                        {cls.paper_codes.join('/')}
                                                     </span>
                                                 </div>
 
                                                 {/* Semester & Dept */}
                                                 <div className="flex flex-wrap items-center gap-2 mt-2">
                                                     <span className="inline-flex items-center gap-1 text-xs font-semibold bg-blue-100 text-blue-700 px-2.5 py-1 rounded-lg">
-                                                        Sem: {cls.semesters.join(', ')} ({getBatchLabel(cls.semesters[0], cls.department_codes[0])})
+                                                        Sem: {cls.semesters.join('/')} ({getBatchLabel(cls.semesters[0], cls.department_codes[0])})
                                                     </span>
                                                     <span className="inline-flex items-center gap-1 text-xs font-medium bg-gray-100 text-gray-700 px-2.5 py-1 rounded-lg border border-gray-200 shadow-sm">
-                                                        <Building2 className="w-3.5 h-3.5 text-gray-500" />
-                                                        <span className="font-bold">{cls.department_codes.join(', ')}</span>
+                                                        <Building2 className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                                                        <span className="font-bold">{cls.department_codes.join('/')}</span>
                                                     </span>
                                                 </div>
                                             </div>
