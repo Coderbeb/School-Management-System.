@@ -154,6 +154,12 @@ function StudentReportContent() {
     const selectedSubjectsStr = Array.from(pageSelectedSubjectIds).sort().join(',');
 
     useEffect(() => {
+        if (departments.length === 1 && !selectedDepartmentId) {
+            setSelectedDepartmentId(departments[0].id);
+        }
+    }, [departments, selectedDepartmentId]);
+
+    useEffect(() => {
         const token = localStorage.getItem('token');
         if (token && user) {
             fetchStudentReport(token);
@@ -1128,13 +1134,17 @@ function StudentReportContent() {
                                         className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-purple-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
                                     >
                                         <option value="">All Semesters</option>
-                                        {getActiveSemesters(getDeptType(departments.find(d => d.id === selectedDepartmentId))).map((sem) => {
-                                            const dt = getDeptType(departments.find(d => d.id === selectedDepartmentId));
-                                            const label = getBatchLabel(sem, dt);
-                                            return (
-                                                <option key={sem} value={sem}>Sem {sem}{label ? ` (${label})` : ''}</option>
-                                            );
-                                        })}
+                                        {(() => {
+                                            const effectiveDeptType = selectedDepartmentId 
+                                                ? getDeptType(departments.find(d => d.id === selectedDepartmentId)) 
+                                                : (user?.role === 'super_admin' ? 'regular' : (departments.length > 0 ? getDeptType(departments[0]) : 'regular'));
+                                            return getActiveSemesters(effectiveDeptType).map((sem) => {
+                                                const label = getBatchLabel(sem, effectiveDeptType);
+                                                return (
+                                                    <option key={sem} value={sem}>Sem {sem}{label ? ` (${label})` : ''}</option>
+                                                );
+                                            });
+                                        })()}
                                     </select>
                                     <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
                                 </div>

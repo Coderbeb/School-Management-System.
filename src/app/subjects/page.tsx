@@ -216,14 +216,15 @@ export default function SubjectsPage() {
         });
     }, [groupedSubjects, searchTerm, filterDegreeType, filterSemester]);
 
+    // Determine course type from degree type
+    const getDeptTypeFromDegreeType = useCallback((dt: string) => {
+        if (['ba', 'bsc', 'bcom'].includes(dt)) return 'regular';
+        if (['it', 'bba', 'bca'].includes(dt)) return 'vocational';
+        if (dt === 'mcom') return 'pg';
+        return 'regular';
+    }, []);
+
     const handleEdit = (group: GroupedSubject) => {
-        // Determine course type from degree type (use the first one found)
-        const getDeptTypeFromDegreeType = (dt: string) => {
-            if (['ba', 'bsc', 'bcom'].includes(dt)) return 'regular';
-            if (['it', 'bba'].includes(dt)) return 'vocational';
-            if (dt === 'mcom') return 'pg';
-            return 'regular';
-        };
 
         const primaryDegreeType = group.degreeTypes[0] || 'ba';
 
@@ -664,24 +665,26 @@ export default function SubjectsPage() {
                 {/* Search & Filter Controls */}
                 <div className="mb-6 flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
                     <div className="flex gap-2 w-full md:w-auto">
-                        {/* Always show degree filter for Admins and HODs */}
-                        <div className="relative w-full md:w-auto">
-                            <select
-                                className="w-full md:w-48 bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none cursor-pointer"
-                                value={filterDegreeType}
-                                onChange={(e) => setFilterDegreeType(e.target.value)}
-                            >
-                                <option value="">All Degrees</option>
-                                <option value="ba">BA (Bachelor of Arts)</option>
-                                <option value="bsc">B.Sc (Bachelor of Science)</option>
-                                <option value="bcom">B.Com (Bachelor of Commerce)</option>
-                                <option value="bca">BCA</option>
-                                <option value="it">BSc IT</option>
-                                <option value="bba">BBA</option>
-                                <option value="mcom">M.Com (Master of Commerce)</option>
-                            </select>
-                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                        </div>
+                        {/* Only show degree filter for Admins or HODs with multiple degree types */}
+                        {(user?.role === 'super_admin' || new Set(departments.map(d => getDeptTypeFromDegreeType(d.degree_type))).size > 1) && (
+                            <div className="relative w-full md:w-auto">
+                                <select
+                                    className="w-full md:w-48 bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none cursor-pointer"
+                                    value={filterDegreeType}
+                                    onChange={(e) => setFilterDegreeType(e.target.value)}
+                                >
+                                    <option value="">All Degrees</option>
+                                    <option value="ba">BA (Bachelor of Arts)</option>
+                                    <option value="bsc">B.Sc (Bachelor of Science)</option>
+                                    <option value="bcom">B.Com (Bachelor of Commerce)</option>
+                                    <option value="bca">BCA</option>
+                                    <option value="it">BSc IT</option>
+                                    <option value="bba">BBA</option>
+                                    <option value="mcom">M.Com (Master of Commerce)</option>
+                                </select>
+                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                            </div>
+                        )}
                         <div className="relative w-full md:w-auto">
                             <select
                                 className="w-full md:w-40 bg-white border border-gray-200 rounded-xl pl-4 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none cursor-pointer"
@@ -689,12 +692,17 @@ export default function SubjectsPage() {
                                 onChange={(e) => setFilterSemester(e.target.value)}
                             >
                                 <option value="">All Semesters</option>
-                                {getActiveSemesters().map(s => {
-                                    const label = getBatchLabel(s);
-                                    return (
-                                        <option key={s} value={s}>Sem {s}{label ? ` (${label})` : ''}</option>
-                                    );
-                                })}
+                                {(() => {
+                                    const effectiveDeptTypeForFilter = filterDegreeType 
+                                        ? getDeptTypeFromDegreeType(filterDegreeType)
+                                        : (user?.role === 'super_admin' ? 'regular' : (departments.length > 0 ? getDeptTypeFromDegreeType(departments[0].degree_type) : 'regular'));
+                                    return getActiveSemesters(effectiveDeptTypeForFilter).map(s => {
+                                        const label = getBatchLabel(s, effectiveDeptTypeForFilter);
+                                        return (
+                                            <option key={s} value={s}>Sem {s}{label ? ` (${label})` : ''}</option>
+                                        );
+                                    });
+                                })()}
                             </select>
                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                         </div>
