@@ -850,12 +850,20 @@ export default function SubjectsPage() {
                                             </div>
                                             <div>
                                                 <h3 className="font-bold text-gray-900 leading-tight">{group.name}</h3>
-                                                <div className="flex items-center gap-2 mt-1">
+                                                <div className="flex items-center gap-2 mt-1 flex-wrap">
                                                     <span className="text-xs font-mono text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded">
                                                         {group.code}
                                                     </span>
+                                                    {group.paperCode && (
+                                                        <>
+                                                            <span className="text-xs text-gray-400">•</span>
+                                                            <span className="text-xs font-mono text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded" title="Paper Code">
+                                                                {group.paperCode}
+                                                            </span>
+                                                        </>
+                                                    )}
                                                     <span className="text-xs text-gray-400">•</span>
-                                                    <span className="text-xs text-gray-500">{group.credits} Credits</span>
+                                                    <span className="text-xs text-gray-500 whitespace-nowrap">{group.credits} Credits</span>
                                                 </div>
                                             </div>
                                         </div>

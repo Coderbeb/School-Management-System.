@@ -42,6 +42,19 @@ interface AttendanceRecord {
     attendancePercentage: number;
 }
 
+interface LectureSummary {
+    subjectCode: string;
+    subjectName: string;
+    subjectPaperCode: string | null;
+    lectureNumber: number;
+    semester: number;
+    departmentNames: string;
+    teacherName: string;
+    totalStudents: number;
+    present: number;
+    absent: number;
+}
+
 function DailyReportContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -62,6 +75,7 @@ function DailyReportContent() {
     const [selectedSubjectId, setSelectedSubjectId] = useState('');
 
     const [records, setRecords] = useState<AttendanceRecord[]>([]);
+    const [lecturesSummary, setLecturesSummary] = useState<LectureSummary[]>([]);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const { getActiveSemesters, getBatchLabel } = useActiveSemesters();
 
@@ -218,6 +232,11 @@ function DailyReportContent() {
             const data = await res.json();
             if (data.records) {
                 setRecords(data.records);
+            }
+            if (data.lecturesSummary) {
+                setLecturesSummary(data.lecturesSummary);
+            } else {
+                setLecturesSummary([]);
             }
         } catch (err) {
             console.error('Error fetching daily report:', err);
@@ -794,6 +813,131 @@ function DailyReportContent() {
                         </div>
                     </div>
                 </div>
+
+                {/* Subjects Taught Today */}
+                {!loading && lecturesSummary.length > 0 && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-8 mt-8">
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                                <FileText className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-bold text-gray-700">Subjects Taught Today</h3>
+                                <p className="text-xs text-gray-400">{lecturesSummary.length} lecture session{lecturesSummary.length !== 1 ? 's' : ''} recorded</p>
+                            </div>
+                        </div>
+
+                        {/* Desktop Table */}
+                        <div className="hidden md:block overflow-x-auto">
+                            <table className="w-full table-auto">
+                                <thead className="bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-indigo-100">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-bold text-indigo-600 uppercase tracking-wider">Lec #</th>
+                                        <th className="px-4 py-3 text-left text-xs font-bold text-indigo-600 uppercase tracking-wider">Subject</th>
+                                        <th className="px-4 py-3 text-left text-xs font-bold text-indigo-600 uppercase tracking-wider">Teacher</th>
+                                        <th className="px-4 py-3 text-left text-xs font-bold text-indigo-600 uppercase tracking-wider">Department</th>
+                                        <th className="px-4 py-3 text-center text-xs font-bold text-indigo-600 uppercase tracking-wider">Semester</th>
+                                        <th className="px-4 py-3 text-center text-xs font-bold text-indigo-600 uppercase tracking-wider">Total</th>
+                                        <th className="px-4 py-3 text-center text-xs font-bold text-indigo-600 uppercase tracking-wider">Present</th>
+                                        <th className="px-4 py-3 text-center text-xs font-bold text-indigo-600 uppercase tracking-wider">Absent</th>
+                                        <th className="px-4 py-3 text-center text-xs font-bold text-indigo-600 uppercase tracking-wider">%</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {lecturesSummary.map((lec, index) => {
+                                        const pct = lec.totalStudents > 0 ? Math.round((lec.present / lec.totalStudents) * 100) : 0;
+                                        return (
+                                            <tr key={index} className="hover:bg-indigo-50/30 transition-colors">
+                                                <td className="px-4 py-3">
+                                                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 text-xs font-bold">
+                                                        {lec.lectureNumber}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="text-sm font-semibold text-gray-900">{lec.subjectPaperCode || lec.subjectCode}</div>
+                                                    <div className="text-xs text-gray-500">{lec.subjectName}</div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className="text-sm text-gray-700">{lec.teacherName || '—'}</span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className="text-sm text-gray-700">{lec.departmentNames || '—'}</span>
+                                                </td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-bold">
+                                                        Sem {lec.semester}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">{lec.totalStudents}</td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <span className="text-sm font-semibold text-emerald-600">{lec.present}</span>
+                                                </td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <span className="text-sm font-semibold text-red-500">{lec.absent}</span>
+                                                </td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <span className={`text-xs font-bold px-2 py-1 rounded-md ${pct >= 75 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                                                        {pct}%
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Mobile Card View */}
+                        <div className="md:hidden space-y-3">
+                            {lecturesSummary.map((lec, index) => {
+                                const pct = lec.totalStudents > 0 ? Math.round((lec.present / lec.totalStudents) * 100) : 0;
+                                return (
+                                    <div key={index} className="border border-gray-100 rounded-xl p-4 bg-gray-50/30">
+                                        <div className="flex items-start justify-between mb-3">
+                                            <div className="flex items-center gap-2">
+                                                <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 text-xs font-bold">
+                                                    {lec.lectureNumber}
+                                                </span>
+                                                <div>
+                                                    <p className="text-sm font-semibold text-gray-900">{lec.subjectPaperCode || lec.subjectCode}</p>
+                                                    <p className="text-xs text-gray-500">{lec.subjectName}</p>
+                                                </div>
+                                            </div>
+                                            <span className={`text-xs font-bold px-2 py-1 rounded-md ${pct >= 75 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                                                {pct}%
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 mb-3 text-xs">
+                                            <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold">Sem {lec.semester}</span>
+                                            <span className="text-gray-400">•</span>
+                                            <span className="text-gray-600">{lec.departmentNames || '—'}</span>
+                                        </div>
+                                        {lec.teacherName && (
+                                            <div className="flex items-center gap-1.5 mb-3 text-sm font-bold text-gray-800">
+                                                <Users className="w-4 h-4 text-indigo-500" />
+                                                <span>{lec.teacherName}</span>
+                                            </div>
+                                        )}
+                                        <div className="grid grid-cols-3 gap-1.5 text-center mt-1">
+                                            <div className="py-1 bg-white rounded-md border border-gray-100">
+                                                <p className="text-gray-400 text-[9px] uppercase font-bold tracking-wider leading-none mb-1">Total</p>
+                                                <p className="font-bold text-gray-800 text-xs leading-none">{lec.totalStudents}</p>
+                                            </div>
+                                            <div className="py-1 bg-emerald-50/80 rounded-md border border-emerald-100/50">
+                                                <p className="text-emerald-500 text-[9px] uppercase font-bold tracking-wider leading-none mb-1">Present</p>
+                                                <p className="font-bold text-emerald-700 text-xs leading-none">{lec.present}</p>
+                                            </div>
+                                            <div className="py-1 bg-red-50/80 rounded-md border border-red-100/50">
+                                                <p className="text-red-500 text-[9px] uppercase font-bold tracking-wider leading-none mb-1">Absent</p>
+                                                <p className="font-bold text-red-700 text-xs leading-none">{lec.absent}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
             </main>
         </div>
     );

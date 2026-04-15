@@ -10,6 +10,20 @@ interface AttendanceRecord {
     late: string;
 }
 
+interface LectureSummaryRow {
+    subject_id: string;
+    subject_code: string;
+    subject_name: string;
+    subject_paper_code: string | null;
+    lecture_number: number;
+    semester: number;
+    department_names: string;
+    teacher_names: string;
+    total_students: string;
+    present: string;
+    absent: string;
+}
+
 interface DetailedRecord {
     student_id: string;
     student_custom_id: string;
@@ -146,6 +160,46 @@ export async function GET(request: NextRequest) {
                 : 0
         }));
 
+        // Lectures summary: group by subject, lecture_number, semester with aggregated dept names
+        const lecturesSummaryQuery = `
+            SELECT 
+                sub.id as subject_id,
+                sub.code as subject_code,
+                sub.name as subject_name,
+                sub.paper_code as subject_paper_code,
+                ar.lecture_number,
+                s.current_semester as semester,
+                STRING_AGG(DISTINCT d.name, ', ' ORDER BY d.name) as department_names,
+                STRING_AGG(DISTINCT (t.first_name || ' ' || t.last_name), ', ') as teacher_names,
+                COUNT(*) as total_students,
+                COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as present,
+                COUNT(CASE WHEN ar.status = 'absent' THEN 1 END) as absent
+            FROM attendance_records ar
+            JOIN students s ON s.id = ar.student_id
+            JOIN subjects sub ON sub.id = ar.subject_id
+            LEFT JOIN departments d ON d.id = s.department_id
+            LEFT JOIN users t ON t.id = ar.teacher_id
+            WHERE ar.date = $1
+            ${filterClause}
+            GROUP BY sub.id, sub.code, sub.name, sub.paper_code, ar.lecture_number, s.current_semester
+            ORDER BY ar.lecture_number, s.current_semester, sub.code
+        `;
+
+        const lectureRows = await query<LectureSummaryRow>(lecturesSummaryQuery, params);
+
+        const lecturesSummary = lectureRows.map(r => ({
+            subjectCode: r.subject_code,
+            subjectName: r.subject_name,
+            subjectPaperCode: r.subject_paper_code || null,
+            lectureNumber: r.lecture_number,
+            semester: r.semester,
+            departmentNames: r.department_names || '',
+            teacherName: r.teacher_names || '',
+            totalStudents: parseInt(r.total_students) || 0,
+            present: parseInt(r.present) || 0,
+            absent: parseInt(r.absent) || 0,
+        }));
+
         // If detailed flag is set, also return individual student records
         let detailedRecords: any[] = [];
         if (detailed) {
@@ -189,6 +243,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
             records: formattedRecords,
+            lecturesSummary,
             ...(detailed && { detailedRecords })
         });
     } catch (error) {
