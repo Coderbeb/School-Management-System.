@@ -183,9 +183,9 @@ export default function DepartmentsPage() {
 
     if (loading) return <PageSkeleton type="departments" />;
 
-    // Teachers cannot access this page
-    if (user?.role === 'teacher') {
-        return <AccessDenied message="Teachers do not have access to the Departments page." />;
+    // Only super_admin can access this page
+    if (user?.role !== 'super_admin') {
+        return <AccessDenied message="You do not have permission to access the Departments page." />;
     }
 
     const isSuperAdmin = user?.role === 'super_admin';

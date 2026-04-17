@@ -10,6 +10,7 @@ import { useRealtimeData } from '@/hooks/useRealtimeData';
 import {
     CalendarClock, Clock, Check, X, Building2, Loader2, AlertCircle, Download, CalendarOff
 } from 'lucide-react';
+import { AccessDenied } from '@/components/ui/access-denied';
 
 interface User {
     id: string;
@@ -106,10 +107,6 @@ export default function ClassSchedulePage() {
         if (!token || !userData) { router.replace('/login'); return; }
         try {
             const parsed = JSON.parse(userData);
-            if (parsed.role !== 'hod' && parsed.role !== 'super_admin') {
-                router.replace('/dashboard');
-                return;
-            }
             setUser(parsed);
         } catch { router.replace('/login'); }
     }, [router]);
@@ -117,6 +114,10 @@ export default function ClassSchedulePage() {
     // Fetch all data once
     useEffect(() => {
         if (!user) return;
+        if (user.role !== 'hod') {
+            setLoading(false);
+            return;
+        }
         const token = localStorage.getItem('token');
         if (!token) return;
 
@@ -245,6 +246,7 @@ export default function ClassSchedulePage() {
         onTableChange: useCallback(() => {
             // Full page re-fetch is expensive, so we just reload it
             if (!user) return;
+            if (user.role !== 'hod') return;
             const token = localStorage.getItem('token');
             if (!token) return;
 
@@ -641,6 +643,10 @@ export default function ClassSchedulePage() {
 
     if (loading || !user) {
         return <PageSkeleton type="classes" />;
+    }
+
+    if (user.role !== 'hod') {
+        return <AccessDenied />;
     }
 
     return (

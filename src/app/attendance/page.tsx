@@ -11,6 +11,7 @@ import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { useOfflineStatus } from '@/components/ServiceWorkerProvider';
 import { addToQueue, getQueueCount } from '@/lib/offlineQueue';
 import { useRealtimeData } from '@/hooks/useRealtimeData';
+import { AccessDenied } from '@/components/ui/access-denied';
 
 interface Student {
     id: string;
@@ -133,13 +134,13 @@ export default function AttendancePage() {
         }
         const parsedUser = JSON.parse(userData);
 
+        setUser(parsedUser);
+
         // Only HOD and Teacher can access attendance
         if (parsedUser.role === 'super_admin') {
-            router.push('/dashboard');
+            setLoading(false);
             return;
         }
-
-        setUser(parsedUser);
         fetchTeacherDepartments(token);
         fetchTeacherSubjects(token, parsedUser.id);
         fetchHolidays(token);
@@ -993,6 +994,10 @@ export default function AttendancePage() {
     const displayStudents = useMemo(() => {
         return students;
     }, [students]);
+
+    if (user?.role === 'super_admin') {
+        return <AccessDenied />;
+    }
 
     if (loading && !students.length && !subjects.length) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 

@@ -13,6 +13,7 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { PageSkeleton } from '@/components/ui/PageSkeleton';
 import { useRealtimeData } from '@/hooks/useRealtimeData';
+import { AccessDenied } from '@/components/ui/access-denied';
 
 interface Holiday {
     id: string;
@@ -291,6 +292,10 @@ export default function HolidaysPage() {
     };
 
     if (loading) return <PageSkeleton type="holidays" />;
+
+    if (user?.role === 'teacher') {
+        return <AccessDenied />;
+    }
 
     const isSuperAdmin = user?.role === 'super_admin';
     const isHOD = user?.role === 'hod';

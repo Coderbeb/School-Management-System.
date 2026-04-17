@@ -6,6 +6,7 @@ import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { Building2, Save, AlertTriangle, ArrowRightCircle, RotateCcw, Mail, Eye, EyeOff, ToggleLeft, ToggleRight, CheckCircle, Shield, Send, Loader2 } from 'lucide-react';
 import { useRealtimeData } from '@/hooks/useRealtimeData';
+import { AccessDenied } from '@/components/ui/access-denied';
 
 interface User {
     firstName: string;
@@ -53,10 +54,6 @@ export default function SettingsPage() {
 
         try {
             const parsedUser = JSON.parse(userData);
-            if (parsedUser.role !== 'super_admin') {
-                router.replace('/dashboard'); // Only Super Admin allowed
-                return;
-            }
             setUser(parsedUser);
         } catch {
             router.replace('/login');
@@ -68,6 +65,7 @@ export default function SettingsPage() {
     useEffect(() => {
         const fetchCurrentMappings = async () => {
             if (!user) return;
+            if (user.role !== 'super_admin') return;
             setLoadingMappings(true);
             try {
                 const response = await fetch(`/api/settings/batch-upgrade?deptType=${selectedDeptType}`, {
@@ -116,6 +114,7 @@ export default function SettingsPage() {
     useEffect(() => {
         const fetchEmailConfig = async () => {
             if (!user) return;
+            if (user.role !== 'super_admin') return;
             setLoadingEmail(true);
             try {
                 const response = await fetch('/api/settings/email-config', {
@@ -278,6 +277,10 @@ export default function SettingsPage() {
                 <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
+    }
+
+    if (user.role !== 'super_admin') {
+        return <AccessDenied />;
     }
 
     const semestersCount = getSemestersCount(selectedDeptType);

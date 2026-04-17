@@ -7,6 +7,7 @@ import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import {
     CalendarClock, Clock, BookOpen, Building2, Bell, BellOff, BellRing, AlertCircle
 } from 'lucide-react';
+import { AccessDenied } from '@/components/ui/access-denied';
 
 interface User {
     id: string;
@@ -253,6 +254,10 @@ export default function ClassesPage() {
                 </div>
             </div>
         );
+    }
+
+    if (user && user.role === 'super_admin') {
+        return <AccessDenied />;
     }
 
     return (

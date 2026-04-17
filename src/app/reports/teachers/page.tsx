@@ -537,7 +537,7 @@ export default function TeacherReportPage() {
                     <img src="${logoUrl}" class="logo-img" alt="YSM Logo">
                     <div class="college-info">
                         <h1>Yogoda Satsanga Mahavidyalaya</h1>
-                        <p>Established 1967 | NAAC Accredited Grade 'B'++</p>
+                        <p>Established 1967 | NAAC Accredited Grade 'B'</p>
                         <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
                     </div>
                 </div>
@@ -583,11 +583,11 @@ export default function TeacherReportPage() {
                 </thead>
                 <tbody>
                     ${subjects.map(sub => {
-                        const firstSem = parseInt(sub.semester.toString().split(',')[0]) || 1;
-                        const deptInfo = selectedTeacher.filters.departments.find(d => d.name === sub.department);
-                        const batchLabel = getBatchLabel(firstSem, deptInfo?.deptType);
-                        
-                        return `
+            const firstSem = parseInt(sub.semester.toString().split(',')[0]) || 1;
+            const deptInfo = selectedTeacher.filters.departments.find(d => d.name === sub.department);
+            const batchLabel = getBatchLabel(firstSem, deptInfo?.deptType);
+
+            return `
                         <tr>
                             <td>
                                 <div style="font-weight: 600; font-size: 11px;">${sub.name} <span style="font-weight: 500; color: var(--text-sub);">(${sub.department})</span></div>
@@ -606,7 +606,7 @@ export default function TeacherReportPage() {
                             </td>
                         </tr>
                     `;
-                    }).join('')}
+        }).join('')}
                 </tbody>
             </table>
             ` : ''}
@@ -1109,79 +1109,79 @@ export default function TeacherReportPage() {
                                         </div>
 
                                         {/* Filters for Detail (Department/Semester/Date) */}
-                                                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                                                    <div className="text-xs font-semibold text-gray-500 uppercase mb-3">Filter Details</div>
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                                        {selectedTeacher.filters.departments?.length > 0 && (
-                                                            <select
-                                                                value={popupDeptFilter}
-                                                                onChange={(e) => setPopupDeptFilter(e.target.value)}
-                                                                className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
-                                                            >
-                                                                <option value="">All Departments</option>
-                                                                {selectedTeacher.filters.departments.map((dept) => (
-                                                                    <option key={dept.id} value={dept.id}>{dept.name}</option>
-                                                                ))}
-                                                            </select>
-                                                        )}
-                                                        {selectedTeacher.filters.semesters?.length > 0 && (
-                                                            <select
-                                                                value={popupSemesterFilter}
-                                                                onChange={(e) => setPopupSemesterFilter(e.target.value)}
-                                                                className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
-                                                            >
-                                                                <option value="">All Semesters</option>
-                                                                {selectedTeacher.filters.semesters
-                                                                    .filter(sem => {
-                                                                        if (popupDeptFilter) {
-                                                                            const selectedDept = selectedTeacher.filters.departments.find(d => d.id === popupDeptFilter);
-                                                                            const activeSemesters = getActiveSemesters(selectedDept?.deptType);
-                                                                            return activeSemesters.includes(sem);
-                                                                        } else {
-                                                                            return selectedTeacher.filters.departments.some(dept => {
-                                                                                const activeSemesters = getActiveSemesters(dept.deptType);
-                                                                                return activeSemesters.includes(sem);
-                                                                            });
-                                                                        }
-                                                                    })
-                                                                    .map((sem) => {
-                                                                        let dt: string | undefined;
-                                                                        if (popupDeptFilter) {
-                                                                            const selectedDept = selectedTeacher.filters.departments.find(d => d.id === popupDeptFilter);
-                                                                            dt = selectedDept?.deptType;
-                                                                        } else {
-                                                                            const validDept = selectedTeacher.filters.departments.find(dept => 
-                                                                                getActiveSemesters(dept.deptType).includes(sem)
-                                                                            );
-                                                                            dt = validDept?.deptType;
-                                                                        }
-                                                                        const label = getBatchLabel(sem, dt);
-                                                                        return (
-                                                                            <option key={sem} value={sem}>Sem {sem}{label ? ` (${label})` : ''}</option>
-                                                                        );
-                                                                    })}
-                                                            </select>
-                                                        )}
-                                                        <div>
-                                                            <input
-                                                                type="date"
-                                                                value={popupDateFrom}
-                                                                onChange={(e) => setPopupDateFrom(e.target.value)}
-                                                                className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
-                                                                placeholder="From Date"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <input
-                                                                type="date"
-                                                                value={popupDateTo}
-                                                                onChange={(e) => setPopupDateTo(e.target.value)}
-                                                                className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
-                                                                placeholder="To Date"
-                                                            />
-                                                        </div>
-                                                    </div>
+                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                            <div className="text-xs font-semibold text-gray-500 uppercase mb-3">Filter Details</div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                                {selectedTeacher.filters.departments?.length > 0 && (
+                                                    <select
+                                                        value={popupDeptFilter}
+                                                        onChange={(e) => setPopupDeptFilter(e.target.value)}
+                                                        className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+                                                    >
+                                                        <option value="">All Departments</option>
+                                                        {selectedTeacher.filters.departments.map((dept) => (
+                                                            <option key={dept.id} value={dept.id}>{dept.name}</option>
+                                                        ))}
+                                                    </select>
+                                                )}
+                                                {selectedTeacher.filters.semesters?.length > 0 && (
+                                                    <select
+                                                        value={popupSemesterFilter}
+                                                        onChange={(e) => setPopupSemesterFilter(e.target.value)}
+                                                        className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+                                                    >
+                                                        <option value="">All Semesters</option>
+                                                        {selectedTeacher.filters.semesters
+                                                            .filter(sem => {
+                                                                if (popupDeptFilter) {
+                                                                    const selectedDept = selectedTeacher.filters.departments.find(d => d.id === popupDeptFilter);
+                                                                    const activeSemesters = getActiveSemesters(selectedDept?.deptType);
+                                                                    return activeSemesters.includes(sem);
+                                                                } else {
+                                                                    return selectedTeacher.filters.departments.some(dept => {
+                                                                        const activeSemesters = getActiveSemesters(dept.deptType);
+                                                                        return activeSemesters.includes(sem);
+                                                                    });
+                                                                }
+                                                            })
+                                                            .map((sem) => {
+                                                                let dt: string | undefined;
+                                                                if (popupDeptFilter) {
+                                                                    const selectedDept = selectedTeacher.filters.departments.find(d => d.id === popupDeptFilter);
+                                                                    dt = selectedDept?.deptType;
+                                                                } else {
+                                                                    const validDept = selectedTeacher.filters.departments.find(dept =>
+                                                                        getActiveSemesters(dept.deptType).includes(sem)
+                                                                    );
+                                                                    dt = validDept?.deptType;
+                                                                }
+                                                                const label = getBatchLabel(sem, dt);
+                                                                return (
+                                                                    <option key={sem} value={sem}>Sem {sem}{label ? ` (${label})` : ''}</option>
+                                                                );
+                                                            })}
+                                                    </select>
+                                                )}
+                                                <div>
+                                                    <input
+                                                        type="date"
+                                                        value={popupDateFrom}
+                                                        onChange={(e) => setPopupDateFrom(e.target.value)}
+                                                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+                                                        placeholder="From Date"
+                                                    />
                                                 </div>
+                                                <div>
+                                                    <input
+                                                        type="date"
+                                                        value={popupDateTo}
+                                                        onChange={(e) => setPopupDateTo(e.target.value)}
+                                                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+                                                        placeholder="To Date"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
 
                                         {/* Subject Breakdown - only show when multiple subjects */}
                                         {selectedTeacher.subjects.length > 1 && (

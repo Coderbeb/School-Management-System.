@@ -699,7 +699,7 @@ function StudentReportContent() {
                     <img src="${logoUrl}" class="logo-img" alt="YSM Logo">
                     <div class="college-info">
                         <h1>Yogoda Satsanga Mahavidyalaya</h1>
-                        <p>Established 1967 | NAAC Accredited Grade 'B'++</p>
+                        <p>Established 1967 | NAAC Accredited Grade 'B'</p>
                         <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
                     </div>
                 </div>
@@ -801,8 +801,9 @@ function StudentReportContent() {
     };
 
     const filteredStudents = students.filter(student => {
-        const matchesSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (student.rollNumber && String(student.rollNumber).toLowerCase().includes(searchTerm.toLowerCase()));
+        const cleanSearchTerm = searchTerm.toLowerCase().replace(/\s+/g, '');
+        const matchesSearch = student.name.toLowerCase().replace(/\s+/g, '').includes(cleanSearchTerm) ||
+            (student.rollNumber && String(student.rollNumber).toLowerCase().replace(/\s+/g, '').includes(cleanSearchTerm));
 
         if (!matchesSearch) return false;
 
@@ -954,7 +955,7 @@ function StudentReportContent() {
             <img src="${logoUrl}" class="logo-img" alt="YSM Logo">
             <div class="college-info">
                 <h1>Yogoda Satsanga Mahavidyalaya</h1>
-                <p>Established 1967 | NAAC Accredited Grade 'B'++</p>
+                <p>Established 1967 | NAAC Accredited Grade 'B'</p>
                 <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
             </div>
         </div>
@@ -1085,6 +1086,7 @@ function StudentReportContent() {
                                             type="date"
                                             value={startDate}
                                             onChange={(e) => setStartDate(e.target.value)}
+                                            placeholder="dd/mm/yyyy"
                                             className="bg-transparent border-none p-0 text-sm outline-none w-full text-gray-700"
                                             title="Start Date"
                                         />
@@ -1095,6 +1097,7 @@ function StudentReportContent() {
                                             type="date"
                                             value={endDate}
                                             onChange={(e) => setEndDate(e.target.value)}
+                                            placeholder="dd/mm/yyyy"
                                             className="bg-transparent border-none p-0 text-sm outline-none w-full text-gray-700"
                                             title="End Date"
                                         />
@@ -1135,8 +1138,8 @@ function StudentReportContent() {
                                     >
                                         <option value="">All Semesters</option>
                                         {(() => {
-                                            const effectiveDeptType = selectedDepartmentId 
-                                                ? getDeptType(departments.find(d => d.id === selectedDepartmentId)) 
+                                            const effectiveDeptType = selectedDepartmentId
+                                                ? getDeptType(departments.find(d => d.id === selectedDepartmentId))
                                                 : (user?.role === 'super_admin' ? 'regular' : (departments.length > 0 ? getDeptType(departments[0]) : 'regular'));
                                             return getActiveSemesters(effectiveDeptType).map((sem) => {
                                                 const label = getBatchLabel(sem, effectiveDeptType);
@@ -1157,8 +1160,8 @@ function StudentReportContent() {
                                     <button
                                         onClick={() => setShowSubjectFilter(!showSubjectFilter)}
                                         className={`w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border rounded-xl text-sm text-left font-medium shadow-sm transition-all cursor-pointer relative ${pageSelectedSubjectIds.size < availableSubjects.length && pageSelectedSubjectIds.size > 0
-                                                ? 'border-purple-300 text-purple-700 bg-purple-50/30'
-                                                : 'border-gray-200 hover:border-purple-300 text-gray-700'
+                                            ? 'border-purple-300 text-purple-700 bg-purple-50/30'
+                                            : 'border-gray-200 hover:border-purple-300 text-gray-700'
                                             }`}
                                     >
                                         {pageSelectedSubjectIds.size === 0 || pageSelectedSubjectIds.size === availableSubjects.length
@@ -1210,13 +1213,13 @@ function StudentReportContent() {
                                                 key={sub.id}
                                                 onClick={() => toggleSubjectSelection(sub.id)}
                                                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 ${isSelected
-                                                        ? 'bg-purple-100 border-purple-300 text-purple-800 shadow-sm'
-                                                        : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                                                    ? 'bg-purple-100 border-purple-300 text-purple-800 shadow-sm'
+                                                    : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
                                                     }`}
                                             >
                                                 <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${isSelected
-                                                        ? 'bg-purple-600 border-purple-600'
-                                                        : 'border-gray-300 bg-white'
+                                                    ? 'bg-purple-600 border-purple-600'
+                                                    : 'border-gray-300 bg-white'
                                                     }`}>
                                                     {isSelected && (
                                                         <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>

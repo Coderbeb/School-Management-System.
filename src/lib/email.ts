@@ -131,7 +131,7 @@ function generateEmailHTML(data: StudentReportData): string {
                     <tr>
                         <td style="background: #1e3a5f; padding: 24px 36px; text-align: center; border-bottom: 4px solid #b45309;">
                             <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; font-family: Georgia, serif;">Yogoda Satsanga Mahavidyalaya</h1>
-                            <p style="margin: 6px 0 0; color: #93c5fd; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase;">Established 1967 &bull; NAAC Accredited Grade 'B'++ &bull; Jagannathpur, Dhurwa, Ranchi-834004</p>
+                            <p style="margin: 6px 0 0; color: #93c5fd; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase;">Established 1967 &bull; NAAC Accredited Grade 'B' &bull; Jagannathpur, Dhurwa, Ranchi-834004</p>
                         </td>
                     </tr>
 
@@ -283,7 +283,7 @@ function generatePlainText(data: StudentReportData): string {
 
     return `
 YOGODA SATSANGA MAHAVIDYALAYA
-Established 1967 | NAAC Accredited Grade 'B'++
+Established 1967 | NAAC Accredited Grade 'B'
 Jagannathpur, Dhurwa, Ranchi-834004
 =================================================
 

@@ -413,7 +413,7 @@ function DailyReportContent() {
                 <img src="${logoUrl}" class="logo-img" alt="YSM Logo">
                 <div class="college-info">
                     <h1>Yogoda Satsanga Mahavidyalaya</h1>
-                    <p>Established 1967 | NAAC Accredited Grade 'B'++</p>
+                    <p>Established 1967 | NAAC Accredited Grade 'B'</p>
                     <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
                 </div>
             </div>
@@ -657,8 +657,8 @@ function DailyReportContent() {
                                 >
                                     <option value="">All Semesters</option>
                                     {(() => {
-                                        const effectiveDeptType = selectedDepartmentId 
-                                            ? getDeptType(departments.find(d => d.id === selectedDepartmentId)) 
+                                        const effectiveDeptType = selectedDepartmentId
+                                            ? getDeptType(departments.find(d => d.id === selectedDepartmentId))
                                             : (user?.role === 'super_admin' ? 'regular' : (departments.length > 0 ? getDeptType(departments[0]) : 'regular'));
                                         return getActiveSemesters(effectiveDeptType).map((sem) => {
                                             const label = getBatchLabel(sem, effectiveDeptType);

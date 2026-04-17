@@ -1,6 +1,6 @@
-const CACHE_NAME = 'ysm-attendance-v7';
-const STATIC_CACHE = 'ysm-static-v7';
-const API_CACHE = 'ysm-api-v7';
+const CACHE_NAME = 'ysm-attendance-v8';
+const STATIC_CACHE = 'ysm-static-v8';
+const API_CACHE = 'ysm-api-v8';
 const OFFLINE_QUEUE_STORE = 'offline-attendance-queue';
 
 // Static assets to pre-cache on install

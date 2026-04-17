@@ -116,7 +116,7 @@ export default function MyPerformancePage() {
             const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            
+
             if (res.status === 401) {
                 router.replace('/login');
                 return;
@@ -447,7 +447,7 @@ export default function MyPerformancePage() {
                     <img src="${logoUrl}" class="logo-img" alt="YSM Logo">
                     <div class="college-info">
                         <h1>Yogoda Satsanga Mahavidyalaya</h1>
-                        <p>Established 1967 | NAAC Accredited Grade 'B'++</p>
+                        <p>Established 1967 | NAAC Accredited Grade 'B'</p>
                         <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
                     </div>
                 </div>
@@ -601,27 +601,27 @@ export default function MyPerformancePage() {
             <Navbar user={user} onMenuClick={() => setSidebarOpen(true)} />
 
             <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
-            <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl mt-4">
-                <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6">
-                    <div>
-                        <div className="flex items-center gap-2 mb-2">
-                            <span className="text-indigo-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
+                <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl mt-4">
+                    <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6">
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-indigo-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
+                            </div>
+                            <h1 className="text-2xl font-bold mb-2 flex items-center gap-3">
+                                My Performance <span className="inline-block animate-bounce">📈</span>
+                            </h1>
+                            <p className="text-indigo-100 text-sm max-w-xl">
+                                Track your teaching statistics, monitor your <span className="font-semibold text-white">syllabus progression</span>, and export printable reports.
+                            </p>
                         </div>
-                        <h1 className="text-2xl font-bold mb-2 flex items-center gap-3">
-                            My Performance <span className="inline-block animate-bounce">📈</span>
-                        </h1>
-                        <p className="text-indigo-100 text-sm max-w-xl">
-                            Track your teaching statistics, monitor your <span className="font-semibold text-white">syllabus progression</span>, and export printable reports.
-                        </p>
+
+                        {data && (
+                            <Button onClick={downloadTeacherReportCard} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg self-start sm:self-auto">
+                                <FileDown className="w-5 h-5 mr-2" /> Download Faculty Report
+                            </Button>
+                        )}
                     </div>
-                    
-                    {data && (
-                        <Button onClick={downloadTeacherReportCard} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg self-start sm:self-auto">
-                            <FileDown className="w-5 h-5 mr-2" /> Download Faculty Report
-                        </Button>
-                    )}
                 </div>
-            </div>
 
                 {loading && !data ? (
                     <div className="flex flex-col items-center justify-center py-20">
@@ -679,7 +679,7 @@ export default function MyPerformancePage() {
                                                         const selectedDept = data.filters.departments.find(d => d.id === deptFilter);
                                                         dt = selectedDept?.deptType;
                                                     } else {
-                                                        const validDept = data.filters.departments.find(dept => 
+                                                        const validDept = data.filters.departments.find(dept =>
                                                             getActiveSemesters(dept.deptType).includes(sem)
                                                         );
                                                         dt = validDept?.deptType;
@@ -855,7 +855,7 @@ export default function MyPerformancePage() {
                                 </div>
                             </div>
                         )}
-                        
+
                     </div>
                 )}
             </main>

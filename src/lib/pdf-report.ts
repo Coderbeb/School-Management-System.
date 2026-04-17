@@ -366,7 +366,7 @@ function generateReportHTML(data: PDFReportData): string {
                     ${logoUrl ? `<img src="${logoUrl}" class="logo-img" alt="YSM Logo">` : ''}
                     <div class="college-info">
                         <h1>Yogoda Satsanga Mahavidyalaya</h1>
-                        <p>Established 1967 | NAAC Accredited Grade 'B'++</p>
+                        <p>Established 1967 | NAAC Accredited Grade 'B'</p>
                         <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
                     </div>
                 </div>
@@ -424,10 +424,10 @@ function generateReportHTML(data: PDFReportData): string {
                 <h3>${status.text}</h3>
                 <p>
                     ${data.percentage >= 75
-                        ? 'Student maintains good attendance record. Keep up the consistent engagement in classes.'
-                        : data.percentage >= 60
-                            ? 'Attendance is within acceptable limits but implies scope for improvement. Regularity is advised.'
-                            : 'Critical attendance shortage detected. Immediate improvement is required to meet college standards.'}
+            ? 'Student maintains good attendance record. Keep up the consistent engagement in classes.'
+            : data.percentage >= 60
+                ? 'Attendance is within acceptable limits but implies scope for improvement. Regularity is advised.'
+                : 'Critical attendance shortage detected. Immediate improvement is required to meet college standards.'}
                 </p>
             </div>
 
