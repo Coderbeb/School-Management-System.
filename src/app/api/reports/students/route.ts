@@ -120,8 +120,8 @@ export async function GET(request: NextRequest) {
             // OLD: Filter by subject assignment
             // teacherSubjectFilter = `ar.subject_id IN (SELECT subject_id FROM teacher_subjects WHERE teacher_id = $${uIdIndex + 1})`;
 
-            // NEW: Filter by who marked the attendance
-            teacherSubjectFilter = `ar.teacher_id = $${uIdIndex + 1}`;
+            // NEW: Filter by who marked the attendance AND only include subjects they are assigned to teach
+            teacherSubjectFilter = `ar.teacher_id = $${uIdIndex + 1} AND ar.subject_id IN (SELECT subject_id FROM teacher_subjects WHERE teacher_id = $${uIdIndex + 1})`;
         }
 
         const queryStr = `
@@ -133,8 +133,8 @@ export async function GET(request: NextRequest) {
                 s.last_name,
                 d.name as department_name,
                 s.current_semester,
-                COUNT(ar.id) as total_lectures,
-                COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as attended
+                COUNT(DISTINCT ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text) as total_lectures,
+                COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text END) as attended
             FROM students s
             LEFT JOIN departments d ON d.id = s.department_id
             LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.subject_id IN (SELECT ss.subject_id FROM student_subjects ss WHERE ss.student_id = s.id) AND (${teacherSubjectFilter})

@@ -108,8 +108,8 @@ export async function GET(
             // We adding userId to the end => index is 1 + dateParams.length + 1
             const uIdIndex = 1 + dateParams.length + 1;
 
-            // STRICT ISOLATION: Filter by who marked the attendance
-            teacherSubjectFilter = `ar.teacher_id = $${uIdIndex}`;
+            // STRICT ISOLATION: Filter by who marked the attendance, AND only include subjects they are assigned to teach
+            teacherSubjectFilter = `ar.teacher_id = $${uIdIndex} AND ar.subject_id IN (SELECT subject_id FROM teacher_subjects WHERE teacher_id = $${uIdIndex})`;
 
             // Keep subject join to ensure they only see subjects they are assigned to
             subjectJoinClause = `JOIN teacher_subjects ts ON ts.subject_id = s.id AND ts.teacher_id = $${uIdIndex}`;
@@ -127,12 +127,12 @@ export async function GET(
                 s.name as subject_name,
                 s.code as subject_code,
                 s.paper_code as subject_paper_code,
-                COUNT(ar.id) as total_classes,
-                COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as attended,
+                COUNT(DISTINCT ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text) as total_classes,
+                COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text END) as attended,
                 COALESCE(
                     ROUND(
-                        COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
-                        NULLIF(COUNT(ar.id), 0),
+                        COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text END)::numeric * 100 / 
+                        NULLIF(COUNT(DISTINCT ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text), 0),
                         1
                     ),
                     0
@@ -150,18 +150,19 @@ export async function GET(
         // Get monthly stats with date filter
         let monthlyQuery = `SELECT 
                 TO_CHAR(ar.date, 'YYYY-MM') as month,
-                COUNT(ar.id) as total_classes,
-                COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as attended,
+                COUNT(DISTINCT ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text) as total_classes,
+                COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text END) as attended,
                 COALESCE(
                     ROUND(
-                        COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
-                        NULLIF(COUNT(ar.id), 0),
+                        COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text END)::numeric * 100 / 
+                        NULLIF(COUNT(DISTINCT ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text), 0),
                         1
                     ),
                     0
                 ) as attendance_pct
              FROM attendance_records ar
-             WHERE ar.student_id = $1`;
+             WHERE ar.student_id = $1 
+               AND ar.subject_id IN (SELECT subject_id FROM student_subjects WHERE student_id = $1)`;
 
         if (effectiveRole === 'teacher') {
             monthlyQuery += ` AND ${teacherSubjectFilter}`;
@@ -187,18 +188,19 @@ export async function GET(
 
         // Overall summary with date filter
         let overallQuery = `SELECT 
-                COUNT(ar.id) as total_classes,
-                COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as attended,
+                COUNT(DISTINCT ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text) as total_classes,
+                COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text END) as attended,
                 COALESCE(
                     ROUND(
-                        COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
-                        NULLIF(COUNT(ar.id), 0),
+                        COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text END)::numeric * 100 / 
+                        NULLIF(COUNT(DISTINCT ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text), 0),
                         1
                     ),
                     0
                 ) as attendance_pct
              FROM attendance_records ar
-             WHERE ar.student_id = $1 ${dateFilter}`;
+             WHERE ar.student_id = $1 
+               AND ar.subject_id IN (SELECT subject_id FROM student_subjects WHERE student_id = $1) ${dateFilter}`;
 
         if (effectiveRole === 'teacher') {
             overallQuery += ` AND ${teacherSubjectFilter}`;
