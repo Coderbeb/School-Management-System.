@@ -16,7 +16,7 @@ interface LectureSummaryRow {
     subject_name: string;
     subject_paper_code: string | null;
     lecture_number: number;
-    semester: number;
+    semester: string;
     department_names: string;
     teacher_names: string;
     total_students: string;
@@ -168,7 +168,7 @@ export async function GET(request: NextRequest) {
                 sub.name as subject_name,
                 sub.paper_code as subject_paper_code,
                 ar.lecture_number,
-                s.current_semester as semester,
+                STRING_AGG(DISTINCT s.current_semester::text, ', ' ORDER BY s.current_semester::text) as semester,
                 STRING_AGG(DISTINCT d.name, ', ' ORDER BY d.name) as department_names,
                 STRING_AGG(DISTINCT (t.first_name || ' ' || t.last_name), ', ') as teacher_names,
                 COUNT(*) as total_students,
@@ -181,8 +181,8 @@ export async function GET(request: NextRequest) {
             LEFT JOIN users t ON t.id = ar.teacher_id
             WHERE ar.date = $1
             ${filterClause}
-            GROUP BY sub.id, sub.code, sub.name, sub.paper_code, ar.lecture_number, s.current_semester
-            ORDER BY ar.lecture_number, s.current_semester, sub.code
+            GROUP BY sub.id, sub.code, sub.name, sub.paper_code, ar.lecture_number
+            ORDER BY ar.lecture_number, sub.code
         `;
 
         const lectureRows = await query<LectureSummaryRow>(lecturesSummaryQuery, params);

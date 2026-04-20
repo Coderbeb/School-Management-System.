@@ -47,7 +47,7 @@ interface LectureSummary {
     subjectName: string;
     subjectPaperCode: string | null;
     lectureNumber: number;
-    semester: number;
+    semester: string;
     departmentNames: string;
     teacherName: string;
     totalStudents: number;
@@ -830,7 +830,7 @@ function DailyReportContent() {
                         {/* Desktop Table */}
                         <div className="hidden md:block overflow-x-auto">
                             <table className="w-full table-auto">
-                                <thead className="bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-indigo-100">
+                                <thead className="bg-linear-to-r from-indigo-50 to-blue-50 border-b border-indigo-100">
                                     <tr>
                                         <th className="px-4 py-3 text-left text-xs font-bold text-indigo-600 uppercase tracking-wider">Lec #</th>
                                         <th className="px-4 py-3 text-left text-xs font-bold text-indigo-600 uppercase tracking-wider">Subject</th>
