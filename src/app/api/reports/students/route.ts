@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
                 COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as attended
             FROM students s
             LEFT JOIN departments d ON d.id = s.department_id
-            LEFT JOIN attendance_records ar ON ar.student_id = s.id AND (${teacherSubjectFilter})
+            LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.subject_id IN (SELECT ss.subject_id FROM student_subjects ss WHERE ss.student_id = s.id) AND (${teacherSubjectFilter})
             WHERE 1=1
             ${filterClause}
             GROUP BY s.id, s.student_id, s.roll_number, s.first_name, s.last_name, d.name, s.current_semester

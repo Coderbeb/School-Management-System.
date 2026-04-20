@@ -1091,7 +1091,7 @@ function StudentReportContent() {
                                             title="Start Date"
                                         />
                                     </div>
-                                    <div className="h-4 w-px bg-gray-300 mx-2 flex-shrink-0"></div>
+                                    <div className="h-4 w-px bg-gray-300 mx-2 shrink-0"></div>
                                     <div className="flex items-center flex-1">
                                         <input
                                             type="date"
@@ -1217,7 +1217,7 @@ function StudentReportContent() {
                                                     : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
                                                     }`}
                                             >
-                                                <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${isSelected
+                                                <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected
                                                     ? 'bg-purple-600 border-purple-600'
                                                     : 'border-gray-300 bg-white'
                                                     }`}>
@@ -1292,7 +1292,7 @@ function StudentReportContent() {
                                                         <tr key={student.id} className="hover:bg-blue-50/50 transition-colors group">
                                                             <td className="px-6 py-4 whitespace-nowrap">
                                                                 <div className="flex items-center">
-                                                                    <div className="flex-shrink-0 h-10 w-10 bg-purple-50 rounded-full flex items-center justify-center text-purple-600 font-bold text-sm">
+                                                                    <div className="shrink-0 h-10 w-10 bg-purple-50 rounded-full flex items-center justify-center text-purple-600 font-bold text-sm">
                                                                         {student.name.charAt(0)}
                                                                     </div>
                                                                     <div className="ml-4">
@@ -1487,7 +1487,7 @@ function StudentReportContent() {
                                 ) : selectedStudent && (
                                     <div className="space-y-8">
                                         {/* Profile Card */}
-                                        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-100">
+                                        <div className="bg-linear-to-r from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-100">
                                             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                                                 <div className="flex items-center gap-4">
                                                     <div className="w-16 h-16 bg-white rounded-full shadow-sm flex items-center justify-center text-2xl font-bold text-purple-600 border border-purple-100">
