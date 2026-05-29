@@ -11,11 +11,10 @@ import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface User {
     id: string;
-    role: 'super_admin' | 'hod' | 'teacher';
+    role: 'super_admin' | 'teacher' | 'accountant' | 'student';
     firstName: string;
     lastName: string;
     email: string;
-    departmentId?: string;
 }
 
 interface AttendanceStats {
@@ -27,12 +26,6 @@ interface AttendanceStats {
     todayClasses?: number;
     lowAttendanceCount?: number;
     warningAttendanceCount?: number;
-    departmentStats?: {
-        departmentId: string;
-        departmentName: string;
-        totalStudents: number;
-        avgAttendance: number;
-    }[];
 }
 
 export default function ReportsPage() {
@@ -109,7 +102,7 @@ export default function ReportsPage() {
         if (!user) return '';
         const hour = new Date().getHours();
         const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
-        const roleLabel = user.role === 'super_admin' ? 'Admin' : user.role === 'hod' ? 'HOD' : 'Teacher';
+        const roleLabel = user.role === 'super_admin' ? 'Admin' : 'Teacher';
         return `${greeting}, ${user.firstName}!`;
     };
 
@@ -146,7 +139,7 @@ export default function ReportsPage() {
             bgLight: 'bg-purple-50',
             href: '/reports/students'
         },
-        // My Performance - for Teachers only (HODs have it in My Reports)
+        // My Performance - for Teachers only
         ...(user?.role === 'teacher' ? [{
             id: 'my-performance',
             title: 'My Performance',
@@ -167,12 +160,12 @@ export default function ReportsPage() {
             bgLight: 'bg-orange-50',
             href: '/reports/teachers'
         }] : []),
-        // Department Overview - for HOD and Super Admin only
+        // Classroom Overview - for Super Admin only
         ...(user && user.role !== 'teacher' ? [{
             id: 'department',
-            title: 'Department Overview',
-            description: 'Semester & subject analytics',
-            icon: Building2,
+            title: 'Classroom Overview',
+            description: 'Class & subject analytics',
+            icon: LayoutDashboard,
             color: 'bg-teal-500',
             gradient: 'from-teal-500 to-teal-600',
             bgLight: 'bg-teal-50',
@@ -210,7 +203,7 @@ export default function ReportsPage() {
         ];
 
         // Add role-specific stats
-        if (user?.role === 'super_admin' || user?.role === 'hod') {
+        if (user?.role === 'super_admin') {
             if (stats.lowAttendanceCount !== undefined) {
                 baseStats.push({
                     label: 'Critical (<60%)',
@@ -242,8 +235,8 @@ export default function ReportsPage() {
             <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
                 {/* Hero / Welcome Section */}
                 <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl">
-
-
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
+                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
                     <div className="relative z-10">
                         <div className="flex items-start justify-between">
                             <div>
@@ -297,8 +290,8 @@ export default function ReportsPage() {
                     })}
                 </div>
 
-                {/* HOD/Admin - Alerts Section */}
-                {(user?.role === 'hod' || user?.role === 'super_admin') && (stats.lowAttendanceCount || stats.warningAttendanceCount) ? (
+                {/* Admin - Alerts Section */}
+                {(user?.role === 'super_admin') && (stats.lowAttendanceCount || stats.warningAttendanceCount) ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                         {/* Low Attendance Alert */}
                         {(stats.lowAttendanceCount || 0) > 0 && (
@@ -376,68 +369,8 @@ export default function ReportsPage() {
                     ))}
                 </div>
 
-                {/* Super Admin - Department Overview Table */}
-                {user?.role === 'super_admin' && stats.departmentStats && stats.departmentStats.length > 0 && (
-                    <div className="shadow-lg bg-white overflow-hidden rounded-2xl">
-                        <div className="bg-gray-50 border-b border-gray-100 py-4 px-6">
-                            <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-800">
-                                <Building2 className="w-5 h-5 text-gray-500" />
-                                Department Performance
-                            </h3>
-                        </div>
-                        <div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead className="bg-gray-50/50">
-                                        <tr>
-                                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Department</th>
-                                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Students</th>
-                                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Attendance</th>
-                                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {stats.departmentStats.map((dept) => (
-                                            <tr key={dept.departmentId} className="hover:bg-gray-50/80 transition-colors">
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="font-medium text-gray-900">{dept.departmentName}</div>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                    {dept.totalStudents}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-24 bg-gray-100 rounded-full h-2 overflow-hidden">
-                                                            <div 
-                                                                className={`h-full rounded-full ${
-                                                                    dept.avgAttendance >= 75 ? 'bg-emerald-500' : 
-                                                                    dept.avgAttendance >= 60 ? 'bg-amber-500' : 'bg-red-500'
-                                                                }`}
-                                                                style={{ width: `${dept.avgAttendance}%` }}
-                                                            />
-                                                        </div>
-                                                        <span className="text-sm font-bold text-gray-700">{dept.avgAttendance}%</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
-                                                        dept.avgAttendance >= 75 
-                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                                                            : dept.avgAttendance >= 60 
-                                                                ? 'bg-amber-50 text-amber-700 border-amber-100' 
-                                                                : 'bg-red-50 text-red-700 border-red-100'
-                                                    }`}>
-                                                        {dept.avgAttendance >= 75 ? 'Good' : dept.avgAttendance >= 60 ? 'Average' : 'Critical'}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
+
+
             </main>
         </div>
     );

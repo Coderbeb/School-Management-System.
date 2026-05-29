@@ -8,11 +8,10 @@ import { Calendar, Users, UserCheck, UserX, ArrowLeft, Filter, Search, ChevronDo
 import * as XLSX from 'xlsx';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
-import { useActiveSemesters } from '@/hooks/useActiveSemesters';
 
 interface User {
     id: string;
-    role: 'super_admin' | 'hod' | 'teacher';
+    role: 'super_admin' | 'teacher' | 'accountant' | 'student';
     firstName: string;
     lastName: string;
     email: string;
@@ -77,7 +76,6 @@ function DailyReportContent() {
     const [records, setRecords] = useState<AttendanceRecord[]>([]);
     const [lecturesSummary, setLecturesSummary] = useState<LectureSummary[]>([]);
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const { getActiveSemesters, getBatchLabel } = useActiveSemesters();
 
     // Helper to get dept type from either field name convention
     const getDeptType = (dept?: Department) => dept?.deptType || dept?.dept_type;
@@ -95,7 +93,7 @@ function DailyReportContent() {
         // Fetch departments for super_admin or teacher with multiple depts
         if (parsedUser.role === 'super_admin') {
             fetchDepartments(token);
-        } else if (parsedUser.role === 'teacher' || parsedUser.role === 'hod') {
+        } else if (parsedUser.role === 'teacher') {
             fetchTeacherDepartments(token, parsedUser.id);
         }
     }, [router]);
@@ -306,7 +304,7 @@ function DailyReportContent() {
                 return;
             }
 
-            const headers = ['S.No', 'Student ID', 'Roll Number', 'Student Name', 'Department', 'Paper/Subject Code', 'Subject Name', 'Lecture', 'Status'];
+            const headers = ['S.No', 'Student ID', 'Roll Number', 'Student Name', 'Classroom', 'Paper/Subject Code', 'Subject Name', 'Lecture', 'Status'];
             const rows = filteredRecords.map((r: any, index: number) => [
                 (index + 1).toString(),
                 r.studentCustomId || r.rollNumber,
@@ -335,7 +333,7 @@ function DailyReportContent() {
                 link.click();
                 document.body.removeChild(link);
             } else if (format === 'excel') {
-                const headers = ['S.No', 'Student ID', 'Roll Number', 'Student Name', 'Department', 'Paper/Subject Code', 'Subject Name', 'Lecture', 'Status'];
+                const headers = ['S.No', 'Student ID', 'Roll Number', 'Student Name', 'Classroom', 'Paper/Subject Code', 'Subject Name', 'Lecture', 'Status'];
                 const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
                 // Set column widths
                 worksheet['!cols'] = [
@@ -412,8 +410,8 @@ function DailyReportContent() {
             <div class="logo-section">
                 <img src="${logoUrl}" class="logo-img" alt="YSM Logo">
                 <div class="college-info">
-                    <h1>Yogoda Satsanga Mahavidyalaya</h1>
-                    <p>Established 1967 | NAAC Accredited Grade 'B'</p>
+                    <h1>Yogoda Satsanga School</h1>
+                    <p>Coaching & School Management System</p>
                     <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
                 </div>
             </div>
@@ -426,8 +424,7 @@ function DailyReportContent() {
         <div class="filters-info">
             <strong>Filters Applied:</strong> 
             Subject: ${getSelectedSubjectName()} | 
-            Semester: ${selectedSemester || 'All'} | 
-            Department: ${selectedDepartmentId ? departments.find(d => d.id === selectedDepartmentId)?.name || 'Selected' : 'All'}
+            Classroom: ${selectedDepartmentId ? departments.find(d => d.id === selectedDepartmentId)?.name || 'Selected' : 'All'}
         </div>
         <div class="summary-cards">
             <div class="summary-card">
@@ -502,9 +499,10 @@ function DailyReportContent() {
 
             <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
                 {/* Hero / Welcome Section */}
+                {/* Hero / Welcome Section */}
                 <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl">
-
-
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
+                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
                     <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6">
                         <div>
                             <div className="flex items-center gap-2 mb-2">
@@ -626,17 +624,17 @@ function DailyReportContent() {
                         <h3 className="text-sm font-bold text-gray-700">Advanced Filters</h3>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 items-end">
-                        {/* Department Filter */}
+                        {/* Classroom Filter */}
                         {(user?.role === 'super_admin' || departments.length > 1) && (
                             <div className="w-full">
-                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Department</label>
+                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Classroom</label>
                                 <div className="relative">
                                     <select
                                         value={selectedDepartmentId}
                                         onChange={(e) => { setSelectedDepartmentId(e.target.value); }}
                                         className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-blue-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium"
                                     >
-                                        <option value="">All Departments</option>
+                                        <option value="">All Classrooms</option>
                                         {departments.map((dept) => (
                                             <option key={dept.id} value={dept.id}>{dept.name}</option>
                                         ))}
@@ -645,32 +643,6 @@ function DailyReportContent() {
                                 </div>
                             </div>
                         )}
-
-                        {/* Semester Filter */}
-                        <div className="w-full">
-                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Semester</label>
-                            <div className="relative">
-                                <select
-                                    value={selectedSemester}
-                                    onChange={(e) => setSelectedSemester(e.target.value)}
-                                    className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-blue-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium"
-                                >
-                                    <option value="">All Semesters</option>
-                                    {(() => {
-                                        const effectiveDeptType = selectedDepartmentId
-                                            ? getDeptType(departments.find(d => d.id === selectedDepartmentId))
-                                            : (user?.role === 'super_admin' ? 'regular' : (departments.length > 0 ? getDeptType(departments[0]) : 'regular'));
-                                        return getActiveSemesters(effectiveDeptType).map((sem) => {
-                                            const label = getBatchLabel(sem, effectiveDeptType);
-                                            return (
-                                                <option key={sem} value={sem}>Sem {sem}{label ? ` (${label})` : ''}</option>
-                                            );
-                                        });
-                                    })()}
-                                </select>
-                                <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
-                            </div>
-                        </div>
 
 
 
@@ -835,8 +807,7 @@ function DailyReportContent() {
                                         <th className="px-4 py-3 text-left text-xs font-bold text-indigo-600 uppercase tracking-wider">Lec #</th>
                                         <th className="px-4 py-3 text-left text-xs font-bold text-indigo-600 uppercase tracking-wider">Subject</th>
                                         <th className="px-4 py-3 text-left text-xs font-bold text-indigo-600 uppercase tracking-wider">Teacher</th>
-                                        <th className="px-4 py-3 text-left text-xs font-bold text-indigo-600 uppercase tracking-wider">Department</th>
-                                        <th className="px-4 py-3 text-center text-xs font-bold text-indigo-600 uppercase tracking-wider">Semester</th>
+                                        <th className="px-4 py-3 text-left text-xs font-bold text-indigo-600 uppercase tracking-wider">Classroom</th>
                                         <th className="px-4 py-3 text-center text-xs font-bold text-indigo-600 uppercase tracking-wider">Total</th>
                                         <th className="px-4 py-3 text-center text-xs font-bold text-indigo-600 uppercase tracking-wider">Present</th>
                                         <th className="px-4 py-3 text-center text-xs font-bold text-indigo-600 uppercase tracking-wider">Absent</th>
@@ -862,11 +833,6 @@ function DailyReportContent() {
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <span className="text-sm text-gray-700">{lec.departmentNames || '—'}</span>
-                                                </td>
-                                                <td className="px-4 py-3 text-center">
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-bold">
-                                                        Sem {lec.semester}
-                                                    </span>
                                                 </td>
                                                 <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">{lec.totalStudents}</td>
                                                 <td className="px-4 py-3 text-center">
@@ -908,8 +874,6 @@ function DailyReportContent() {
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-2 mb-3 text-xs">
-                                            <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold">Sem {lec.semester}</span>
-                                            <span className="text-gray-400">•</span>
                                             <span className="text-gray-600">{lec.departmentNames || '—'}</span>
                                         </div>
                                         {lec.teacherName && (

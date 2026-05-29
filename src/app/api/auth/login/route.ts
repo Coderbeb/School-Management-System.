@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query, queryOne } from '@/lib/db';
+import { queryOne } from '@/lib/db';
 import { comparePassword, generateToken } from '@/lib/auth';
 
 interface UserRow {
@@ -8,8 +8,9 @@ interface UserRow {
     password_hash: string;
     first_name: string;
     last_name: string;
-    role: 'super_admin' | 'hod' | 'teacher';
-    department_id: string | null;
+    role: 'developer' | 'super_admin' | 'teacher' | 'accountant' | 'student';
+    is_active: boolean;
+    school_id: string | null;
 }
 
 export async function POST(request: NextRequest) {
@@ -36,6 +37,14 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Check if user is active
+        if (!user.is_active) {
+            return NextResponse.json(
+                { error: 'Your account has been deactivated. Please contact the administrator.' },
+                { status: 403 }
+            );
+        }
+
         // Verify password
         const isValid = await comparePassword(password, user.password_hash);
         if (!isValid) {
@@ -45,13 +54,33 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Generate JWT token (30 days if rememberMe, else default 7 days)
+        // Generate JWT token
         const token = generateToken({
             userId: user.id,
             email: user.email,
             role: user.role,
-            departmentId: user.department_id || undefined,
+            schoolId: user.school_id,
         }, !!rememberMe);
+
+        // Determine the dashboard path based on role
+        let dashboardPath = '/dashboard';
+        switch (user.role) {
+            case 'developer':
+                dashboardPath = '/developer/dashboard';
+                break;
+            case 'super_admin':
+                dashboardPath = '/dashboard';
+                break;
+            case 'teacher':
+                dashboardPath = '/teacher/dashboard';
+                break;
+            case 'accountant':
+                dashboardPath = '/accountant/dashboard';
+                break;
+            case 'student':
+                dashboardPath = '/student/dashboard';
+                break;
+        }
 
         return NextResponse.json({
             token,
@@ -61,8 +90,9 @@ export async function POST(request: NextRequest) {
                 firstName: user.first_name,
                 lastName: user.last_name,
                 role: user.role,
-                departmentId: user.department_id,
+                schoolId: user.school_id,
             },
+            dashboardPath,
         });
     } catch (error) {
         console.error('Login error:', error);

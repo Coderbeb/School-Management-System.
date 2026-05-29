@@ -6,11 +6,9 @@ interface SubjectRow {
     id: string;
     code: string;
     name: string;
-    degree_type: string;
-    paper_code: string | null;
-    credits: number;
+    description: string | null;
+    is_active: boolean;
     created_at: string;
-    semesters: number[] | null;
 }
 
 // GET - List all subjects
@@ -28,67 +26,36 @@ export async function GET(request: NextRequest) {
         }
 
         const { searchParams } = new URL(request.url);
-        const degreeType = searchParams.get('degreeType');
-        const semester = searchParams.get('semester');
-        const reqDepartmentId = searchParams.get('departmentId');
+        const { role } = payload;
 
-        let filterDegreeType = degreeType;
-        if (reqDepartmentId) {
-             const deptResult = await query<{ degree_type: string }>(
-                 'SELECT degree_type FROM departments WHERE id = $1',
-                 [reqDepartmentId]
-             );
-             if (deptResult.length > 0 && deptResult[0].degree_type) {
-                 filterDegreeType = deptResult[0].degree_type;
-             }
-        }
-
-        const { role, departmentId } = payload;
+        const classSectionId = searchParams.get('classSectionId');
+        const classId = searchParams.get('classId');
 
         let queryStr = `
-            SELECT s.id, s.code, s.paper_code, s.name, s.degree_type, s.credits, s.created_at,
-                   COALESCE(
-                       (SELECT array_agg(ss.semester ORDER BY ss.semester)
-                        FROM subject_semesters ss WHERE ss.subject_id = s.id),
-                       ARRAY[]::integer[]
-                   ) as semesters
+            SELECT s.id, s.code, s.name, s.description, s.is_active, s.created_at
             FROM subjects s
-            WHERE 1=1
+            WHERE s.is_active = true
         `;
         const params: (string | number)[] = [];
 
-        // HOD: filter by their departments' degree_types
-        if (role === 'hod') {
-            let deptQuery = `
-                SELECT d.degree_type 
-                FROM departments d 
-                JOIN user_departments ud ON d.id = ud.department_id 
-                WHERE ud.user_id = $1
+        // Filter by classSectionId → find subjects via teacher_assignments
+        if (classSectionId) {
+            params.push(classSectionId);
+            queryStr = `
+                SELECT DISTINCT s.id, s.code, s.name, s.description, s.is_active, s.created_at
+                FROM subjects s
+                JOIN teacher_assignments ta ON s.id = ta.subject_id
+                WHERE s.is_active = true AND ta.class_section_id = $${params.length}
             `;
-            const deptParams: any[] = [payload.userId];
-            
-            if (payload.departmentId) {
-                deptQuery += ` UNION SELECT degree_type FROM departments WHERE id = $2`;
-                deptParams.push(payload.departmentId);
-            }
-            
-            const deptResult = await query<{ degree_type: string }>(deptQuery, deptParams);
-            const degreeTypes = [...new Set(deptResult.map(d => d.degree_type))].filter(Boolean);
-            
-            if (degreeTypes.length > 0) {
-                const placeholders = degreeTypes.map((_, i) => `$${params.length + i + 1}`).join(',');
-                queryStr += ` AND s.degree_type IN (${placeholders})`;
-                params.push(...degreeTypes);
-            } else {
-                // Return no subjects if they have no degree types assigned somehow
-                queryStr += ` AND 1=0`;
-            }
-        }
-
-        // Filter by specific degree type if resolved
-        if (filterDegreeType) {
-            params.push(filterDegreeType);
-            queryStr += ` AND s.degree_type = $${params.length}`;
+        } else if (classId) {
+            params.push(classId);
+            queryStr = `
+                SELECT DISTINCT s.id, s.code, s.name, s.description, s.is_active, s.created_at
+                FROM subjects s
+                JOIN teacher_assignments ta ON s.id = ta.subject_id
+                JOIN class_sections cs ON ta.class_section_id = cs.id
+                WHERE s.is_active = true AND cs.class_id = $${params.length}
+            `;
         }
 
         // Teacher: only show assigned subjects
@@ -96,7 +63,7 @@ export async function GET(request: NextRequest) {
             const teacherId = payload.userId;
 
             const teacherSubjects = await query<{ subject_id: string }>(
-                'SELECT subject_id FROM teacher_subjects WHERE teacher_id = $1',
+                'SELECT DISTINCT subject_id FROM teacher_assignments WHERE teacher_id = $1 AND subject_id IS NOT NULL',
                 [teacherId]
             );
 
@@ -110,11 +77,7 @@ export async function GET(request: NextRequest) {
             params.push(...subjectIds);
         }
 
-        // Filter by semester (subjects that include this semester)
-        if (semester) {
-            params.push(parseInt(semester));
-            queryStr += ` AND EXISTS (SELECT 1 FROM subject_semesters ss WHERE ss.subject_id = s.id AND ss.semester = $${params.length})`;
-        }
+
 
         queryStr += ' ORDER BY s.code ASC';
 
@@ -124,11 +87,9 @@ export async function GET(request: NextRequest) {
             subjects: subjects.map(s => ({
                 id: s.id,
                 code: s.code,
-                paperCode: s.paper_code || '',
                 name: s.name,
-                degreeType: s.degree_type,
-                semesters: s.semesters || [],
-                credits: s.credits,
+                description: s.description || '',
+                isActive: s.is_active,
                 createdAt: s.created_at
             }))
         });
@@ -148,11 +109,7 @@ export async function POST(request: NextRequest) {
 
         const token = authHeader.split(' ')[1];
         const payload = verifyToken(token);
-        if (!payload) {
-            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-        }
-
-        if (!['super_admin', 'hod'].includes(payload.role)) {
+        if (!payload || payload.role !== 'super_admin') {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
@@ -248,11 +205,7 @@ export async function PUT(request: NextRequest) {
 
         const token = authHeader.split(' ')[1];
         const payload = verifyToken(token);
-        if (!payload) {
-            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-        }
-
-        if (!['super_admin', 'hod'].includes(payload.role)) {
+        if (!payload || payload.role !== 'super_admin') {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
@@ -399,11 +352,7 @@ export async function DELETE(request: NextRequest) {
 
         const token = authHeader.split(' ')[1];
         const payload = verifyToken(token);
-        if (!payload) {
-            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-        }
-
-        if (!['super_admin', 'hod'].includes(payload.role)) {
+        if (!payload || payload.role !== 'super_admin') {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
@@ -443,7 +392,7 @@ export async function DELETE(request: NextRequest) {
         }
 
         // Delete related data first, then subject (CASCADE handles subject_semesters)
-        await query('DELETE FROM teacher_subjects WHERE subject_id = $1', [subjectId]);
+        await query('DELETE FROM teacher_assignments WHERE subject_id = $1', [subjectId]);
         await query('DELETE FROM student_subjects WHERE subject_id = $1', [subjectId]);
         await query('DELETE FROM subjects WHERE id = $1', [subjectId]);
 

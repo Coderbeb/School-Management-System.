@@ -1,4 +1,8 @@
 import { Pool } from 'pg';
+import dns from 'dns';
+
+// Force Node.js to prefer IPv4 to fix ENOTFOUND issues with IPv6-only Supabase hosts
+dns.setDefaultResultOrder('ipv4first');
 
 const isLocalhost =
     process.env.DATABASE_URL?.includes('localhost') ||
@@ -6,7 +10,13 @@ const isLocalhost =
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ...(isLocalhost ? {} : { ssl: { rejectUnauthorized: false } }),
+    ...(isLocalhost ? {} : {
+        ssl: { rejectUnauthorized: false },
+        // Connection timeout settings for stability
+        connectionTimeoutMillis: 10000,
+        idleTimeoutMillis: 30000,
+        max: 10,
+    }),
 });
 
 // Auto-migration: runs once on first query

@@ -322,11 +322,10 @@ Sent to: ${data.studentEmail}
 `;
 }
 
-// ============================================================
-// Send Report Card Email with PDF Attachment
-// ============================================================
-
-export async function sendReportCardEmail(data: StudentReportData): Promise<{ success: boolean; error?: string }> {
+export async function sendReportCardEmail(
+    data: StudentReportData,
+    existingTransporter?: any
+): Promise<{ success: boolean; error?: string }> {
     const config = await getEmailConfig();
 
     if (!config.email || !config.password) {
@@ -355,7 +354,7 @@ export async function sendReportCardEmail(data: StudentReportData): Promise<{ su
 
         const pdfBuffer = await generateReportCardPDF(pdfData);
         const fromName = process.env.EMAIL_FROM_NAME || 'YSM Attendance System';
-        const transporter = createTransport(config.email, config.password);
+        const transporter = existingTransporter || createTransport(config.email, config.password);
 
         const monthSuffix = data.reportMonth ? `_${data.reportMonth.replace(/\s+/g, '_')}` : '';
 
@@ -382,7 +381,11 @@ export async function sendReportCardEmail(data: StudentReportData): Promise<{ su
         };
 
         await transporter.sendMail(mailOptions);
-        transporter.close();
+        
+        // Only close the transporter if we created it locally in this function
+        if (!existingTransporter) {
+            transporter.close();
+        }
 
         return { success: true };
     } catch (error) {
@@ -408,30 +411,36 @@ export async function sendBatchReportEmails(
         return result;
     }
 
-    // Process in batches of 5 with 5-second delay between batches
-    // (PDF generation + email sending is heavier than plain HTML)
-    const BATCH_SIZE = 5;
-    const BATCH_DELAY_MS = 5000;
+    const transporter = createTransport(config.email, config.password);
 
-    for (let i = 0; i < students.length; i += BATCH_SIZE) {
-        const batch = students.slice(i, i + BATCH_SIZE);
+    try {
+        // Process in batches of 5 with 5-second delay between batches
+        // (PDF generation + email sending is heavier than plain HTML)
+        const BATCH_SIZE = 5;
+        const BATCH_DELAY_MS = 5000;
 
-        // Send each email in the batch sequentially to avoid memory spikes from PDF generation
-        for (const student of batch) {
-            const res = await sendReportCardEmail(student);
-            if (res.success) {
-                result.sent++;
-                console.log(`[Email] Sent PDF report to ${student.studentEmail}`);
-            } else {
-                result.failed++;
-                result.errors.push(`${student.studentName}: ${res.error}`);
+        for (let i = 0; i < students.length; i += BATCH_SIZE) {
+            const batch = students.slice(i, i + BATCH_SIZE);
+
+            // Send each email in the batch sequentially to avoid memory spikes from PDF generation
+            for (const student of batch) {
+                const res = await sendReportCardEmail(student, transporter);
+                if (res.success) {
+                    result.sent++;
+                    console.log(`[Email] Sent PDF report to ${student.studentEmail}`);
+                } else {
+                    result.failed++;
+                    result.errors.push(`${student.studentName}: ${res.error}`);
+                }
+            }
+
+            // Delay between batches to avoid Gmail rate limits and spam flags
+            if (i + BATCH_SIZE < students.length) {
+                await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
             }
         }
-
-        // Delay between batches to avoid Gmail rate limits and spam flags
-        if (i + BATCH_SIZE < students.length) {
-            await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
-        }
+    } finally {
+        transporter.close();
     }
 
     return result;

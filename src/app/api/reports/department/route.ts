@@ -1,101 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
+import { requireSchoolAuth, resolveSchoolId } from '@/lib/auth';
 
-interface DepartmentInfo {
-    id: string;
-    name: string;
-    code: string;
-    degree_type: string;
-}
-
-interface SemesterStats {
-    semester: string;
-    total_students: string;
-    avg_attendance: string;
-}
-
-interface SubjectStats {
-    id: string;
-    name: string;
-    code: string;
-    semester: string;
-    total_students: string;
-    avg_attendance: string;
-}
-
-interface StudentAlert {
-    id: string;
-    student_id: string;
-    roll_number: string;
-    name: string;
-    semester: string;
-    attendance_pct: string;
-}
-
-// GET - Department Overview Data
 export async function GET(request: NextRequest) {
     try {
-        const authHeader = request.headers.get('authorization');
-        if (!authHeader?.startsWith('Bearer ')) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const token = authHeader.split(' ')[1];
-        const payload = verifyToken(token);
-        if (!payload) {
-            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-        }
-
-        const { role, departmentId: userDeptId, userId } = payload;
-
-        // Teachers cannot access department reports
-        if (role === 'teacher') {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-        }
-
+        const auth = requireSchoolAuth(request);
+        if (auth.error) return auth.error;
+        const { role, userId } = auth.user;
+        const schoolId = resolveSchoolId(auth.user, request);
         const searchParams = request.nextUrl.searchParams;
-        const selectedDeptId = searchParams.get('departmentId') || userDeptId;
+        const classSectionId = searchParams.get('classSectionId') || searchParams.get('departmentId');
 
-        if (!selectedDeptId) {
-            return NextResponse.json({ error: 'Department ID required' }, { status: 400 });
+        if (!classSectionId) {
+            return NextResponse.json({ error: 'Class section ID is required' }, { status: 400 });
         }
 
-        // Security check for HOD: Verify they have access to this selectedDeptId
-        if (role === 'hod') {
-            const hasAccess = await queryOne<{ allowed: boolean }>(
-                `SELECT EXISTS (
-                    SELECT 1 FROM users WHERE id = $1 AND department_id = $2
-                    UNION
-                    SELECT 1 FROM user_departments WHERE user_id = $1 AND department_id = $2
-                ) as allowed`,
-                [userId, selectedDeptId]
-            );
-            if (!hasAccess || !hasAccess.allowed) {
-                return NextResponse.json({ error: 'Access denied to this department' }, { status: 403 });
-            }
+        // Resolve active session
+        let sessionSql = `SELECT id FROM academic_sessions WHERE is_current = true`;
+        const sessionParams: unknown[] = [];
+        if (schoolId) {
+            sessionSql += ` AND school_id = $1`;
+            sessionParams.push(schoolId);
+        }
+        sessionSql += ` LIMIT 1`;
+        const currentSession = await queryOne<{ id: string }>(sessionSql, sessionParams);
+        const sessionId = currentSession?.id;
+
+        if (!sessionId) {
+            return NextResponse.json({ error: 'No active academic session' }, { status: 400 });
         }
 
-        const params: string[] = [selectedDeptId];
-        const subjectParams: string[] = [selectedDeptId];
-
-        // 1. Get department info including degree_type
-        const deptInfo = await queryOne<DepartmentInfo>(
-            `SELECT id, name, code, degree_type FROM departments WHERE id = $1`,
-            [selectedDeptId]
+        // Get class section info
+        const classroomInfo = await queryOne<any>(
+            `SELECT 
+                cs.id,
+                (c.name || ' - ' || sec.name) as name,
+                c.name as code,
+                c.id as class_id
+             FROM class_sections cs
+             JOIN classes c ON c.id = cs.class_id
+             JOIN sections sec ON sec.id = cs.section_id
+             WHERE cs.id = $1 AND cs.session_id = $2`,
+            [classSectionId, sessionId]
         );
 
-        if (!deptInfo) {
-            return NextResponse.json({ error: 'Department not found' }, { status: 404 });
+        if (!classroomInfo) {
+            return NextResponse.json({ error: 'Class section not found' }, { status: 404 });
         }
 
-
-
-        // 2. Get semester-wise stats for students in this department
-        const semesterStats = await query<SemesterStats>(
+        // 1. Semester (mapped to simple stats)
+        const semesterStats = await query<any>(
             `SELECT 
-                s.current_semester::text as semester,
-                COUNT(DISTINCT s.id) as total_students,
+                '1' as semester,
+                COUNT(DISTINCT se.student_id) as total_students,
                 COALESCE(
                     ROUND(
                         COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
@@ -104,26 +61,21 @@ export async function GET(request: NextRequest) {
                     ),
                     0
                 ) as avg_attendance
-            FROM students s
-            LEFT JOIN attendance_records ar ON ar.student_id = s.id
-            WHERE s.department_id = $1
-            GROUP BY s.current_semester
-            ORDER BY s.current_semester`,
-            params
+             FROM student_enrollments se
+             LEFT JOIN attendance_records ar ON ar.student_id = se.student_id AND ar.session_id = se.session_id AND ar.class_section_id = se.class_section_id
+             WHERE se.class_section_id = $1 AND se.session_id = $2
+             GROUP BY se.class_section_id`,
+            [classSectionId, sessionId]
         );
 
-        // 3. Get subject-wise stats using degree_type to link subjects
-        const subjectStats = await query<SubjectStats>(
+        // 2. Subject-wise stats for this class section
+        const subjectStats = await query<any>(
             `SELECT 
                 sub.id,
                 sub.name,
-                COALESCE(sub.paper_code, sub.code) as code,
-                COALESCE(
-                    (SELECT string_agg(ss2.semester::text, ', ' ORDER BY ss2.semester)
-                     FROM subject_semesters ss2 WHERE ss2.subject_id = sub.id),
-                    ''
-                ) as semester,
-                COUNT(DISTINCT ss.student_id) as total_students,
+                sub.code,
+                '1' as semester,
+                COUNT(DISTINCT se.student_id) as total_students,
                 COALESCE(
                     ROUND(
                         COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
@@ -132,24 +84,25 @@ export async function GET(request: NextRequest) {
                     ),
                     0
                 ) as avg_attendance
-            FROM subjects sub
-            LEFT JOIN student_subjects ss ON ss.subject_id = sub.id
-            LEFT JOIN students st ON ss.student_id = st.id AND st.department_id = $1
-            LEFT JOIN attendance_records ar ON ar.subject_id = sub.id AND ar.student_id = st.id
-            WHERE sub.degree_type = $2
-            GROUP BY sub.id, sub.name, sub.code
-            ORDER BY sub.code, sub.name`,
-            (() => { subjectParams[1] = deptInfo.degree_type; return subjectParams; })()
+             FROM class_subjects csub
+             JOIN subjects sub ON sub.id = csub.subject_id
+             JOIN class_sections cs ON cs.class_id = csub.class_id AND cs.session_id = csub.session_id
+             LEFT JOIN student_enrollments se ON se.class_section_id = cs.id AND se.session_id = cs.session_id
+             LEFT JOIN attendance_records ar ON ar.subject_id = sub.id AND ar.student_id = se.student_id AND ar.class_section_id = cs.id AND ar.session_id = cs.session_id
+             WHERE cs.id = $1 AND cs.session_id = $2
+             GROUP BY sub.id, sub.name, sub.code
+             ORDER BY sub.name`,
+            [classSectionId, sessionId]
         );
 
-        // 4. Get critical students (<60% attendance)
-        const criticalStudents = await query<StudentAlert>(
+        // 3. Critical students (<60% attendance)
+        const criticalStudents = await query<any>(
             `SELECT 
                 s.id,
-                s.student_id,
-                s.roll_number::text as roll_number,
-                CONCAT(s.first_name, ' ', s.last_name) as name,
-                s.current_semester::text as semester,
+                s.admission_number as "studentId",
+                se.roll_number as "rollNumber",
+                (s.first_name || ' ' || s.last_name) as name,
+                '1' as semester,
                 COALESCE(
                     ROUND(
                         COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
@@ -158,11 +111,12 @@ export async function GET(request: NextRequest) {
                     ),
                     0
                 ) as attendance_pct
-            FROM students s
-            LEFT JOIN attendance_records ar ON ar.student_id = s.id
-            WHERE s.department_id = $1
-            GROUP BY s.id, s.student_id, s.roll_number, s.first_name, s.last_name, s.current_semester
-            HAVING COUNT(ar.id) > 0 AND 
+             FROM student_enrollments se
+             JOIN students s ON s.id = se.student_id
+             LEFT JOIN attendance_records ar ON ar.student_id = se.student_id AND ar.session_id = se.session_id AND ar.class_section_id = se.class_section_id
+             WHERE se.class_section_id = $1 AND se.session_id = $2
+             GROUP BY s.id, se.roll_number, s.first_name, s.last_name
+             HAVING COUNT(ar.id) > 0 AND 
                 COALESCE(
                     ROUND(
                         COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
@@ -171,19 +125,18 @@ export async function GET(request: NextRequest) {
                     ),
                     0
                 ) < 60
-            ORDER BY attendance_pct ASC
-            LIMIT 20`,
-            params
+             ORDER BY attendance_pct ASC`,
+            [classSectionId, sessionId]
         );
 
-        // 5. Get warning students (60-75% attendance)
-        const warningStudents = await query<StudentAlert>(
+        // 4. Warning students (60-75% attendance)
+        const warningStudents = await query<any>(
             `SELECT 
                 s.id,
-                s.student_id,
-                s.roll_number::text as roll_number,
-                CONCAT(s.first_name, ' ', s.last_name) as name,
-                s.current_semester::text as semester,
+                s.admission_number as "studentId",
+                se.roll_number as "rollNumber",
+                (s.first_name || ' ' || s.last_name) as name,
+                '1' as semester,
                 COALESCE(
                     ROUND(
                         COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
@@ -192,11 +145,12 @@ export async function GET(request: NextRequest) {
                     ),
                     0
                 ) as attendance_pct
-            FROM students s
-            LEFT JOIN attendance_records ar ON ar.student_id = s.id
-            WHERE s.department_id = $1
-            GROUP BY s.id, s.student_id, s.roll_number, s.first_name, s.last_name, s.current_semester
-            HAVING COUNT(ar.id) > 0 AND 
+             FROM student_enrollments se
+             JOIN students s ON s.id = se.student_id
+             LEFT JOIN attendance_records ar ON ar.student_id = se.student_id AND ar.session_id = se.session_id AND ar.class_section_id = se.class_section_id
+             WHERE se.class_section_id = $1 AND se.session_id = $2
+             GROUP BY s.id, se.roll_number, s.first_name, s.last_name
+             HAVING COUNT(ar.id) > 0 AND 
                 COALESCE(
                     ROUND(
                         COUNT(CASE WHEN ar.status = 'present' THEN 1 END)::numeric * 100 / 
@@ -205,61 +159,58 @@ export async function GET(request: NextRequest) {
                     ),
                     0
                 ) BETWEEN 60 AND 74.9
-            ORDER BY attendance_pct ASC
-            LIMIT 20`,
-            params
+             ORDER BY attendance_pct ASC`,
+            [classSectionId, sessionId]
         );
 
-        // Calculate totals
-        const totalStudents = semesterStats.reduce((acc, s) => acc + parseInt(s.total_students || '0'), 0);
+        const totalStudents = semesterStats.reduce((acc: number, s: any) => acc + parseInt(s.total_students || '0'), 0);
         const totalSubjects = subjectStats.length;
 
         return NextResponse.json({
             department: {
-                id: deptInfo.id,
-                name: deptInfo.name,
-                code: deptInfo.code,
-                degreeType: deptInfo.degree_type,
+                id: classroomInfo.id,
+                name: classroomInfo.name,
+                code: classroomInfo.code,
+                degreeType: 'academic'
             },
-
             overallStats: {
                 totalStudents,
                 totalSubjects,
                 criticalCount: criticalStudents.length,
-                warningCount: warningStudents.length,
+                warningCount: warningStudents.length
             },
-            semesterStats: semesterStats.map(s => ({
-                semester: parseInt(s.semester),
+            semesterStats: semesterStats.map((s: any) => ({
+                semester: 1,
                 totalStudents: parseInt(s.total_students || '0'),
-                avgAttendance: Math.round(parseFloat(s.avg_attendance || '0')),
+                avgAttendance: Math.round(parseFloat(s.avg_attendance || '0'))
             })),
-            subjectStats: subjectStats.map(s => ({
+            subjectStats: subjectStats.map((s: any) => ({
                 id: s.id,
                 name: s.name,
                 code: s.code,
-                semester: s.semester,
+                semester: '1',
                 totalStudents: parseInt(s.total_students || '0'),
-                avgAttendance: Math.round(parseFloat(s.avg_attendance || '0')),
+                avgAttendance: Math.round(parseFloat(s.avg_attendance || '0'))
             })),
-            criticalStudents: criticalStudents.map(s => ({
+            criticalStudents: criticalStudents.map((s: any) => ({
                 id: s.id,
-                studentId: s.student_id,
-                rollNumber: s.roll_number,
+                studentId: s.studentId,
+                rollNumber: s.rollNumber,
                 name: s.name,
-                semester: parseInt(s.semester),
-                attendancePercentage: Math.round(parseFloat(s.attendance_pct || '0')),
+                semester: 1,
+                attendancePercentage: Math.round(parseFloat(s.attendance_pct || '0'))
             })),
-            warningStudents: warningStudents.map(s => ({
+            warningStudents: warningStudents.map((s: any) => ({
                 id: s.id,
-                studentId: s.student_id,
-                rollNumber: s.roll_number,
+                studentId: s.studentId,
+                rollNumber: s.rollNumber,
                 name: s.name,
-                semester: parseInt(s.semester),
-                attendancePercentage: Math.round(parseFloat(s.attendance_pct || '0')),
-            })),
+                semester: 1,
+                attendancePercentage: Math.round(parseFloat(s.attendance_pct || '0'))
+            }))
         });
     } catch (error) {
-        console.error('Department overview error:', error);
+        console.error('Classroom/Department overview report error:', error);
         return NextResponse.json({ error: 'Server error' }, { status: 500 });
     }
 }

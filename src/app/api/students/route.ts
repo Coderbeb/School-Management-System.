@@ -32,26 +32,45 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
         }
 
-        let queryText = `SELECT s.id, s.roll_number, s.first_name, s.last_name, s.email,
-                 s.current_semester, s.department_id, s.student_id, s.batch_year,
-                 s.smart_card_id, s.created_at, s.updated_at,
-                 d.name as department_name, d.code as department_code 
-             FROM students s 
-             LEFT JOIN departments d ON s.department_id = d.id`;
-        const params: string[] = [];
+        const { searchParams } = new URL(request.url);
+        let userId = searchParams.get('userId');
+        const search = searchParams.get('search');
 
-        // HODs can see students from all their assigned departments
-        if (payload.role === 'hod' && payload.userId) {
-            queryText += ` WHERE s.department_id IN (
-                SELECT department_id FROM user_departments WHERE user_id = $1
-            ) OR s.department_id = $2`;
-            params.push(payload.userId, payload.departmentId || '00000000-0000-0000-0000-000000000000');
+        // RBAC / Data Isolation:
+        // A student can ONLY view their own profile.
+        if (payload.role === 'student') {
+            userId = payload.userId;
         }
 
-        queryText += ' ORDER BY s.roll_number ASC';
+        let sql = `
+            SELECT s.id, s.first_name, s.last_name, s.admission_number, s.school_id, s.user_id,
+                   u.email
+            FROM students s
+            LEFT JOIN users u ON s.user_id = u.id
+            WHERE 1=1
+        `;
+        const params: unknown[] = [];
+        let idx = 1;
 
-        const students = await query<StudentRow>(queryText, params);
+        if (payload.role !== 'developer' && payload.schoolId) {
+            sql += ` AND s.school_id = $${idx++}`;
+            params.push(payload.schoolId);
+        }
 
+        if (userId) {
+            sql += ` AND s.user_id = $${idx++}`;
+            params.push(userId);
+        }
+
+        if (search) {
+            sql += ` AND (s.first_name ILIKE $${idx} OR s.last_name ILIKE $${idx} OR s.admission_number ILIKE $${idx})`;
+            params.push(`%${search}%`);
+            idx++;
+        }
+
+        sql += ` ORDER BY s.first_name ASC`;
+
+        const students = await query<StudentRow>(sql, params);
         return NextResponse.json({ students });
     } catch (error) {
         console.error('Get students error:', error);
@@ -68,7 +87,7 @@ export async function POST(request: NextRequest) {
 
         const token = authHeader.split(' ')[1];
         const payload = verifyToken(token);
-        if (!payload || !['super_admin', 'hod'].includes(payload.role)) {
+        if (!payload || payload.role !== 'super_admin') {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
@@ -78,7 +97,6 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Student ID, roll number, first name, and department are required' }, { status: 400 });
         }
 
-        // Extract batch_year from the student ID (e.g., BCA2025SC001 → 2025)
         const parsed = parseStudentId(studentId);
         const batchYear = parsed.admissionYear || new Date().getFullYear();
 
@@ -99,7 +117,6 @@ export async function POST(request: NextRequest) {
     }
 }
 
-// DELETE - Remove student
 export async function DELETE(request: NextRequest) {
     try {
         const authHeader = request.headers.get('authorization');
@@ -109,12 +126,7 @@ export async function DELETE(request: NextRequest) {
 
         const token = authHeader.split(' ')[1];
         const payload = verifyToken(token);
-        if (!payload) {
-            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-        }
-
-        // Only super_admin and hod can delete
-        if (!['super_admin', 'hod'].includes(payload.role)) {
+        if (!payload || payload.role !== 'super_admin') {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
@@ -123,27 +135,6 @@ export async function DELETE(request: NextRequest) {
 
         if (!id) {
             return NextResponse.json({ error: 'Student ID required' }, { status: 400 });
-        }
-
-        // Check if student belongs to HOD's departments
-        if (payload.role === 'hod') {
-            const student = await query<{ department_id: string }>(
-                'SELECT department_id FROM students WHERE id = $1',
-                [id]
-            );
-            if (student.length === 0) {
-                return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-            }
-
-            const allowedDepts = await query<{ department_id: string }>(
-                'SELECT department_id FROM user_departments WHERE user_id = $1',
-                [payload.userId]
-            );
-            const allowedDeptIds = [payload.departmentId, ...allowedDepts.map(d => d.department_id)].filter(Boolean);
-
-            if (!allowedDeptIds.includes(student[0].department_id)) {
-                return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-            }
         }
 
         await query('DELETE FROM students WHERE id = $1', [id]);
@@ -155,7 +146,6 @@ export async function DELETE(request: NextRequest) {
     }
 }
 
-// PUT - Update student
 export async function PUT(request: NextRequest) {
     try {
         const authHeader = request.headers.get('authorization');
@@ -165,11 +155,7 @@ export async function PUT(request: NextRequest) {
 
         const token = authHeader.split(' ')[1];
         const payload = verifyToken(token);
-        if (!payload) {
-            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-        }
-
-        if (!['super_admin', 'hod'].includes(payload.role)) {
+        if (!payload || payload.role !== 'super_admin') {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
@@ -177,27 +163,6 @@ export async function PUT(request: NextRequest) {
 
         if (!id) {
             return NextResponse.json({ error: 'Student ID required' }, { status: 400 });
-        }
-
-        // HOD can only edit students in their own departments
-        if (payload.role === 'hod') {
-            const student = await query<{ department_id: string }>(
-                'SELECT department_id FROM students WHERE id = $1',
-                [id]
-            );
-            if (student.length === 0) {
-                return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-            }
-
-            const allowedDepts = await query<{ department_id: string }>(
-                'SELECT department_id FROM user_departments WHERE user_id = $1',
-                [payload.userId]
-            );
-            const allowedDeptIds = [payload.departmentId, ...allowedDepts.map(d => d.department_id)].filter(Boolean);
-
-            if (!allowedDeptIds.includes(student[0].department_id)) {
-                return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-            }
         }
 
         const updateFields: string[] = [];

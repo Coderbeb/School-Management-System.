@@ -24,22 +24,8 @@ export async function GET(request: NextRequest) {
         }
 
         try {
-            let queryStr = 'SELECT id, name, date, description, department_id FROM holidays';
-            const params: any[] = [];
-
-            if (payload.role === 'hod' && payload.departmentId) {
-                queryStr += ' WHERE department_id IS NULL OR department_id = $1';
-                params.push(payload.departmentId);
-            } else if (payload.role === 'teacher') {
-                queryStr += ` WHERE department_id IS NULL OR department_id IN (
-                    SELECT department_id FROM user_departments WHERE user_id = $1
-                )`;
-                params.push(payload.userId);
-            }
-            
-            queryStr += ' ORDER BY date ASC';
-
-            const holidays = await query<HolidayRow>(queryStr, params);
+            const queryStr = 'SELECT id, name, date, description, department_id FROM holidays ORDER BY date ASC';
+            const holidays = await query<HolidayRow>(queryStr, []);
             return NextResponse.json({ holidays });
         } catch (err) {
             console.error('Holidays query error:', err);
@@ -60,7 +46,7 @@ export async function POST(request: NextRequest) {
 
         const token = authHeader.split(' ')[1];
         const payload = verifyToken(token);
-        if (!payload || !['super_admin', 'hod'].includes(payload.role)) {
+        if (!payload || payload.role !== 'super_admin') {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
@@ -70,13 +56,11 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Name and date are required' }, { status: 400 });
         }
 
-        const departmentId = payload.role === 'hod' ? payload.departmentId : null;
-
         const holidays = await query<HolidayRow>(
             `INSERT INTO holidays (name, date, description, department_id)
-             VALUES ($1, $2, $3, $4)
+             VALUES ($1, $2, $3, NULL)
              RETURNING *`,
-            [name, date, description || null, departmentId]
+            [name, date, description || null]
         );
 
         return NextResponse.json({ holiday: holidays[0] }, { status: 201 });

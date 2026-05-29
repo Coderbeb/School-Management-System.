@@ -1,13 +1,17 @@
-export type UserRole = 'super_admin' | 'hod' | 'teacher';
+// ============================================================
+// User & Auth Types
+// ============================================================
+
+export type UserRole = 'super_admin' | 'teacher' | 'accountant' | 'student';
 
 export interface User {
     id: string;
-    email: string;
+    email: string | null;
+    phone: string | null;
     passwordHash: string;
     firstName: string;
     lastName: string;
     role: UserRole;
-    departmentId: string | null;
     isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -15,11 +19,11 @@ export interface User {
 
 export interface UserResponse {
     id: string;
-    email: string;
+    email: string | null;
+    phone: string | null;
     firstName: string;
     lastName: string;
     role: UserRole;
-    departmentId: string | null;
 }
 
 export interface AuthResponse {

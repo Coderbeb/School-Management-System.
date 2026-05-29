@@ -1,257 +1,162 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
+import { query, queryOne } from '@/lib/db';
+import { requireSchoolAuth, resolveSchoolId } from '@/lib/auth';
 
-interface StudentDetail {
-    id: string;
-    student_id: string;
-    roll_number: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    department_name: string;
-    current_semester: number;
-}
-
-interface SubjectStats {
-    subject_id: string;
-    subject_name: string;
-    subject_code: string;
-    subject_paper_code: string | null;
-    total_classes: string;
-    attended: string;
-    attendance_pct: string;
-}
-
-interface MonthlyStats {
-    month: string;
-    total_classes: string;
-    attended: string;
-    attendance_pct: string;
-}
-
-interface DailyRecord {
-    date: string;
-    subject_code: string;
-    subject_name: string;
-    lecture_number: number;
-    status: string;
-}
-
-// GET - Get detailed stats for a specific student
 export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const authHeader = request.headers.get('authorization');
-        if (!authHeader?.startsWith('Bearer ')) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const token = authHeader.split(' ')[1];
-        const payload = verifyToken(token);
-        if (!payload) {
-            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-        }
+        const auth = requireSchoolAuth(request);
+        if (auth.error) return auth.error;
+        const schoolId = resolveSchoolId(auth.user, request);
 
         const { id: studentId } = await params;
         const { searchParams } = new URL(request.url);
         const startDate = searchParams.get('startDate');
         const endDate = searchParams.get('endDate');
 
-        // Allow HOD to view as teacher (for My Reports)
-        const view = searchParams.get('view');
-        const { role, userId } = payload;
-        const effectiveRole = (role === 'hod' && view === 'teacher') ? 'teacher' : role;
+        const { role, userId } = auth.user;
 
-        // Get student basic info
-        const studentInfo = await query<StudentDetail>(
-            `SELECT s.id, s.student_id, s.roll_number, s.first_name, s.last_name, s.email, 
-                    s.current_semester, d.name as department_name
+        // Resolve active session
+        const currentSession = await queryOne<{ id: string }>(
+            `SELECT id FROM academic_sessions WHERE is_current = true LIMIT 1`
+        );
+        const sessionId = currentSession?.id;
+
+        if (!sessionId) {
+            return NextResponse.json({ error: 'No active academic session found' }, { status: 400 });
+        }
+
+        // Get student basic info with enrollments (with school isolation check)
+        const studentInfo = await query<any>(
+            `SELECT 
+                s.id,
+                s.admission_number as "studentId",
+                se.roll_number as "rollNumber",
+                s.first_name,
+                s.last_name,
+                s.email,
+                (c.name || ' - ' || sec.name) as "department_name"
              FROM students s
-             LEFT JOIN departments d ON d.id = s.department_id
-             WHERE s.id = $1`,
-            [studentId]
+             JOIN student_enrollments se ON se.student_id = s.id AND se.session_id = $1
+             JOIN class_sections cs ON cs.id = se.class_section_id
+             JOIN classes c ON c.id = cs.class_id
+             JOIN sections sec ON sec.id = cs.section_id
+             WHERE s.id = $2 AND ($3::uuid IS NULL OR cs.school_id = $3::uuid)`,
+            [sessionId, studentId, schoolId]
         );
 
         if (studentInfo.length === 0) {
-            return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+            return NextResponse.json({ error: 'Student enrollment not found or access denied' }, { status: 404 });
         }
-
-        // Build date filter clause
-        let dateFilter = '';
-        const dateParams: string[] = [];
-        if (startDate && endDate) {
-            dateFilter = ` AND ar.date >= $2 AND ar.date <= $3`;
-            dateParams.push(startDate, endDate);
-        } else if (startDate) {
-            dateFilter = ` AND ar.date >= $2`;
-            dateParams.push(startDate);
-        } else if (endDate) {
-            dateFilter = ` AND ar.date <= $2`;
-            dateParams.push(endDate);
-        }
-
-        // Role-based filtering (Teachers only see their subjects)
-        let teacherSubjectFilter = '1=1';
-        let subjectJoinClause = '';
-
-        if (effectiveRole === 'teacher') {
-            // Find or add userId to params for the filter query
-            // Note: We need a reliable index. Since param order matters for $1, $2 etc,
-            // we must append userId if not present, but be careful with existing dateParams logic.
-            // The queries below use specific param indices. We will inject userId into the params array used by query.
-
-            // To be safe, we'll append userId to the existing arrays and use dynamic index
-            // For subjectStats query: params are [studentId, ...dateParams]
-            // We adding userId to the end => index is 1 + dateParams.length + 1
-            const uIdIndex = 1 + dateParams.length + 1;
-
-            // STRICT ISOLATION: Filter by who marked the attendance, AND only include subjects they are assigned to teach
-            teacherSubjectFilter = `ar.teacher_id = $${uIdIndex} AND ar.subject_id IN (SELECT subject_id FROM teacher_subjects WHERE teacher_id = $${uIdIndex})`;
-
-            // Keep subject join to ensure they only see subjects they are assigned to
-            subjectJoinClause = `JOIN teacher_subjects ts ON ts.subject_id = s.id AND ts.teacher_id = $${uIdIndex}`;
-        }
-
-        // Get subject-wise stats with date filter
-        const subjectStatsParams = [studentId, ...dateParams];
-        if (effectiveRole === 'teacher') {
-            subjectStatsParams.push(userId);
-        }
-
-        const subjectStats = await query<SubjectStats>(
-            `SELECT 
-                s.id as subject_id,
-                s.name as subject_name,
-                s.code as subject_code,
-                s.paper_code as subject_paper_code,
-                COUNT(DISTINCT ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text) as total_classes,
-                COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text END) as attended,
-                COALESCE(
-                    ROUND(
-                        COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text END)::numeric * 100 / 
-                        NULLIF(COUNT(DISTINCT ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text), 0),
-                        1
-                    ),
-                    0
-                ) as attendance_pct
-             FROM student_subjects ss
-             JOIN subjects s ON s.id = ss.subject_id
-             ${subjectJoinClause}
-             LEFT JOIN attendance_records ar ON ar.subject_id = s.id AND ar.student_id = $1 ${dateFilter}
-             WHERE ss.student_id = $1
-             GROUP BY s.id, s.name, s.code, s.paper_code
-             ORDER BY s.name`,
-            subjectStatsParams
-        );
-
-        // Get monthly stats with date filter
-        let monthlyQuery = `SELECT 
-                TO_CHAR(ar.date, 'YYYY-MM') as month,
-                COUNT(DISTINCT ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text) as total_classes,
-                COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text END) as attended,
-                COALESCE(
-                    ROUND(
-                        COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text END)::numeric * 100 / 
-                        NULLIF(COUNT(DISTINCT ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text), 0),
-                        1
-                    ),
-                    0
-                ) as attendance_pct
-             FROM attendance_records ar
-             WHERE ar.student_id = $1 
-               AND ar.subject_id IN (SELECT subject_id FROM student_subjects WHERE student_id = $1)`;
-
-        if (effectiveRole === 'teacher') {
-            monthlyQuery += ` AND ${teacherSubjectFilter}`;
-        }
-
-        if (startDate && endDate) {
-            monthlyQuery += ` AND ar.date >= $2 AND ar.date <= $3`;
-        } else if (startDate) {
-            monthlyQuery += ` AND ar.date >= $2`;
-        } else if (endDate) {
-            monthlyQuery += ` AND ar.date <= $2`;
-        } else {
-            monthlyQuery += ` AND ar.date >= CURRENT_DATE - INTERVAL '6 months'`;
-        }
-        monthlyQuery += ` GROUP BY TO_CHAR(ar.date, 'YYYY-MM') ORDER BY month DESC`;
-
-        const otherStatsParams = [studentId, ...dateParams];
-        if (effectiveRole === 'teacher') {
-            otherStatsParams.push(userId);
-        }
-
-        const monthlyStats = await query<MonthlyStats>(monthlyQuery, otherStatsParams);
-
-        // Overall summary with date filter
-        let overallQuery = `SELECT 
-                COUNT(DISTINCT ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text) as total_classes,
-                COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text END) as attended,
-                COALESCE(
-                    ROUND(
-                        COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text END)::numeric * 100 / 
-                        NULLIF(COUNT(DISTINCT ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text), 0),
-                        1
-                    ),
-                    0
-                ) as attendance_pct
-             FROM attendance_records ar
-             WHERE ar.student_id = $1 
-               AND ar.subject_id IN (SELECT subject_id FROM student_subjects WHERE student_id = $1) ${dateFilter}`;
-
-        if (effectiveRole === 'teacher') {
-            overallQuery += ` AND ${teacherSubjectFilter}`;
-        }
-
-        const overallStats = await query<{ total_classes: string; attended: string; attendance_pct: string }>(
-            overallQuery,
-            otherStatsParams
-        );
-
-
 
         const student = studentInfo[0];
-        const overall = overallStats[0] || { total_classes: '0', attended: '0', attendance_pct: '0' };
+
+        // Core filters for attendance
+        const attendanceParams: any[] = [studentId, sessionId];
+        let dateFilter = '';
+
+        if (startDate) {
+            attendanceParams.push(startDate);
+            dateFilter += ` AND ar.date >= $${attendanceParams.length}`;
+        }
+        if (endDate) {
+            attendanceParams.push(endDate);
+            dateFilter += ` AND ar.date <= $${attendanceParams.length}`;
+        }
+
+        let teacherFilter = '';
+        if (role === 'teacher') {
+            attendanceParams.push(userId);
+            teacherFilter = ` AND ar.class_section_id IN (
+                SELECT class_section_id FROM teacher_assignments WHERE teacher_id = $${attendanceParams.length} AND session_id = $2
+            )`;
+        }
+
+        // 1. Get Subject-wise attendance stats
+        const subjectStatsQuery = `
+            SELECT 
+                sub.id as "subject_id",
+                sub.name as "subject_name",
+                sub.code as "subject_code",
+                COUNT(DISTINCT ar.date::text || '-' || COALESCE(ar.subject_id::text, 'general') || '-' || ar.period_number::text) as "total_classes",
+                COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || COALESCE(ar.subject_id::text, 'general') || '-' || ar.period_number::text END) as "attended"
+            FROM attendance_records ar
+            LEFT JOIN subjects sub ON sub.id = ar.subject_id
+            WHERE ar.student_id = $1 AND ar.session_id = $2 ${dateFilter} ${teacherFilter}
+            GROUP BY sub.id, sub.name, sub.code
+            ORDER BY sub.name
+        `;
+        const subjectStats = await query<any>(subjectStatsQuery, attendanceParams);
+
+        // 2. Get Monthly trends
+        const monthlyQuery = `
+            SELECT 
+                TO_CHAR(ar.date, 'YYYY-MM') as month,
+                COUNT(DISTINCT ar.date::text || '-' || COALESCE(ar.subject_id::text, 'general') || '-' || ar.period_number::text) as total_classes,
+                COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || COALESCE(ar.subject_id::text, 'general') || '-' || ar.period_number::text END) as attended
+            FROM attendance_records ar
+            WHERE ar.student_id = $1 AND ar.session_id = $2 ${dateFilter} ${teacherFilter}
+            GROUP BY TO_CHAR(ar.date, 'YYYY-MM')
+            ORDER BY month DESC
+        `;
+        const monthlyStats = await query<any>(monthlyQuery, attendanceParams);
+
+        // 3. Overall Summary
+        const overallQuery = `
+            SELECT 
+                COUNT(DISTINCT ar.date::text || '-' || COALESCE(ar.subject_id::text, 'general') || '-' || ar.period_number::text) as total_classes,
+                COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || COALESCE(ar.subject_id::text, 'general') || '-' || ar.period_number::text END) as attended
+            FROM attendance_records ar
+            WHERE ar.student_id = $1 AND ar.session_id = $2 ${dateFilter} ${teacherFilter}
+        `;
+        const overallStats = await queryOne<any>(overallQuery, attendanceParams);
+
+        const total = parseInt(overallStats?.total_classes || '0');
+        const attended = parseInt(overallStats?.attended || '0');
 
         return NextResponse.json({
             student: {
                 id: student.id,
-                studentId: student.student_id,
-                rollNumber: student.roll_number,
+                studentId: student.studentId,
+                rollNumber: student.rollNumber,
                 name: `${student.first_name} ${student.last_name}`,
                 email: student.email || 'N/A',
                 department: student.department_name || 'N/A',
-                semester: student.current_semester
+                semester: 1
             },
             summary: {
-                totalClasses: parseInt(overall.total_classes) || 0,
-                attended: parseInt(overall.attended) || 0,
-                attendancePercentage: Math.round(parseFloat(overall.attendance_pct) || 0)
+                totalClasses: total,
+                attended: attended,
+                attendancePercentage: total > 0 ? Math.round((attended / total) * 100) : 0
             },
-            subjects: subjectStats.map(s => ({
-                id: s.subject_id,
-                name: s.subject_name,
-                code: s.subject_code,
-                paperCode: s.subject_paper_code || null,
-                totalClasses: parseInt(s.total_classes) || 0,
-                attended: parseInt(s.attended) || 0,
-                attendance: Math.round(parseFloat(s.attendance_pct) || 0)
-            })),
-            monthlyTrend: monthlyStats.map(m => ({
-                month: m.month,
-                totalClasses: parseInt(m.total_classes) || 0,
-                attended: parseInt(m.attended) || 0,
-                attendance: Math.round(parseFloat(m.attendance_pct) || 0)
-            })),
-
-            // Include the date range in response for reference
+            subjects: subjectStats.map((s: any) => {
+                const subTotal = parseInt(s.total_classes) || 0;
+                const subAtt = parseInt(s.attended) || 0;
+                return {
+                    id: s.subject_id || 'general',
+                    name: s.subject_name || 'General Attendance',
+                    code: s.subject_code || 'GEN',
+                    totalClasses: subTotal,
+                    attended: subAtt,
+                    attendance: subTotal > 0 ? Math.round((subAtt / subTotal) * 100) : 0
+                };
+            }),
+            monthlyTrend: monthlyStats.map((m: any) => {
+                const mTotal = parseInt(m.total_classes) || 0;
+                const mAtt = parseInt(m.attended) || 0;
+                return {
+                    month: m.month,
+                    totalClasses: mTotal,
+                    attended: mAtt,
+                    attendance: mTotal > 0 ? Math.round((mAtt / mTotal) * 100) : 0
+                };
+            }),
             dateRange: startDate && endDate ? { startDate, endDate } : null
         });
     } catch (error) {
-        console.error('Student detail error:', error);
+        console.error('Student details report error:', error);
         return NextResponse.json({ error: 'Server error' }, { status: 500 });
     }
 }

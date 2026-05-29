@@ -5,19 +5,24 @@ import { useRouter } from 'next/navigation';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { Navbar } from '@/components/ui/Navbar';
 import {
-    Building2,
+    School,
     BookOpen,
     Users,
-    GraduationCap,
     CalendarDays,
     BarChart3,
-    ClipboardCheck,
-    UsersRound,
     Settings,
     ChevronRight,
-    BookCheck,
-    TrendingUp,
-    CalendarClock
+    Layers,
+    UserCog,
+    IndianRupee,
+    ClipboardCheck,
+    ClipboardList,
+    GraduationCap,
+    Sparkles,
+    Send,
+    FileText,
+    Trophy,
+    Award,
 } from 'lucide-react';
 
 interface User {
@@ -25,11 +30,10 @@ interface User {
     email: string;
     firstName: string;
     lastName: string;
-    role: 'super_admin' | 'hod' | 'teacher';
-    departmentId: string | null;
+    role: 'developer' | 'super_admin' | 'teacher' | 'accountant' | 'student';
 }
 
-interface DashboardCard {
+interface HubCard {
     id: string;
     title: string;
     description: string;
@@ -38,6 +42,7 @@ interface DashboardCard {
     gradient: string;
     textColor: string;
     borderColor: string;
+    comingSoon?: boolean;
 }
 
 export default function DashboardPage() {
@@ -56,7 +61,23 @@ export default function DashboardPage() {
         }
 
         try {
-            setUser(JSON.parse(userData));
+            const parsed = JSON.parse(userData);
+            setUser(parsed);
+
+            // Redirect non-admin users to their respective dashboards
+            if (parsed.role === 'developer') {
+                router.replace('/developer/dashboard');
+                return;
+            } else if (parsed.role === 'teacher') {
+                router.replace('/teacher/dashboard');
+                return;
+            } else if (parsed.role === 'accountant') {
+                router.replace('/accountant/dashboard');
+                return;
+            } else if (parsed.role === 'student') {
+                router.replace('/student/dashboard');
+                return;
+            }
         } catch {
             router.replace('/login');
         }
@@ -82,201 +103,72 @@ export default function DashboardPage() {
 
     if (!user) return null;
 
-    const getCards = (): DashboardCard[] => {
-        if (user.role === 'super_admin') {
-            return [
-                {
-                    id: 'departments',
-                    title: 'Departments',
-                    description: 'Manage departments structures & HODs',
-                    href: '/departments',
-                    iconComponent: <Building2 className="w-6 h-6" />,
-                    gradient: 'from-amber-100 to-orange-100',
-                    textColor: 'text-amber-700',
-                    borderColor: 'border-amber-200'
-                },
-                {
-                    id: 'subjects',
-                    title: 'Subjects',
-                    description: 'Configure course curriculum & syllabus',
-                    href: '/subjects',
-                    iconComponent: <BookOpen className="w-6 h-6" />,
-                    gradient: 'from-blue-100 to-indigo-100',
-                    textColor: 'text-blue-700',
-                    borderColor: 'border-blue-200'
-                },
-                {
-                    id: 'teachers',
-                    title: 'Teachers',
-                    description: 'Manage faculty profiles & assignments',
-                    href: '/teachers',
-                    iconComponent: <Users className="w-6 h-6" />,
-                    gradient: 'from-rose-100 to-pink-100',
-                    textColor: 'text-rose-700',
-                    borderColor: 'border-rose-200'
-                },
-                {
-                    id: 'students',
-                    title: 'Students',
-                    description: 'Manage student enrollments & records',
-                    href: '/students',
-                    iconComponent: <GraduationCap className="w-6 h-6" />,
-                    gradient: 'from-emerald-100 to-teal-100',
-                    textColor: 'text-emerald-700',
-                    borderColor: 'border-emerald-200'
-                },
-                {
-                    id: 'holidays',
-                    title: 'Holidays',
-                    description: 'Configure academic calendar events',
-                    href: '/holidays',
-                    iconComponent: <CalendarDays className="w-6 h-6" />,
-                    gradient: 'from-cyan-100 to-sky-100',
-                    textColor: 'text-cyan-700',
-                    borderColor: 'border-cyan-200'
-                },
-                {
-                    id: 'reports',
-                    title: 'Reports',
-                    description: 'Analyze attendance & performance stats',
-                    href: '/reports',
-                    iconComponent: <BarChart3 className="w-6 h-6" />,
-                    gradient: 'from-violet-100 to-purple-100',
-                    textColor: 'text-violet-700',
-                    borderColor: 'border-violet-200'
-                },
-                {
-                    id: 'settings',
-                    title: 'Settings',
-                    description: 'Platform configs & Batch manager',
-                    href: '/settings',
-                    iconComponent: <Settings className="w-6 h-6" />,
-                    gradient: 'from-slate-100 to-gray-200',
-                    textColor: 'text-slate-700',
-                    borderColor: 'border-slate-300'
-                }
-            ];
-        } else if (user.role === 'hod') {
-            return [
-                {
-                    id: 'attendance',
-                    title: 'Attendance',
-                    description: 'Mark and verify daily attendance',
-                    href: '/attendance',
-                    iconComponent: <ClipboardCheck className="w-6 h-6" />,
-                    gradient: 'from-emerald-100 to-teal-100',
-                    textColor: 'text-emerald-700',
-                    borderColor: 'border-emerald-200'
-                },
-                {
-                    id: 'class-schedule',
-                    title: "Today's Classes",
-                    description: 'Assign daily class schedule to teachers',
-                    href: '/class-schedule',
-                    iconComponent: <CalendarClock className="w-6 h-6" />,
-                    gradient: 'from-teal-100 to-cyan-100',
-                    textColor: 'text-teal-700',
-                    borderColor: 'border-teal-200'
-                },
-                {
-                    id: 'teachers',
-                    title: 'My Teachers',
-                    description: 'Oversee department faculty members',
-                    href: '/teachers',
-                    iconComponent: <Users className="w-6 h-6" />,
-                    gradient: 'from-rose-100 to-pink-100',
-                    textColor: 'text-rose-700',
-                    borderColor: 'border-rose-200'
-                },
-                {
-                    id: 'students',
-                    title: 'My Students',
-                    description: 'Track department student progress',
-                    href: '/students',
-                    iconComponent: <GraduationCap className="w-6 h-6" />,
-                    gradient: 'from-blue-100 to-indigo-100',
-                    textColor: 'text-blue-700',
-                    borderColor: 'border-blue-200'
-                },
-                {
-                    id: 'subjects',
-                    title: 'My Subjects',
-                    description: 'Manage department course offerings',
-                    href: '/subjects',
-                    iconComponent: <BookOpen className="w-6 h-6" />,
-                    gradient: 'from-amber-100 to-orange-100',
-                    textColor: 'text-amber-700',
-                    borderColor: 'border-amber-200'
-                },
-                {
-                    id: 'holidays',
-                    title: 'Holidays',
-                    description: 'Manage department holidays & calendar',
-                    href: '/holidays',
-                    iconComponent: <CalendarDays className="w-6 h-6" />,
-                    gradient: 'from-cyan-100 to-sky-100',
-                    textColor: 'text-cyan-700',
-                    borderColor: 'border-cyan-200'
-                },
-                {
-                    id: 'reports',
-                    title: 'Department Reports',
-                    description: 'View detailed analytical insights',
-                    href: '/reports',
-                    iconComponent: <BarChart3 className="w-6 h-6" />,
-                    gradient: 'from-violet-100 to-purple-100',
-                    textColor: 'text-violet-700',
-                    borderColor: 'border-violet-200'
-                },
-                {
-                    id: 'my-reports',
-                    title: 'My Reports',
-                    description: 'Your personal teaching statistics',
-                    href: '/my-reports',
-                    iconComponent: <TrendingUp className="w-6 h-6" />,
-                    gradient: 'from-indigo-100 to-blue-100',
-                    textColor: 'text-indigo-700',
-                    borderColor: 'border-indigo-200'
-                },
-            ];
-        } else {
-            return [
-                {
-                    id: 'attendance',
-                    title: 'Mark Attendance',
-                    description: 'Record daily class attendance',
-                    href: '/attendance',
-                    iconComponent: <ClipboardCheck className="w-6 h-6" />,
-                    gradient: 'from-emerald-100 to-teal-100',
-                    textColor: 'text-emerald-700',
-                    borderColor: 'border-emerald-200'
-                },
-                {
-                    id: 'classes',
-                    title: 'My Classes',
-                    description: 'View your assigned schedule',
-                    href: '/classes',
-                    iconComponent: <UsersRound className="w-6 h-6" />,
-                    gradient: 'from-blue-100 to-indigo-100',
-                    textColor: 'text-blue-700',
-                    borderColor: 'border-blue-200'
-                },
-                {
-                    id: 'reports',
-                    title: 'Reports',
-                    description: 'View student attendance reports',
-                    href: '/reports',
-                    iconComponent: <BarChart3 className="w-6 h-6" />,
-                    gradient: 'from-violet-100 to-purple-100',
-                    textColor: 'text-violet-700',
-                    borderColor: 'border-violet-200'
-                },
-            ];
-        }
-    };
+    // ----------------------------------------------------------------
+    // Teacher & Staff Attendance Hub Cards
+    // ----------------------------------------------------------------
+    const teacherHubCards: HubCard[] = [
+        {
+            id: 'teachers', title: 'Teachers Directory', description: 'Manage teacher profiles & assignments',
+            href: '/manage/teachers', iconComponent: <Users className="w-6 h-6" />,
+            gradient: 'from-emerald-100 to-teal-100', textColor: 'text-emerald-700', borderColor: 'border-emerald-200'
+        },
+        {
+            id: 'staff-attendance', title: 'Staff Attendance', description: 'GPS check-in dashboard & logs',
+            href: '/manage/staff-attendance', iconComponent: <UserCog className="w-6 h-6" />,
+            gradient: 'from-emerald-100 to-green-100', textColor: 'text-emerald-700', borderColor: 'border-emerald-200'
+        },
+        {
+            id: 'staff-leaves', title: 'Staff Leaves', description: 'Approve & manage teacher leave requests',
+            href: '/manage/staff-attendance/leaves', iconComponent: <Send className="w-6 h-6" />,
+            gradient: 'from-teal-100 to-cyan-100', textColor: 'text-teal-700', borderColor: 'border-teal-200'
+        },
+        {
+            id: 'teacher-reports', title: 'Staff Reports', description: 'Monthly & teacher-wise attendance reports',
+            href: '/reports/teachers', iconComponent: <BarChart3 className="w-6 h-6" />,
+            gradient: 'from-cyan-100 to-sky-100', textColor: 'text-cyan-700', borderColor: 'border-cyan-200'
+        },
+    ];
 
-    const cards = getCards();
-    const roleLabel = user.role.replace('_', ' ').toUpperCase();
+    // ----------------------------------------------------------------
+    // Student & Academic Attendance Hub Cards
+    // ----------------------------------------------------------------
+    const studentHubCards: HubCard[] = [
+        {
+            id: 'school-setup', title: 'School Setup', description: 'Sessions, Classes, Subjects & Bulk Import',
+            href: '/manage/school-setup', iconComponent: <School className="w-6 h-6" />,
+            gradient: 'from-blue-100 to-indigo-100', textColor: 'text-blue-700', borderColor: 'border-blue-200'
+        },
+        {
+            id: 'students', title: 'Students Directory', description: 'Student enrollment & profiles',
+            href: '/manage/students', iconComponent: <GraduationCap className="w-6 h-6" />,
+            gradient: 'from-indigo-100 to-violet-100', textColor: 'text-indigo-700', borderColor: 'border-indigo-200'
+        },
+        {
+            id: 'student-attendance', title: 'Student Attendance', description: 'Mark daily attendance & view records',
+            href: '/attendance', iconComponent: <ClipboardCheck className="w-6 h-6" />,
+            gradient: 'from-blue-100 to-sky-100', textColor: 'text-blue-700', borderColor: 'border-blue-200'
+        },
+        {
+            id: 'holidays', title: 'Holidays Calendar', description: 'Manage school holidays & events',
+            href: '/holidays', iconComponent: <CalendarDays className="w-6 h-6" />,
+            gradient: 'from-rose-100 to-pink-100', textColor: 'text-rose-700', borderColor: 'border-rose-200'
+        },
+        {
+            id: 'exams-marks', title: 'Exams & Marks', description: 'Exam schedules, grading & results',
+            href: '/manage/exams-marks', iconComponent: <ClipboardList className="w-6 h-6" />,
+            gradient: 'from-orange-100 to-amber-100', textColor: 'text-orange-700', borderColor: 'border-orange-200'
+        },
+        {
+            id: 'finance', title: 'Finance', description: 'Fee structures, collection & invoices',
+            href: '/manage/fee-management', iconComponent: <IndianRupee className="w-6 h-6" />,
+            gradient: 'from-green-100 to-emerald-100', textColor: 'text-green-700', borderColor: 'border-green-200'
+        },
+        {
+            id: 'student-reports', title: 'Student Reports', description: 'Analytics & attendance reports',
+            href: '/reports/students', iconComponent: <BarChart3 className="w-6 h-6" />,
+            gradient: 'from-sky-100 to-blue-100', textColor: 'text-sky-700', borderColor: 'border-sky-200'
+        },
+    ];
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
@@ -305,16 +197,16 @@ export default function DashboardPage() {
                                     Hello, {user.firstName}! <span className="inline-block animate-wave">👋</span>
                                 </h1>
                                 <p className="text-blue-100 text-sm max-w-xl">
-                                    Welcome to your dashboard. You have <span className="font-semibold text-white">full access</span> to manage {user.role === 'super_admin' ? 'the entire institution' : 'your academic duties'}.
+                                    Welcome to the <span className="font-semibold text-white">School Management System</span>. You have full administrative access to manage the entire institution.
                                 </p>
                             </div>
-                            <BookCheck className="hidden sm:block w-12 h-12 text-blue-200 opacity-80" />
+                            <School className="hidden sm:block w-12 h-12 text-blue-200 opacity-80" />
                         </div>
 
-                        <div className="mt-8 flex gap-3">
+                        <div className="mt-8 flex flex-wrap gap-3">
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm font-medium backdrop-blur-md">
-                                <UsersRound className="w-4 h-4" />
-                                {roleLabel}
+                                <UserCog className="w-4 h-4" />
+                                ADMINISTRATOR
                             </span>
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm font-medium backdrop-blur-md">
                                 <CalendarDays className="w-4 h-4" />
@@ -324,41 +216,109 @@ export default function DashboardPage() {
                     </div>
                 </div>
 
-                {/* Grid Title */}
-                <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-xl font-bold text-gray-800">Quick Access</h2>
-                </div>
-
-                {/* Cards Grid */}
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
-                    {cards.map((card) => (
-                        <div
-                            key={card.id}
-                            onClick={() => router.push(card.href)}
-                            className={`group relative bg-white p-4 sm:p-6 rounded-2xl shadow-sm border ${card.borderColor} hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden`}
-                        >
-                            {/* Decorative gradient blob */}
-                            <div className={`absolute -right-8 -top-8 w-24 h-24 rounded-full bg-gradient-to-br ${card.gradient} opacity-20 group-hover:scale-150 transition-transform duration-500`}></div>
-
-                            <div className="relative flex items-start justify-between mb-3 sm:mb-4">
-                                <div className={`p-2.5 sm:p-3 rounded-xl bg-gradient-to-br ${card.gradient} ${card.textColor}`}>
-                                    {card.iconComponent}
-                                </div>
-                                <div className="p-1.5 sm:p-2 rounded-full bg-gray-50 text-gray-300 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
-                                    <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
-                                </div>
-                            </div>
-
-                            <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-1">
-                                {card.title}
-                            </h3>
-                            <p className="text-xs sm:text-sm text-gray-500 leading-relaxed line-clamp-2">
-                                {card.description}
-                            </p>
+                {/* ===== HUB 1: Teacher & Staff Attendance ===== */}
+                <div className="mb-10">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 rounded-xl bg-emerald-100">
+                            <UserCog className="w-5 h-5 text-emerald-700" />
                         </div>
-                    ))}
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-800">Teacher & Staff Attendance</h2>
+                            <p className="text-xs text-gray-500">GPS check-in, leave management & staff reports</p>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                        {teacherHubCards.map((card) => (
+                            <HubCardComponent key={card.id} card={card} onClick={() => router.push(card.href)} />
+                        ))}
+                    </div>
                 </div>
+
+                {/* ===== HUB 2: Student & Academic Attendance ===== */}
+                <div className="mb-10">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 rounded-xl bg-blue-100">
+                            <GraduationCap className="w-5 h-5 text-blue-700" />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-800">Student & Academic System</h2>
+                            <p className="text-xs text-gray-500">Attendance, holidays, exams, marks & report cards</p>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+                        {studentHubCards.map((card) => (
+                            <HubCardComponent key={card.id} card={card} onClick={() => router.push(card.href)} />
+                        ))}
+                    </div>
+                </div>
+
+                {/* Quick Admin Row */}
+                <div className="flex flex-wrap gap-3">
+                    <button
+                        onClick={() => router.push('/manage/accounts')}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 font-semibold text-sm rounded-xl hover:border-blue-300 hover:text-blue-700 transition-all shadow-sm"
+                    >
+                        <Users className="w-4 h-4" /> User Accounts
+                    </button>
+                    <button
+                        onClick={() => router.push('/manage/bulk-import')}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 font-semibold text-sm rounded-xl hover:border-violet-300 hover:text-violet-700 transition-all shadow-sm"
+                    >
+                        <Sparkles className="w-4 h-4" /> Bulk Configurator
+                    </button>
+                    <button
+                        onClick={() => router.push('/settings')}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 font-semibold text-sm rounded-xl hover:border-gray-400 hover:text-gray-900 transition-all shadow-sm"
+                    >
+                        <Settings className="w-4 h-4" /> Settings & Config
+                    </button>
+                    <button
+                        onClick={() => router.push('/reports')}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 font-semibold text-sm rounded-xl hover:border-blue-300 hover:text-blue-700 transition-all shadow-sm"
+                    >
+                        <BarChart3 className="w-4 h-4" /> All Reports
+                    </button>
+                </div>
+
             </main>
+        </div>
+    );
+}
+
+// Reusable Hub Card component
+function HubCardComponent({ card, onClick }: { card: HubCard; onClick: () => void }) {
+    return (
+        <div
+            onClick={card.comingSoon ? undefined : onClick}
+            className={`group relative bg-white p-4 sm:p-5 rounded-2xl shadow-sm border ${card.borderColor} transition-all duration-300 overflow-hidden ${card.comingSoon ? 'opacity-60 cursor-default' : 'hover:shadow-lg hover:-translate-y-1 cursor-pointer'}`}
+        >
+            {/* Decorative gradient blob */}
+            <div className={`absolute -right-8 -top-8 w-24 h-24 rounded-full bg-gradient-to-br ${card.gradient} opacity-20 group-hover:scale-150 transition-transform duration-500`}></div>
+
+            {/* Coming Soon badge */}
+            {card.comingSoon && (
+                <div className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-gray-900/80 text-white text-[10px] font-bold uppercase tracking-wider z-10">
+                    Coming Soon
+                </div>
+            )}
+
+            <div className="relative flex items-start justify-between mb-3">
+                <div className={`p-2.5 rounded-xl bg-gradient-to-br ${card.gradient} ${card.textColor}`}>
+                    {card.iconComponent}
+                </div>
+                {!card.comingSoon && (
+                    <div className="p-1.5 rounded-full bg-gray-50 text-gray-300 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
+                        <ChevronRight className="w-4 h-4" />
+                    </div>
+                )}
+            </div>
+
+            <h3 className="text-sm sm:text-base font-bold text-gray-900 mb-0.5">
+                {card.title}
+            </h3>
+            <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">
+                {card.description}
+            </p>
         </div>
     );
 }

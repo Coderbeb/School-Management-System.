@@ -4,14 +4,14 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 
-import { ArrowLeft, Users, BookOpen, AlertCircle, AlertTriangle, Building2, TrendingUp, GraduationCap, ChevronRight, FileDown, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, Users, BookOpen, AlertCircle, AlertTriangle, Building2, TrendingUp, GraduationCap, ChevronRight, FileDown, FileSpreadsheet, LayoutDashboard } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import * as XLSX from 'xlsx';
 
 interface User {
     id: string;
-    role: 'super_admin' | 'hod' | 'teacher';
+    role: 'super_admin' | 'teacher' | 'accountant' | 'student';
     firstName: string;
     lastName: string;
     email: string;
@@ -70,7 +70,7 @@ export default function DepartmentOverviewPage() {
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
     const [data, setData] = useState<DepartmentData | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<'semester' | 'subject' | 'critical' | 'warning'>('semester');
+    const [activeTab, setActiveTab] = useState<'subject' | 'critical' | 'warning'>('subject');
 
     const handleLogout = () => {
         localStorage.removeItem('token');
@@ -101,14 +101,8 @@ export default function DepartmentOverviewPage() {
 
         if (parsedUser.role === 'super_admin') {
             fetchDepartments(token);
-        } else if (parsedUser.role === 'hod') {
-            fetchTeacherDepartments(token, parsedUser.id, parsedUser.departmentId);
         } else {
-            if (parsedUser.departmentId) {
-                setSelectedDepartmentId(parsedUser.departmentId);
-            } else {
-                setLoading(false);
-            }
+            setLoading(false);
         }
     }, [router]);
 
@@ -215,29 +209,25 @@ export default function DepartmentOverviewPage() {
     // Export department data
     const exportDepartmentData = (format: 'csv' | 'excel') => {
         if (!data) return;
-        const headers = ['Category', 'Name', 'Code/Roll', 'Semester', 'Students', 'Attendance %'];
+        const headers = ['Category', 'Name', 'Code/Roll', 'Students', 'Attendance %'];
         const rows: string[][] = [];
 
-        // Semester stats
-        data.semesterStats.forEach(s => {
-            rows.push(['Semester', `Semester ${s.semester}`, '-', s.semester.toString(), s.totalStudents.toString(), `${s.avgAttendance}%`]);
-        });
         // Subject stats
         data.subjectStats.forEach(s => {
-            rows.push(['Subject', s.name, s.code, s.semester.toString(), s.totalStudents.toString(), `${s.avgAttendance}%`]);
+            rows.push(['Subject', s.name, s.code, s.totalStudents.toString(), `${s.avgAttendance}%`]);
         });
         // Critical students
         data.criticalStudents.forEach(s => {
             const idAndRoll = s.studentId ? `${s.studentId} / ${s.rollNumber}` : s.rollNumber;
-            rows.push(['Critical Student', s.name, idAndRoll, s.semester.toString(), '-', `${s.attendancePercentage}%`]);
+            rows.push(['Critical Student', s.name, idAndRoll, '-', `${s.attendancePercentage}%`]);
         });
         // Warning students
         data.warningStudents.forEach(s => {
             const idAndRoll = s.studentId ? `${s.studentId} / ${s.rollNumber}` : s.rollNumber;
-            rows.push(['Warning Student', s.name, idAndRoll, s.semester.toString(), '-', `${s.attendancePercentage}%`]);
+            rows.push(['Warning Student', s.name, idAndRoll, '-', `${s.attendancePercentage}%`]);
         });
 
-        const filename = `department_${data.department?.name || 'report'}`;
+        const filename = `classroom_${data.department?.name || 'report'}`;
         if (format === 'csv') {
             const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -250,7 +240,7 @@ export default function DepartmentOverviewPage() {
         } else {
             const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
             const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, 'Department');
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Classroom');
             XLSX.writeFile(workbook, `${filename}.xlsx`);
         }
     };
@@ -276,15 +266,15 @@ export default function DepartmentOverviewPage() {
             <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
             {/* Hero / Welcome Section */}
             <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl mt-4">
-
-
+                <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
+                <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-rose-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
                 <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6">
                     <div>
                         <div className="flex items-center gap-2 mb-2">
                             <span className="text-rose-400 font-semibold tracking-wide uppercase text-sm">Reports</span>
                         </div>
                         <h1 className="text-2xl font-bold mb-2 flex items-center gap-3">
-                            Department Overview <span className="inline-block animate-bounce">🏢</span>
+                            Classroom Overview <span className="inline-block animate-bounce">🏫</span>
                         </h1>
                         <p className="text-rose-100 text-sm max-w-xl">
                             {data?.department ? data.department.name : 'View detailed performance metrics, subject-wise analysis, and student alerts.'}
@@ -292,9 +282,9 @@ export default function DepartmentOverviewPage() {
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-                        {/* Department selector */}
+                        {/* Classroom selector */}
                         <div className="flex items-center gap-2 text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full font-medium text-sm">
-                            <Building2 className="w-4 h-4" />
+                            <LayoutDashboard className="w-4 h-4" />
                             {user?.role === 'super_admin' || departments.length > 1 ? (
                                 <select 
                                     className="bg-transparent border-none outline-none cursor-pointer focus:ring-0 text-indigo-700 font-semibold"
@@ -306,7 +296,7 @@ export default function DepartmentOverviewPage() {
                                     ))}
                                 </select>
                             ) : (
-                                <span>{data?.department?.name || 'Department'}</span>
+                                <span>{data?.department?.name || 'Classroom'}</span>
                             )}
                         </div>
 
@@ -337,7 +327,7 @@ export default function DepartmentOverviewPage() {
                 {loading ? (
                     <div className="flex flex-col items-center justify-center h-64 gap-4">
                         <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
-                        <p className="text-gray-500">Loading department data...</p>
+                        <p className="text-gray-500">Loading classroom data...</p>
                     </div>
                 ) : !data || !data.overallStats ? (
                     <div className="p-12 text-center shadow-xl bg-white/80 backdrop-blur-sm rounded-2xl">
@@ -346,7 +336,7 @@ export default function DepartmentOverviewPage() {
                         </div>
                         <h3 className="text-xl font-semibold text-gray-700 mb-2">No Data Available</h3>
                         <p className="text-gray-500 max-w-md mx-auto">
-                            No attendance data found for this department. Make sure attendance has been marked for students.
+                            No attendance data found for this classroom. Make sure attendance has been marked for students.
                         </p>
                     </div>
                 ) : (
@@ -400,7 +390,7 @@ export default function DepartmentOverviewPage() {
                                     <div className="flex items-start justify-between">
                                         <div>
                                             <p className="text-gray-500 text-xs uppercase tracking-wide font-bold">Warning (60-75%)</p>
-                                            <p className="text-gray-900 text-2xl font-bold mt-1">{data.overallStats.warningCount}</p>
+                                            <p className="text-gray-950 text-2xl font-bold mt-1">{data.overallStats.warningCount}</p>
                                         </div>
                                         <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
                                             <AlertTriangle className="w-5 h-5" />
@@ -413,10 +403,9 @@ export default function DepartmentOverviewPage() {
                         {/* Tabs - Enhanced */}
                         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                             {[
-                                { id: 'semester', label: 'Semester-wise', icon: GraduationCap, count: data.semesterStats.length },
-                                { id: 'subject', label: 'Subject-wise', icon: BookOpen, count: data.subjectStats.length },
-                                { id: 'critical', label: 'Critical', icon: AlertCircle, count: data.overallStats.criticalCount, color: 'red' },
-                                { id: 'warning', label: 'Warning', icon: AlertTriangle, count: data.overallStats.warningCount, color: 'amber' },
+                                { id: 'subject', label: 'Subject-wise Performance', icon: BookOpen, count: data.subjectStats.length },
+                                { id: 'critical', label: 'Critical Students (<60%)', icon: AlertCircle, count: data.overallStats.criticalCount, color: 'red' },
+                                { id: 'warning', label: 'Warning Students (60-75%)', icon: AlertTriangle, count: data.overallStats.warningCount, color: 'amber' },
                             ].map(tab => (
                                 <button
                                     key={tab.id}
@@ -447,51 +436,6 @@ export default function DepartmentOverviewPage() {
                         {/* Tab Content */}
                         <div className="shadow-xl bg-white/80 backdrop-blur-sm overflow-hidden rounded-2xl">
                             <div className="p-5">
-                                {/* Semester-wise Tab */}
-                                {activeTab === 'semester' && (
-                                    <div className="space-y-4">
-                                        {data.semesterStats.length === 0 ? (
-                                            <div className="text-center py-12">
-                                                <GraduationCap className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-                                                <p className="text-gray-500">No semester data available</p>
-                                            </div>
-                                        ) : (
-                                            data.semesterStats.map(sem => (
-                                                <div 
-                                                    key={sem.semester} 
-                                                    className={`flex items-center justify-between p-4 rounded-xl border transition-all hover:shadow-md ${getBgColor(sem.avgAttendance)}`}
-                                                >
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center">
-                                                            <span className="text-lg font-bold text-purple-600">{sem.semester}</span>
-                                                        </div>
-                                                        <div>
-                                                            <p className="font-semibold text-gray-800">Semester {sem.semester}</p>
-                                                            <p className="text-sm text-gray-500 flex items-center gap-1">
-                                                                <Users className="w-3.5 h-3.5" />
-                                                                {sem.totalStudents} students enrolled
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-32 hidden sm:block">
-                                                            <div className="h-3 bg-gray-200/80 rounded-full overflow-hidden">
-                                                                <div 
-                                                                    className={`h-full rounded-full bg-gradient-to-r ${getProgressGradient(sem.avgAttendance)} transition-all duration-500`}
-                                                                    style={{ width: `${Math.min(sem.avgAttendance, 100)}%` }}
-                                                                ></div>
-                                                            </div>
-                                                        </div>
-                                                        <span className={`text-xl font-bold ${getAttendanceColor(sem.avgAttendance)}`}>
-                                                            {sem.avgAttendance}%
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                )}
-
                                 {/* Subject-wise Tab */}
                                 {activeTab === 'subject' && (
                                     <div className="space-y-4">
@@ -516,11 +460,8 @@ export default function DepartmentOverviewPage() {
                                                                 <span className="px-2 py-0.5 bg-white/80 rounded-full text-xs text-gray-600 font-medium">
                                                                     {sub.code}
                                                                 </span>
-                                                                <span className="px-2 py-0.5 bg-purple-100 rounded-full text-xs text-purple-600 font-medium">
-                                                                    Sem {sub.semester}
-                                                                </span>
                                                                 <span className="text-xs text-gray-500 flex items-center gap-1">
-                                                                    <Users className="w-3 h-3" /> {sub.totalStudents}
+                                                                    <Users className="w-3 h-3" /> {sub.totalStudents} Students
                                                                 </span>
                                                             </div>
                                                         </div>
@@ -528,7 +469,7 @@ export default function DepartmentOverviewPage() {
                                                     <div className="flex items-center gap-4 pl-16 sm:pl-0">
                                                         <div className="w-24 hidden md:block">
                                                             <div className="h-2.5 bg-gray-200/80 rounded-full overflow-hidden">
-                                                                <div 
+                                                                 <div 
                                                                     className={`h-full rounded-full bg-gradient-to-r ${getProgressGradient(sub.avgAttendance)} transition-all duration-500`}
                                                                     style={{ width: `${Math.min(sub.avgAttendance, 100)}%` }}
                                                                 ></div>
@@ -573,7 +514,7 @@ export default function DepartmentOverviewPage() {
                                                                 <span className="text-sm text-gray-500">ID: {student.studentId || '-'}</span>
                                                                 <span className="text-sm text-gray-500 ml-1">Roll: {student.rollNumber}</span>
                                                                 <span className="text-xs font-medium px-2.5 py-1 bg-gray-100 rounded-full text-gray-600 ml-1">
-                                                                    Sem {student.semester}
+                                                                    Active Classroom
                                                                 </span>
                                                             </div>
                                                         </div>
@@ -619,7 +560,7 @@ export default function DepartmentOverviewPage() {
                                                                 <span className="text-sm text-gray-500">ID: {student.studentId || '-'}</span>
                                                                 <span className="text-sm text-gray-500 ml-1">Roll: {student.rollNumber}</span>
                                                                 <span className="text-xs font-medium px-2.5 py-1 bg-gray-100 rounded-full text-gray-600 ml-1">
-                                                                    Sem {student.semester}
+                                                                    Active Classroom
                                                                 </span>
                                                             </div>
                                                         </div>

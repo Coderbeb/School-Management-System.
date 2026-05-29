@@ -8,11 +8,10 @@ import { Search, X, Users, BookOpen, TrendingUp, Filter, ChevronRight, FileDown,
 import { Input } from '@/components/ui/input';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
-import { useActiveSemesters } from '@/hooks/useActiveSemesters';
 import * as XLSX from 'xlsx';
 
 interface User {
-    role: 'super_admin' | 'hod' | 'teacher';
+    role: 'super_admin' | 'teacher' | 'accountant' | 'student';
     firstName: string;
     lastName: string;
     email: string;
@@ -93,13 +92,20 @@ export default function TeacherReportPage() {
     const [showSearch, setShowSearch] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
+    const [branding, setBranding] = useState<any>({
+        schoolName: 'Yogoda Satsanga School',
+        address: 'Jagannathpur, Dhurwa, Ranchi-834004',
+        city: 'Ranchi',
+        state: 'Jharkhand',
+    });
+
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         router.replace('/login');
     };
 
-    const { getBatchLabel, getActiveSemesters } = useActiveSemesters();
+
 
     // Detail popup state
     const [selectedTeacher, setSelectedTeacher] = useState<TeacherDetail | null>(null);
@@ -131,6 +137,34 @@ export default function TeacherReportPage() {
             fetchDepartments(token);
         }
     }, [router]);
+
+    useEffect(() => {
+        const fetchBranding = async () => {
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) return;
+                const res = await fetch('/api/settings/school-branding', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.branding) {
+                        setBranding({
+                            schoolName: data.branding.schoolName || 'School',
+                            address: data.branding.address || '',
+                            city: data.branding.city || '',
+                            state: data.branding.state || '',
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching branding:', err);
+            }
+        };
+        if (user) {
+            fetchBranding();
+        }
+    }, [user]);
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -529,16 +563,16 @@ export default function TeacherReportPage() {
             <img src="${logoUrl}" class="watermark" />
             
             <div class="badge-container">
-                <div class="ribbon">Faculty Report</div>
+                <div class="ribbon">Teacher Report</div>
             </div>
 
             <header class="header">
                 <div class="logo-section">
                     <img src="${logoUrl}" class="logo-img" alt="YSM Logo">
                     <div class="college-info">
-                        <h1>Yogoda Satsanga Mahavidyalaya</h1>
-                        <p>Established 1967 | NAAC Accredited Grade 'B'</p>
-                        <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
+                        <h1>${branding.schoolName}</h1>
+                        <p>Coaching & School Management System</p>
+                        <p>${branding.address}</p>
                     </div>
                 </div>
             </header>
@@ -549,8 +583,7 @@ export default function TeacherReportPage() {
                     <div class="teacher-email">${teacher.email}</div>
                 </div>
                 <div class="meta-values">
-                    <div class="meta-row"><strong>Department:</strong> ${popupDeptFilter ? selectedTeacher.filters.departments.find(d => d.id === popupDeptFilter)?.name : 'All Departments'}</div>
-                    <div class="meta-row"><strong>Semester:</strong> ${popupSemesterFilter ? (() => { const dept = selectedTeacher.filters.departments.find(d => d.id === popupDeptFilter); const label = getBatchLabel(parseInt(popupSemesterFilter), dept?.deptType); return `Semester ${popupSemesterFilter}${label ? ` (${label})` : ''}`; })() : 'All Semesters'}</div>
+                    <div class="meta-row"><strong>Classroom:</strong> ${popupDeptFilter ? selectedTeacher.filters.departments.find(d => d.id === popupDeptFilter)?.name : 'All Classrooms'}</div>
                     ${subjects.length === 1 ? `<div class="meta-row"><strong>Subject:</strong> ${subjects[0].name} (${subjects[0].paperCode || subjects[0].code})</div>` : ''}
                     ${popupDateFrom || popupDateTo ? `<div class="meta-row"><strong>Period:</strong> ${popupDateFrom || 'Start'} to ${popupDateTo || 'Present'}</div>` : ''}
                     <div class="meta-row"><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
@@ -574,7 +607,6 @@ export default function TeacherReportPage() {
                 <thead>
                     <tr>
                         <th style="border-radius: 4px 0 0 0;">Subject</th>
-                        <th>Semester & Batch</th>
                         <th>Code</th>
                         <th style="text-align: center;">No. of Lectures</th>
                         <th style="text-align: center;">Attendance</th>
@@ -583,18 +615,10 @@ export default function TeacherReportPage() {
                 </thead>
                 <tbody>
                     ${subjects.map(sub => {
-            const firstSem = parseInt(sub.semester.toString().split(',')[0]) || 1;
-            const deptInfo = selectedTeacher.filters.departments.find(d => d.name === sub.department);
-            const batchLabel = getBatchLabel(firstSem, deptInfo?.deptType);
-
             return `
                         <tr>
                             <td>
                                 <div style="font-weight: 600; font-size: 11px;">${sub.name} <span style="font-weight: 500; color: var(--text-sub);">(${sub.department})</span></div>
-                            </td>
-                            <td>
-                                <div style="font-size: 11px; font-weight: 600;">Sem ${sub.semester}</div>
-                                ${batchLabel ? `<div style="font-size: 10px; color: var(--text-sub); margin-top: 2px;">${batchLabel}</div>` : ''}
                             </td>
                             <td style="color: var(--text-sub); font-size: 11px;">${sub.paperCode || sub.code}</td>
                             <td style="text-align: center;">${sub.sessions}</td>
@@ -659,7 +683,7 @@ export default function TeacherReportPage() {
                 <h3>${status.text}</h3>
                 <p>
                     ${summary.averageAttendance >= 75
-                ? `Dr. ${teacher.name} maintains excellent attendance records across their classes. The average attendance of ${summary.averageAttendance}% indicates strong student engagement.`
+                ? `${teacher.name} maintains excellent attendance records across their classes. The average attendance of ${summary.averageAttendance}% indicates strong student engagement.`
                 : summary.averageAttendance >= 60
                     ? `Performance is within acceptable limits (${summary.averageAttendance}%). Focus on improving student attendance in lower-performing subjects is recommended.`
                     : `Average attendance of ${summary.averageAttendance}% falls below standards. A review of engagement strategies is advised.`}
@@ -725,7 +749,7 @@ export default function TeacherReportPage() {
 
     // Export functions
     const exportTeacherList = (format: 'csv' | 'excel') => {
-        const headers = ['Name', 'Email', 'Department', 'Subjects', 'No. of Lectures', 'Avg. Attendance %'];
+        const headers = ['Name', 'Email', 'Classroom', 'Subjects', 'No. of Lectures', 'Avg. Attendance %'];
         const rows = sortedTeachers.map(t => [
             t.name, t.email, t.department, t.subjects, t.totalSessions.toString(), `${t.averageAttendance}%`
         ]);
@@ -782,8 +806,8 @@ export default function TeacherReportPage() {
             <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
                 {/* Hero / Welcome Section */}
                 <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl">
-
-
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-indigo-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
+                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
                     <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6">
                         <div>
                             <div className="flex items-center gap-2 mb-2">
@@ -844,17 +868,17 @@ export default function TeacherReportPage() {
                                 </div>
                             </div>
 
-                            {/* Department Filter */}
+                            {/* Classroom Filter */}
                             {user?.role !== 'teacher' ? (
                                 <div className="w-full">
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Department</label>
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Classroom</label>
                                     <div className="relative">
                                         <select
                                             value={selectedDepartmentId}
                                             onChange={(e) => setSelectedDepartmentId(e.target.value)}
                                             className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-indigo-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
                                         >
-                                            <option value="">All Departments</option>
+                                            <option value="">All Classrooms</option>
                                             {departments.map((dept) => (
                                                 <option key={dept.id} value={dept.id}>{dept.name}</option>
                                             ))}
@@ -910,7 +934,7 @@ export default function TeacherReportPage() {
                                                     <tr>
                                                         {[
                                                             { key: 'name' as const, label: 'Teacher', align: 'text-left' },
-                                                            { key: 'department' as const, label: 'Department', align: 'text-left' },
+                                                            { key: 'department' as const, label: 'Classroom', align: 'text-left' },
                                                             { key: 'totalSessions' as const, label: 'No. of Lectures', align: 'text-center' },
                                                             { key: 'averageAttendance' as const, label: 'Avg. Attendance', align: 'text-left' },
                                                         ].map(col => (
@@ -933,7 +957,7 @@ export default function TeacherReportPage() {
                                                         <tr key={teacher.id} className="hover:bg-indigo-50/50 transition-colors group">
                                                             <td className="px-6 py-4 whitespace-nowrap">
                                                                 <div className="flex items-center">
-                                                                    <div className="flex-shrink-0 h-10 w-10 bg-purple-50 rounded-full flex items-center justify-center text-purple-600 font-bold text-sm">
+                                                                    <div className="shrink-0 h-10 w-10 bg-purple-50 rounded-full flex items-center justify-center text-purple-600 font-bold text-sm">
                                                                         {teacher.name.charAt(0)}
                                                                     </div>
                                                                     <div className="ml-4">
@@ -1060,7 +1084,7 @@ export default function TeacherReportPage() {
                                             </div>
                                         )}
                                         {/* Profile Card */}
-                                        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-100">
+                                        <div className="bg-linear-to-r from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-100">
                                             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                                                 <div className="flex items-center gap-4">
                                                     <div className="w-16 h-16 bg-white rounded-full shadow-sm flex items-center justify-center text-2xl font-bold text-purple-600 border border-purple-100">
@@ -1116,52 +1140,15 @@ export default function TeacherReportPage() {
                                                     <select
                                                         value={popupDeptFilter}
                                                         onChange={(e) => setPopupDeptFilter(e.target.value)}
-                                                        className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+                                                        className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium"
                                                     >
-                                                        <option value="">All Departments</option>
+                                                        <option value="">All Classrooms</option>
                                                         {selectedTeacher.filters.departments.map((dept) => (
                                                             <option key={dept.id} value={dept.id}>{dept.name}</option>
                                                         ))}
                                                     </select>
                                                 )}
-                                                {selectedTeacher.filters.semesters?.length > 0 && (
-                                                    <select
-                                                        value={popupSemesterFilter}
-                                                        onChange={(e) => setPopupSemesterFilter(e.target.value)}
-                                                        className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
-                                                    >
-                                                        <option value="">All Semesters</option>
-                                                        {selectedTeacher.filters.semesters
-                                                            .filter(sem => {
-                                                                if (popupDeptFilter) {
-                                                                    const selectedDept = selectedTeacher.filters.departments.find(d => d.id === popupDeptFilter);
-                                                                    const activeSemesters = getActiveSemesters(selectedDept?.deptType);
-                                                                    return activeSemesters.includes(sem);
-                                                                } else {
-                                                                    return selectedTeacher.filters.departments.some(dept => {
-                                                                        const activeSemesters = getActiveSemesters(dept.deptType);
-                                                                        return activeSemesters.includes(sem);
-                                                                    });
-                                                                }
-                                                            })
-                                                            .map((sem) => {
-                                                                let dt: string | undefined;
-                                                                if (popupDeptFilter) {
-                                                                    const selectedDept = selectedTeacher.filters.departments.find(d => d.id === popupDeptFilter);
-                                                                    dt = selectedDept?.deptType;
-                                                                } else {
-                                                                    const validDept = selectedTeacher.filters.departments.find(dept =>
-                                                                        getActiveSemesters(dept.deptType).includes(sem)
-                                                                    );
-                                                                    dt = validDept?.deptType;
-                                                                }
-                                                                const label = getBatchLabel(sem, dt);
-                                                                return (
-                                                                    <option key={sem} value={sem}>Sem {sem}{label ? ` (${label})` : ''}</option>
-                                                                );
-                                                            })}
-                                                    </select>
-                                                )}
+
                                                 <div>
                                                     <input
                                                         type="date"
@@ -1204,7 +1191,7 @@ export default function TeacherReportPage() {
                                                                 <tr key={`${subj.id}-${idx}`} className="bg-white hover:bg-gray-50/50">
                                                                     <td className="px-4 py-3">
                                                                         <div className="font-medium text-gray-900">{subj.name}</div>
-                                                                        <div className="text-xs text-gray-500">Sem {subj.semester} • {subj.paperCode || subj.code}</div>
+                                                                        <div className="text-xs text-gray-500">{subj.paperCode || subj.code}</div>
                                                                     </td>
                                                                     <td className="px-4 py-3 text-center text-gray-600">{subj.sessions}</td>
                                                                     <td className="px-4 py-3 text-center">

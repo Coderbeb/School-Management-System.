@@ -1,11 +1,14 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
-import { Building2, Save, AlertTriangle, ArrowRightCircle, RotateCcw, Mail, Eye, EyeOff, ToggleLeft, ToggleRight, CheckCircle, Shield, Send, Loader2 } from 'lucide-react';
-import { useRealtimeData } from '@/hooks/useRealtimeData';
+import { 
+    Save, Mail, Eye, EyeOff, ToggleLeft, ToggleRight, CheckCircle, 
+    Shield, AlertTriangle, Loader2, Settings, Building2, Key, Upload, Camera,
+    CreditCard
+} from 'lucide-react';
 import { AccessDenied } from '@/components/ui/access-denied';
 
 interface User {
@@ -15,28 +18,49 @@ interface User {
     role: string;
 }
 
-type DeptType = 'regular' | 'vocational' | 'pg';
-
 export default function SettingsPage() {
     const router = useRouter();
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<'email' | 'batch'>('email');
-    
-    // Batch Manager State
-    const [selectedDeptType, setSelectedDeptType] = useState<DeptType>('regular');
-    const [batchMappings, setBatchMappings] = useState<Record<number, string>>({});
-    const [isSaving, setIsSaving] = useState(false);
-    const [loadingMappings, setLoadingMappings] = useState(false);
-    const [refetchTrigger, setRefetchTrigger] = useState(0);
-    const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
+    const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'automation' | 'payment-gateway'>('profile');
+
+    // ── Payment Gateway State ──
+    const [keyId, setKeyId] = useState('');
+    const [keySecret, setKeySecret] = useState('');
+    const [webhookSecret, setWebhookSecret] = useState('');
+    const [gatewayActive, setGatewayActive] = useState(false);
+    const [bankName, setBankName] = useState('');
+    const [bankAccountNumber, setBankAccountNumber] = useState('');
+    const [bankIfsc, setBankIfsc] = useState('');
+    const [bankAccountName, setBankAccountName] = useState('');
+    const [loadingGateway, setLoadingGateway] = useState(false);
+    const [savingGateway, setSavingGateway] = useState(false);
+    const [gatewayMessage, setGatewayMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
+
+    // ── School Profile State ──
+    const [schoolProfile, setSchoolProfile] = useState({
+        name: '', short_name: '', address: '', city: '', state: '', 
+        pincode: '', phone: '', email: '', website: '', principal_name: '', logo_url: ''
+    });
+    const [savingProfile, setSavingProfile] = useState(false);
+    const [profileMessage, setProfileMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // ── Security State ──
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [savingPassword, setSavingPassword] = useState(false);
+    const [passwordMessage, setPasswordMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
 
     // ── Email Automation State ──
     const [emailAddress, setEmailAddress] = useState('');
     const [emailPassword, setEmailPassword] = useState('');
     const [emailEnabled, setEmailEnabled] = useState(false);
-    const [showPassword, setShowPassword] = useState(false);
+    const [showEmailPassword, setShowEmailPassword] = useState(false);
     const [emailPasswordHint, setEmailPasswordHint] = useState('');
     const [emailPasswordSet, setEmailPasswordSet] = useState(false);
     const [loadingEmail, setLoadingEmail] = useState(false);
@@ -59,66 +83,52 @@ export default function SettingsPage() {
             router.replace('/login');
         }
         setLoading(false);
+
+        // Check for active tab in URL query params
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        if (tab === 'payment-gateway') {
+            setActiveTab('payment-gateway');
+        }
     }, [router]);
 
-    // Fetch batch mappings when dept type changes
+    // ── Fetch Initial Data ──
     useEffect(() => {
-        const fetchCurrentMappings = async () => {
+        const fetchData = async () => {
             if (!user) return;
             if (user.role !== 'super_admin') return;
-            setLoadingMappings(true);
+
+            const token = localStorage.getItem('token');
+            
+            // Fetch School Profile & Branding
             try {
-                const response = await fetch(`/api/settings/batch-upgrade?deptType=${selectedDeptType}`, {
-                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                const res = await fetch('/api/settings/school-branding', {
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if (response.ok) {
-                    const data = await response.json();
-                    
-                    // Convert numeric batch values to strings for inputs
-                    const stringMappings: Record<number, string> = {};
-                    const semCount = (selectedDeptType === 'vocational' || selectedDeptType === 'pg') ? 6 : 8;
-                    
-                    if (data.mappings && Object.keys(data.mappings).length > 0) {
-                        // Saved config exists — only load saved values.
-                        // Semesters intentionally left blank stay blank.
-                        for (let i = 1; i <= semCount; i++) {
-                            const saved = data.mappings[i.toString()];
-                            stringMappings[i] = saved ? String(saved) : '';
-                        }
-                    } else {
-                        // No saved config yet (first time) — prefill with calculated defaults
-                        const currentDate = new Date();
-                        const currentYear = currentDate.getFullYear();
-                        const isNewAcademicYear = currentDate.getMonth() >= 6; // July or later
-                        
-                        for (let i = 1; i <= semCount; i++) {
-                            const yearIndex = Math.floor((i - 1) / 2);
-                            const expectedBatch = isNewAcademicYear ? (currentYear - yearIndex) : (currentYear - 1 - yearIndex);
-                            stringMappings[i] = String(expectedBatch);
-                        }
-                    }
-                    
-                    setBatchMappings(stringMappings);
+                if (res.ok) {
+                    const data = await res.json();
+                    const b = data.branding;
+                    setSchoolProfile({
+                        name: b.schoolName || '',
+                        short_name: b.shortName || '',
+                        address: b.address || '',
+                        city: b.city || '',
+                        state: b.state || '',
+                        pincode: b.pincode || '',
+                        phone: b.phone || '',
+                        email: b.email || '',
+                        website: b.website || '',
+                        principal_name: b.principalName || '',
+                        logo_url: b.logoUrl || ''
+                    });
                 }
-            } catch (err) {
-                console.error("Failed to load mappings", err);
-            } finally {
-                setLoadingMappings(false);
-            }
-        };
+            } catch (err) { console.error(err); }
 
-        fetchCurrentMappings();
-    }, [selectedDeptType, user, refetchTrigger]);
-
-    // ── Fetch Email Config ──
-    useEffect(() => {
-        const fetchEmailConfig = async () => {
-            if (!user) return;
-            if (user.role !== 'super_admin') return;
+            // Fetch Email Config
             setLoadingEmail(true);
             try {
                 const response = await fetch('/api/settings/email-config', {
-                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (response.ok) {
                     const data = await response.json();
@@ -127,23 +137,32 @@ export default function SettingsPage() {
                     setEmailPasswordHint(data.passwordHint || '');
                     setEmailEnabled(data.enabled || false);
                 }
-            } catch (err) {
-                console.error('Failed to load email config', err);
-            } finally {
-                setLoadingEmail(false);
-            }
+            } catch (err) { console.error(err); }
+            finally { setLoadingEmail(false); }
+
+            // Fetch Payment Gateway Config
+            setLoadingGateway(true);
+            try {
+                const response = await fetch('/api/settings/payment-gateway', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.config) {
+                        setKeyId(data.config.key_id || '');
+                        setGatewayActive(data.config.is_active || false);
+                        setBankName(data.config.bank_name || '');
+                        setBankAccountNumber(data.config.bank_account_number || '');
+                        setBankIfsc(data.config.bank_ifsc || '');
+                        setBankAccountName(data.config.bank_account_name || '');
+                    }
+                }
+            } catch (err) { console.error(err); }
+            finally { setLoadingGateway(false); }
         };
 
-        fetchEmailConfig();
+        fetchData();
     }, [user]);
-
-    // Real-time updates
-    useRealtimeData({
-        tables: ['batch_semester_config'],
-        onTableChange: useCallback(() => {
-            setRefetchTrigger(prev => prev + 1);
-        }, []),
-    });
 
     const handleLogout = () => {
         localStorage.removeItem('token');
@@ -151,86 +170,87 @@ export default function SettingsPage() {
         router.replace('/login');
     };
 
-    const getSemestersCount = (type: DeptType) => {
-        return (type === 'vocational' || type === 'pg') ? 6 : 8;
-    };
+    // ── Handle Image Upload ──
+    const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
 
-    const handleBatchChange = (semester: number, value: string) => {
-        setBatchMappings(prev => ({ ...prev, [semester]: value }));
-    };
-
-    const resetToDefaults = () => {
-        const semCount = getSemestersCount(selectedDeptType);
-        const currentDate = new Date();
-        const currentYear = currentDate.getFullYear();
-        const isNewAcademicYear = currentDate.getMonth() >= 6; // July or later
-
-        const defaults: Record<number, string> = {};
-        for (let i = 1; i <= semCount; i++) {
-            const yearIndex = Math.floor((i - 1) / 2);
-            const expectedBatch = isNewAcademicYear ? (currentYear - yearIndex) : (currentYear - 1 - yearIndex);
-            defaults[i] = String(expectedBatch);
-        }
-        setBatchMappings(defaults);
-        setMessage({ type: 'success', text: 'Reset to calculated defaults. Click Apply to save.' });
-    };
-
-    const handleApplyUpgrades = async () => {
-        // Collect only valid (non-empty) mappings for the student upgrade
-        const validMappings = Object.entries(batchMappings)
-            .filter(([_, batchYear]) => batchYear && !isNaN(parseInt(batchYear)))
-            .map(([semester, batchYear]) => ({
-                semester: parseInt(semester),
-                batchYear: parseInt(batchYear)
-            }));
-
-        // Build the full config object (including empty semesters as null)
-        // so the API knows which semesters are intentionally cleared
-        const semCount = getSemestersCount(selectedDeptType);
-        const fullConfig: Record<string, number | null> = {};
-        for (let i = 1; i <= semCount; i++) {
-            const val = batchMappings[i];
-            fullConfig[i.toString()] = (val && !isNaN(parseInt(val))) ? parseInt(val) : null;
+        if (file.size > 2 * 1024 * 1024) { // 2MB limit
+            setProfileMessage({ type: 'error', text: 'Logo size must be less than 2MB' });
+            return;
         }
 
-        if (validMappings.length > 0) {
-            if (!window.confirm('Are you sure you want to upgrade students to these semesters? This will change their current semester in the database.')) {
-                return;
-            }
-        }
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64String = reader.result as string;
+            setSchoolProfile(prev => ({ ...prev, logo_url: base64String }));
+        };
+        reader.readAsDataURL(file);
+    };
 
-        setIsSaving(true);
-        setMessage(null);
-
+    // ── Save School Profile ──
+    const handleSaveProfile = async () => {
+        setSavingProfile(true);
+        setProfileMessage(null);
         try {
-            const response = await fetch('/api/settings/batch-upgrade', {
-                method: 'POST',
-                headers: {
+            const res = await fetch('/api/settings/school-profile', {
+                method: 'PUT',
+                headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${localStorage.getItem('token')}` 
                 },
-                body: JSON.stringify({
-                    deptType: selectedDeptType,
-                    mappings: validMappings,
-                    fullConfig: fullConfig
-                })
+                body: JSON.stringify(schoolProfile)
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to save profile');
+            
+            // Also update the branding settings to ensure logo renders everywhere
+            await fetch('/api/settings/school-branding', {
+                method: 'PUT',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}` 
+                },
+                body: JSON.stringify({ logoUrl: schoolProfile.logo_url, navbarTitle: schoolProfile.short_name })
             });
 
-            if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.error || 'Failed to upgrade batches');
-            }
-
-            const data = await response.json();
-            setMessage({ type: 'success', text: `Successfully upgraded ${data.updatedCount} students!` });
-            
-            // Refetch saved mappings so the UI reflects what was just saved
-            setRefetchTrigger(prev => prev + 1);
-            
+            setProfileMessage({ type: 'success', text: 'School profile updated! Refresh the page to see changes globally.' });
         } catch (error: any) {
-            setMessage({ type: 'error', text: error.message });
+            setProfileMessage({ type: 'error', text: error.message });
         } finally {
-            setIsSaving(false);
+            setSavingProfile(false);
+        }
+    };
+
+    // ── Save Password ──
+    const handleSavePassword = async () => {
+        if (newPassword !== confirmPassword) {
+            setPasswordMessage({ type: 'error', text: 'New passwords do not match' });
+            return;
+        }
+        
+        setSavingPassword(true);
+        setPasswordMessage(null);
+        try {
+            const res = await fetch('/api/settings/password', {
+                method: 'PUT',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}` 
+                },
+                body: JSON.stringify({ currentPassword, newPassword })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to update password');
+            
+            setPasswordMessage({ type: 'success', text: 'Password updated successfully!' });
+            setCurrentPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+        } catch (error: any) {
+            setPasswordMessage({ type: 'error', text: error.message });
+        } finally {
+            setSavingPassword(false);
         }
     };
 
@@ -254,19 +274,52 @@ export default function SettingsPage() {
             });
 
             const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Failed to save email configuration');
-            }
+            if (!response.ok) throw new Error(data.error || 'Failed to save email config');
 
             setEmailMessage({ type: 'success', text: 'Email configuration saved successfully!' });
-            setEmailPassword(''); // Clear password field after save
+            setEmailPassword('');
             setEmailPasswordSet(true);
             setEmailPasswordHint(emailPassword ? `****${emailPassword.slice(-4)}` : emailPasswordHint);
         } catch (error: any) {
             setEmailMessage({ type: 'error', text: error.message });
         } finally {
             setSavingEmail(false);
+        }
+    };
+
+    // ── Save Payment Gateway Config ──
+    const handleSaveGateway = async () => {
+        setSavingGateway(true);
+        setGatewayMessage(null);
+        try {
+            const res = await fetch('/api/settings/payment-gateway', {
+                method: 'PUT',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}` 
+                },
+                body: JSON.stringify({
+                    keyId,
+                    keySecret,
+                    webhookSecret,
+                    isActive: gatewayActive,
+                    bankName,
+                    bankAccountNumber,
+                    bankIfsc,
+                    bankAccountName
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to save payment gateway settings');
+            
+            setGatewayMessage({ type: 'success', text: 'Payment gateway configuration saved successfully!' });
+            // clear secrets so they show masked or empty
+            setKeySecret('');
+            setWebhookSecret('');
+        } catch (error: any) {
+            setGatewayMessage({ type: 'error', text: error.message });
+        } finally {
+            setSavingGateway(false);
         }
     };
 
@@ -283,333 +336,332 @@ export default function SettingsPage() {
         return <AccessDenied />;
     }
 
-    const semestersCount = getSemestersCount(selectedDeptType);
-
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-            <MobileSidebar 
-                isOpen={sidebarOpen} 
-                onClose={() => setSidebarOpen(false)} 
-                user={user} 
-                onLogout={handleLogout}
-            />
-
+            <MobileSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={handleLogout} />
             <Navbar user={user} onMenuClick={() => setSidebarOpen(true)} onLogout={handleLogout} />
 
-            <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 mt-16">
-                <div className="max-w-4xl mx-auto">
-                    
-                    <div className="mb-8">
-                        <h1 className="text-3xl font-bold text-gray-900 mb-2">Platform Settings</h1>
-                        <p className="text-gray-500">Configure global platform configurations and perform batch overrides.</p>
-                    </div>
-
-                    {/* Navigation Cards (Dashboard Style) */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-                        <div 
-                            onClick={() => setActiveTab('email')}
-                            className={`cursor-pointer rounded-xl p-6 border transition-all flex items-start gap-4 ${
-                                activeTab === 'email' 
-                                    ? 'bg-white border-indigo-200 shadow-md ring-1 ring-indigo-100' 
-                                    : 'bg-white border-gray-100 shadow-sm hover:border-gray-300 hover:shadow-md text-opacity-80'
-                            }`}
-                        >
-                            <div className={`p-3 rounded-lg shrink-0 ${activeTab === 'email' ? 'bg-indigo-100 text-indigo-600' : 'bg-blue-50 text-blue-600'}`}>
-                                <Mail className="w-6 h-6" />
+            <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 mt-16">
+                
+                {/* Hero / Welcome Section */}
+                <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-gray-900 to-slate-800 text-white p-6 sm:p-8 mb-8 shadow-xl">
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
+                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-indigo-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
+                    <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6">
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-indigo-400 font-semibold tracking-wide uppercase text-sm">System</span>
                             </div>
-                            <div>
-                                <h3 className={`text-sm font-medium ${activeTab === 'email' ? 'text-indigo-900 font-bold' : 'text-gray-500'}`}>Email Automation</h3>
-                                <p className="text-xs text-gray-500 mt-1">Configure automated monthly report cards.</p>
-                            </div>
-                        </div>
-
-                        <div 
-                            onClick={() => setActiveTab('batch')}
-                            className={`cursor-pointer rounded-xl p-6 border transition-all flex items-start gap-4 ${
-                                activeTab === 'batch' 
-                                    ? 'bg-white border-indigo-200 shadow-md ring-1 ring-indigo-100' 
-                                    : 'bg-white border-gray-100 shadow-sm hover:border-gray-300 hover:shadow-md text-opacity-80'
-                            }`}
-                        >
-                            <div className={`p-3 rounded-lg shrink-0 ${activeTab === 'batch' ? 'bg-indigo-100 text-indigo-600' : 'bg-blue-50 text-blue-600'}`}>
-                                <Building2 className="w-6 h-6" />
-                            </div>
-                            <div>
-                                <h3 className={`text-sm font-medium ${activeTab === 'batch' ? 'text-indigo-900 font-bold' : 'text-gray-500'}`}>Semester Manager</h3>
-                                <p className="text-xs text-gray-500 mt-1">Force upgrade students based on admission batch.</p>
-                            </div>
+                            <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                                Platform Settings
+                            </h1>
+                            <p className="text-indigo-100 text-sm max-w-xl">
+                                Configure your school's profile, security, and automation settings.
+                            </p>
                         </div>
                     </div>
+                </div>
 
-                    {/* ═══════════════════════════════════════════════════════════
-                        Email Automation Section
-                    ═══════════════════════════════════════════════════════════ */}
-                    {activeTab === 'email' && (
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
-                        <div className="p-4 sm:p-6 border-b border-gray-100 bg-gradient-to-r from-blue-50/80 to-indigo-50/50">
+                {/* Tabs */}
+                <div className="flex space-x-2 bg-white p-1 rounded-2xl shadow-sm border border-gray-100 mb-6 overflow-x-auto">
+                    <button onClick={() => setActiveTab('profile')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'profile' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
+                        <Building2 className="w-4 h-4" /> School Profile
+                    </button>
+                    <button onClick={() => setActiveTab('security')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'security' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
+                        <Key className="w-4 h-4" /> Security
+                    </button>
+                    <button onClick={() => setActiveTab('automation')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'automation' ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
+                        <Mail className="w-4 h-4" /> Automations
+                    </button>
+                    <button onClick={() => setActiveTab('payment-gateway')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'payment-gateway' ? 'bg-amber-50 text-amber-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
+                        <CreditCard className="w-4 h-4" /> Payment Gateway
+                    </button>
+                </div>
+
+                {/* TAB: SCHOOL PROFILE */}
+                {activeTab === 'profile' && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="p-5 border-b border-gray-100 bg-gray-50/50">
+                            <h2 className="text-lg font-bold text-gray-900">School Profile & Branding</h2>
+                            <p className="text-sm text-gray-500">Update how your school appears across the platform to students and teachers.</p>
+                        </div>
+                        <div className="p-6">
+                            {profileMessage && (
+                                <div className={`p-4 rounded-xl mb-6 text-sm flex items-start gap-3 ${profileMessage.type === 'error' ? 'bg-red-50 text-red-800' : 'bg-green-50 text-green-800'}`}>
+                                    {profileMessage.type === 'error' ? <AlertTriangle className="w-5 h-5 flex-shrink-0" /> : <CheckCircle className="w-5 h-5 flex-shrink-0" />}
+                                    <p className="font-medium mt-0.5">{profileMessage.text}</p>
+                                </div>
+                            )}
+
+                            {/* Logo Upload */}
+                            <div className="mb-8 flex items-center gap-6">
+                                <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                                    <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-gray-300 overflow-hidden flex items-center justify-center bg-gray-50 group-hover:border-blue-500 transition-colors">
+                                        {schoolProfile.logo_url ? (
+                                            <img src={schoolProfile.logo_url} alt="Logo" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <Building2 className="w-8 h-8 text-gray-400" />
+                                        )}
+                                    </div>
+                                    <div className="absolute inset-0 bg-black/50 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                        <Camera className="w-6 h-6 text-white" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-gray-900 mb-1">School Logo</h3>
+                                    <p className="text-xs text-gray-500 mb-3">Square format recommended. Max 2MB (JPG, PNG).</p>
+                                    <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2 bg-white border border-gray-200 text-sm font-bold rounded-lg shadow-sm hover:bg-gray-50 transition-colors">
+                                        Upload Image
+                                    </button>
+                                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">School Name</label>
+                                    <input type="text" value={schoolProfile.name} onChange={e => setSchoolProfile({...schoolProfile, name: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors text-sm" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Short Name (For Top Nav)</label>
+                                    <input type="text" value={schoolProfile.short_name} onChange={e => setSchoolProfile({...schoolProfile, short_name: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors text-sm" />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Address</label>
+                                    <input type="text" value={schoolProfile.address} onChange={e => setSchoolProfile({...schoolProfile, address: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors text-sm" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">City</label>
+                                    <input type="text" value={schoolProfile.city} onChange={e => setSchoolProfile({...schoolProfile, city: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors text-sm" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">State</label>
+                                    <input type="text" value={schoolProfile.state} onChange={e => setSchoolProfile({...schoolProfile, state: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors text-sm" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Support Email</label>
+                                    <input type="email" value={schoolProfile.email} onChange={e => setSchoolProfile({...schoolProfile, email: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors text-sm" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Support Phone</label>
+                                    <input type="text" value={schoolProfile.phone} onChange={e => setSchoolProfile({...schoolProfile, phone: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors text-sm" />
+                                </div>
+                            </div>
+
+                            <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end">
+                                <button onClick={handleSaveProfile} disabled={savingProfile} className="px-6 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2">
+                                    {savingProfile ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />} Save Profile
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* TAB: SECURITY */}
+                {activeTab === 'security' && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl">
+                        <div className="p-5 border-b border-gray-100 bg-gray-50/50">
+                            <h2 className="text-lg font-bold text-gray-900">Change Password</h2>
+                            <p className="text-sm text-gray-500">Update your Super Admin login password.</p>
+                        </div>
+                        <div className="p-6 space-y-5">
+                            {passwordMessage && (
+                                <div className={`p-4 rounded-xl mb-4 text-sm flex items-start gap-3 ${passwordMessage.type === 'error' ? 'bg-red-50 text-red-800' : 'bg-green-50 text-green-800'}`}>
+                                    {passwordMessage.type === 'error' ? <AlertTriangle className="w-5 h-5 flex-shrink-0" /> : <CheckCircle className="w-5 h-5 flex-shrink-0" />}
+                                    <p className="font-medium mt-0.5">{passwordMessage.text}</p>
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">Current Password</label>
+                                <div className="relative">
+                                    <input type={showCurrentPassword ? 'text' : 'password'} value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} className="w-full pl-4 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500" />
+                                    <button type="button" onClick={() => setShowCurrentPassword(!showCurrentPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                        {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">New Password</label>
+                                <div className="relative">
+                                    <input type={showNewPassword ? 'text' : 'password'} value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full pl-4 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500" />
+                                    <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">Confirm New Password</label>
+                                <div className="relative">
+                                    <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full pl-4 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500" />
+                                </div>
+                            </div>
+
+                            <div className="pt-4 flex justify-end">
+                                <button onClick={handleSavePassword} disabled={savingPassword || !currentPassword || !newPassword} className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors flex items-center gap-2 disabled:bg-gray-300">
+                                    {savingPassword ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />} Update Password
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* TAB: EMAIL AUTOMATION */}
+                {activeTab === 'automation' && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl">
+                        <div className="p-4 sm:p-6 border-b border-gray-100 bg-gradient-to-r from-emerald-50/80 to-teal-50/50">
                             <div className="flex items-center gap-3 mb-2">
-                                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-lg shrink-0">
+                                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg shrink-0">
                                     <Mail className="w-5 h-5" />
                                 </div>
                                 <h2 className="text-lg sm:text-xl font-bold text-gray-900">Email Automation</h2>
-                                {/* Toggle pill */}
                                 <div className="ml-auto flex items-center gap-2">
                                     <span className={`text-xs font-semibold ${emailEnabled ? 'text-green-600' : 'text-gray-400'}`}>
                                         {emailEnabled ? 'ENABLED' : 'DISABLED'}
                                     </span>
-                                    <button
-                                        onClick={() => setEmailEnabled(!emailEnabled)}
-                                        className="transition-transform active:scale-95"
-                                        aria-label="Toggle email automation"
-                                    >
-                                        {emailEnabled ? (
-                                            <ToggleRight className="w-10 h-10 text-green-500 drop-shadow-sm" />
-                                        ) : (
-                                            <ToggleLeft className="w-10 h-10 text-gray-300" />
-                                        )}
+                                    <button onClick={() => setEmailEnabled(!emailEnabled)} className="transition-transform active:scale-95">
+                                        {emailEnabled ? <ToggleRight className="w-10 h-10 text-green-500" /> : <ToggleLeft className="w-10 h-10 text-gray-300" />}
                                     </button>
                                 </div>
                             </div>
-                            <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                                Automatically send monthly PDF Report Cards via email to students whose attendance falls below 60%. Reports cover the previous month and are sent on the 1st of every month.
-                            </p>
+                            <p className="text-xs sm:text-sm text-gray-500 mt-1">Automatically send monthly PDF Report Cards via email to students whose attendance falls below 60%.</p>
                         </div>
 
                         <div className="p-4 sm:p-6">
                             {emailMessage && (
-                                <div className={`p-4 rounded-xl mb-6 text-sm flex items-start gap-3 ${
-                                    emailMessage.type === 'error' ? 'bg-red-50 text-red-800 border border-red-200' : 'bg-green-50 text-green-800 border border-green-200'
-                                }`}>
+                                <div className={`p-4 rounded-xl mb-6 text-sm flex items-start gap-3 ${emailMessage.type === 'error' ? 'bg-red-50 text-red-800' : 'bg-green-50 text-green-800'}`}>
                                     {emailMessage.type === 'error' ? <AlertTriangle className="w-5 h-5 flex-shrink-0" /> : <CheckCircle className="w-5 h-5 flex-shrink-0" />}
                                     <p className="font-medium mt-0.5">{emailMessage.text}</p>
                                 </div>
                             )}
 
                             {loadingEmail ? (
-                                <div className="flex items-center justify-center py-8">
-                                    <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
-                                    <span className="ml-2 text-sm text-gray-500">Loading email settings...</span>
-                                </div>
+                                <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-emerald-500" /></div>
                             ) : (
                                 <>
-                                    {/* Info Banner */}
-                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
-                                        <div className="flex items-start gap-3">
-                                            <Shield className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
-                                            <div>
-                                                <p className="text-sm text-amber-800 font-semibold mb-1">Gmail App Password Required</p>
-                                                <p className="text-xs text-amber-700 leading-relaxed">
-                                                    Use a <strong>Gmail App Password</strong> (16 characters), not your regular password.
-                                                    Go to <strong>Google Account → Security → 2-Step Verification → App Passwords</strong> to generate one.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Email Input */}
                                     <div className="mb-5">
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                            Gmail Address
-                                        </label>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Gmail Address</label>
                                         <div className="relative">
                                             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                            <input
-                                                type="email"
-                                                value={emailAddress}
-                                                onChange={(e) => setEmailAddress(e.target.value)}
-                                                placeholder="your-college-email@gmail.com"
-                                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-colors font-medium text-gray-900"
-                                            />
+                                            <input type="email" value={emailAddress} onChange={(e) => setEmailAddress(e.target.value)} placeholder="your-school-email@gmail.com" className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-colors" />
                                         </div>
                                     </div>
 
-                                    {/* Password Input */}
                                     <div className="mb-6">
                                         <label className="block text-sm font-semibold text-gray-700 mb-2">
                                             App Password (16 characters)
-                                            {emailPasswordSet && !emailPassword && (
-                                                <span className="ml-2 text-xs font-normal text-green-600">
-                                                    ✓ Password is saved ({emailPasswordHint})
-                                                </span>
-                                            )}
+                                            {emailPasswordSet && !emailPassword && <span className="ml-2 text-xs font-normal text-green-600">✓ Password is saved ({emailPasswordHint})</span>}
                                         </label>
                                         <div className="relative">
                                             <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                            <input
-                                                type={showPassword ? 'text' : 'password'}
-                                                value={emailPassword}
-                                                onChange={(e) => setEmailPassword(e.target.value)}
-                                                placeholder={emailPasswordSet ? 'Leave empty to keep current password' : 'xxxx xxxx xxxx xxxx'}
-                                                className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-colors font-medium text-gray-900 font-mono tracking-wider"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowPassword(!showPassword)}
-                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                                            >
-                                                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            <input type={showEmailPassword ? 'text' : 'password'} value={emailPassword} onChange={(e) => setEmailPassword(e.target.value)} placeholder={emailPasswordSet ? 'Leave empty to keep current password' : 'xxxx xxxx xxxx xxxx'} className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:bg-white font-mono" />
+                                            <button type="button" onClick={() => setShowEmailPassword(!showEmailPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                                {showEmailPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                             </button>
                                         </div>
                                     </div>
 
-                                    {/* Enable/Disable Toggle Explanation */}
-                                    <div className={`rounded-xl p-4 mb-6 border transition-colors ${
-                                        emailEnabled 
-                                            ? 'bg-green-50 border-green-200' 
-                                            : 'bg-gray-50 border-gray-200'
-                                    }`}>
-                                        <div className="flex items-center gap-3">
-                                            {emailEnabled ? (
-                                                <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />
-                                            ) : (
-                                                <ToggleLeft className="w-5 h-5 text-gray-400 shrink-0" />
-                                            )}
-                                            <div>
-                                                <p className={`text-sm font-semibold ${emailEnabled ? 'text-green-800' : 'text-gray-600'}`}>
-                                                    {emailEnabled ? 'Monthly Reports Active' : 'Monthly Reports Paused'}
-                                                </p>
-                                                <p className={`text-xs ${emailEnabled ? 'text-green-700' : 'text-gray-500'}`}>
-                                                    {emailEnabled 
-                                                        ? 'PDF report cards will be automatically emailed on the 1st of every month to students with attendance below 60%.'
-                                                        : 'Toggle the switch above to enable automatic monthly email reports.'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Action Buttons */}
-                                    <div className="flex flex-col sm:flex-row gap-3">
-                                        <button
-                                            onClick={handleSaveEmailConfig}
-                                            disabled={savingEmail || !emailAddress}
-                                            className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
-                                                savingEmail || !emailAddress
-                                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                                    : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg hover:shadow-indigo-500/20 active:scale-[0.99]'
-                                            }`}
-                                        >
-                                            {savingEmail ? (
-                                                <><Loader2 className="w-5 h-5 animate-spin" /> Saving...</>
-                                            ) : (
-                                                <><Save className="w-5 h-5 shrink-0" /> Save Email Settings</>
-                                            )}
+                                    <div className="flex justify-end">
+                                        <button onClick={handleSaveEmailConfig} disabled={savingEmail || !emailAddress} className="px-6 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-2 disabled:bg-gray-300">
+                                            {savingEmail ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />} Save Email Settings
                                         </button>
                                     </div>
                                 </>
                             )}
                         </div>
                     </div>
-                    )}
+                )}
 
-                    {/* ═══════════════════════════════════════════════════════════
-                        Batch Manager Section (existing)
-                    ═══════════════════════════════════════════════════════════ */}
-                    {activeTab === 'batch' && (
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
-                        <div className="p-4 sm:p-6 border-b border-gray-100 bg-gray-50/50">
+                {/* TAB: PAYMENT GATEWAY */}
+                {activeTab === 'payment-gateway' && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="p-4 sm:p-6 border-b border-gray-100 bg-gradient-to-r from-amber-50/80 to-orange-50/50">
                             <div className="flex items-center gap-3 mb-2">
-                                <div className="p-2 bg-blue-100 text-blue-700 rounded-lg shrink-0">
-                                    <Building2 className="w-5 h-5" />
+                                <div className="p-2 bg-amber-100 text-amber-700 rounded-lg shrink-0">
+                                    <CreditCard className="w-5 h-5" />
                                 </div>
-                                <h2 className="text-lg sm:text-xl font-bold text-gray-900">Batch & Semester Manager</h2>
+                                <h2 className="text-lg sm:text-xl font-bold text-gray-900">Razorpay Payment Gateway</h2>
+                                <div className="ml-auto flex items-center gap-2">
+                                    <span className={`text-xs font-semibold ${gatewayActive ? 'text-green-600' : 'text-gray-400'}`}>
+                                        {gatewayActive ? 'ENABLED' : 'DISABLED'}
+                                    </span>
+                                    <button onClick={() => setGatewayActive(!gatewayActive)} className="transition-transform active:scale-95">
+                                        {gatewayActive ? <ToggleRight className="w-10 h-10 text-green-500" /> : <ToggleLeft className="w-10 h-10 text-gray-300" />}
+                                    </button>
+                                </div>
                             </div>
-                            <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                                Force upgrade students' current semester based on their admission batch year. Only their current semester index will be updated, preserving existing attendance and subjects.
-                            </p>
+                            <p className="text-xs sm:text-sm text-gray-500 mt-1">Configure your institution's custom Razorpay account to receive online fee payments directly from students.</p>
                         </div>
 
                         <div className="p-4 sm:p-6">
-                            {message && (
-                                <div className={`p-4 rounded-xl mb-6 text-sm flex items-start gap-3 ${
-                                    message.type === 'error' ? 'bg-red-50 text-red-800 border bg-red-100' : 'bg-green-50 text-green-800 border border-green-200'
-                                }`}>
-                                    {message.type === 'error' ? <AlertTriangle className="w-5 h-5 flex-shrink-0" /> : <Save className="w-5 h-5 flex-shrink-0" />}
-                                    <p className="font-medium mt-0.5">{message.text}</p>
+                            {gatewayMessage && (
+                                <div className={`p-4 rounded-xl mb-6 text-sm flex items-start gap-3 ${gatewayMessage.type === 'error' ? 'bg-red-50 text-red-800' : 'bg-green-50 text-green-800'}`}>
+                                    {gatewayMessage.type === 'error' ? <AlertTriangle className="w-5 h-5 flex-shrink-0" /> : <CheckCircle className="w-5 h-5 flex-shrink-0" />}
+                                    <p className="font-medium mt-0.5">{gatewayMessage.text}</p>
                                 </div>
                             )}
 
-                            {/* Dept Type Selector */}
-                            <div className="mb-6 sm:mb-8">
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">Department Structure</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {(['regular', 'vocational', 'pg'] as DeptType[]).map((type) => (
-                                        <button
-                                            key={type}
-                                            onClick={() => { setSelectedDeptType(type); setBatchMappings({}); }}
-                                            className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors ${
-                                                selectedDeptType === type
-                                                    ? 'bg-blue-600 text-white shadow-sm'
-                                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                            }`}
-                                        >
-                                            <span className="block sm:inline">{type.charAt(0).toUpperCase() + type.slice(1)}</span>{' '}
-                                            <span className="opacity-75 tracking-tight hidden sm:inline">({getSemestersCount(type)} Semesters)</span>
-                                            <span className="opacity-75 tracking-tight sm:hidden text-[10px]">({getSemestersCount(type)} Sems)</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Semester Inputs */}
-                            <div className="bg-gray-50 rounded-xl p-4 sm:p-6 border border-gray-100 mb-6">
-                                <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                    <ArrowRightCircle className="w-4 h-4 text-blue-500 shrink-0"/>
-                                    Map Admission Year (Batch) to Semester
-                                </h3>
-                                
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
-                                    {Array.from({ length: semestersCount }, (_, i) => i + 1).map((sem) => (
-                                        <div key={sem} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-between">
-                                            <label className="block text-[10px] sm:text-xs font-bold text-gray-500 uppercase mb-1">
-                                                Semester {sem}
-                                            </label>
-                                            <input
-                                                type="number"
-                                                placeholder={loadingMappings ? "Wait..." : "e.g. 2025"}
-                                                value={batchMappings[sem] || ''}
-                                                onChange={(e) => handleBatchChange(sem, e.target.value)}
-                                                disabled={loadingMappings}
-                                                className="w-full bg-gray-50 border border-gray-200 rounded-md px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors font-medium text-gray-900"
-                                            />
-                                            <p className="text-[9px] sm:text-[10px] text-gray-400 mt-1 leading-tight min-h-[14px]">
-                                                {batchMappings[sem] 
-                                                    ? `Sets ${batchMappings[sem]}`
-                                                    : 'Skip'}
-                                            </p>
+                            {loadingGateway ? (
+                                <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-amber-500" /></div>
+                            ) : (
+                                <div className="space-y-6">
+                                    {/* Razorpay Credentials Group */}
+                                    <div className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
+                                        <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                            <Shield className="w-4 h-4 text-amber-600" /> Razorpay API Credentials
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">Key ID</label>
+                                                <input type="text" value={keyId} onChange={(e) => setKeyId(e.target.value)} placeholder="rzp_live_xxxxxxxxxxxxxx" className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 transition-colors font-mono" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">Key Secret</label>
+                                                <input type="password" value={keySecret} onChange={(e) => setKeySecret(e.target.value)} placeholder="••••••••••••••••" className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 transition-colors font-mono" />
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">Webhook Secret (Optional — for async verification)</label>
+                                                <input type="password" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} placeholder="••••••••••••••••" className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 transition-colors font-mono" />
+                                            </div>
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
+                                    </div>
 
-                            <div className="flex flex-col-reverse sm:flex-row gap-3">
-                                <button
-                                    onClick={resetToDefaults}
-                                    disabled={isSaving}
-                                    className="w-full sm:w-auto px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all bg-gray-100 text-gray-600 hover:bg-gray-200 active:scale-[0.99]"
-                                >
-                                    <RotateCcw className="w-4 h-4" /> Reset
-                                </button>
-                                <button
-                                    onClick={handleApplyUpgrades}
-                                    disabled={isSaving || Object.keys(batchMappings).length === 0}
-                                    className={`w-full sm:flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
-                                        isSaving || Object.keys(batchMappings).length === 0
-                                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                            : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg hover:shadow-blue-500/20 active:scale-[0.99]'
-                                    }`}
-                                >
-                                    {isSaving ? (
-                                        <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Upgrading...</>
-                                    ) : (
-                                        <><Save className="w-5 h-5 shrink-0" /> Apply {semestersCount} Semesters</>
-                                    )}
-                                </button>
-                            </div>
+                                    {/* Settlement Bank Details Group */}
+                                    <div className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
+                                        <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                            <Building2 className="w-4 h-4 text-amber-600" /> Bank Settlement Details (For Receipts)
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">Bank Name</label>
+                                                <input type="text" value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="State Bank of India" className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 transition-colors" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">Account Name</label>
+                                                <input type="text" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} placeholder="School Management A/C" className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 transition-colors" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">Account Number</label>
+                                                <input type="text" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} placeholder="309100293021" className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 transition-colors font-mono" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">IFSC Code</label>
+                                                <input type="text" value={bankIfsc} onChange={(e) => setBankIfsc(e.target.value)} placeholder="SBIN0001048" className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 transition-colors font-mono" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-end pt-2">
+                                        <button onClick={handleSaveGateway} disabled={savingGateway || !keyId || !keySecret} className="px-6 py-3 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 transition-colors flex items-center gap-2 disabled:bg-gray-300 shadow-md shadow-amber-600/10 cursor-pointer">
+                                            {savingGateway ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />} Save Gateway Config
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
-                    )}
+                )}
 
-                </div>
             </main>
         </div>
     );

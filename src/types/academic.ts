@@ -1,95 +1,154 @@
-export interface Department {
+// ============================================================
+// School Management System - Academic Types
+// ============================================================
+
+// --- Academic Session ---
+export interface AcademicSession {
     id: string;
-    name: string;
-    code: string;
-    hod_name?: string;
+    name: string;               // e.g., "2026-2027"
+    startDate: Date;
+    endDate: Date;
+    isCurrent: boolean;
     createdAt: Date;
     updatedAt: Date;
 }
 
-export type ProgramType = 'regular' | 'vocational' | 'postgraduate';
-
-export interface Program {
+// --- Class (Grade Level) ---
+export interface SchoolClass {
     id: string;
-    name: string;
-    code: string;
-    departmentId: string;
-    programType: ProgramType;
-    durationYears: number;
-    createdAt: Date;
-    updatedAt: Date;
-}
-
-export interface Section {
-    id: string;
-    name: string;
-    programId: string;
-    semester?: number;
-    createdAt: Date;
-    updatedAt: Date;
-}
-
-export interface Student {
-    id: string;
-    rollNumber: string;
-    smartCardId: string | null;
-    firstName: string;
-    lastName: string;
-    email: string | null;
-    programId: string;
-    sectionId: string | null;
-    currentSemester: number;
-    batchYear: number;
+    name: string;               // e.g., "Class 10", "LKG"
+    displayOrder: number;
     isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
 }
 
+// --- Section ---
+export interface Section {
+    id: string;
+    name: string;               // e.g., "A", "B", "C"
+    createdAt: Date;
+}
+
+// --- Class-Section (Actual Classroom) ---
+export interface ClassSection {
+    id: string;
+    classId: string;
+    sectionId: string;
+    sessionId: string;
+    roomNumber: string | null;
+    capacity: number;
+    isActive: boolean;
+    createdAt: Date;
+    // Joined fields (populated via queries)
+    className?: string;
+    sectionName?: string;
+    sessionName?: string;
+    displayName?: string;       // e.g., "Class 10 - A"
+}
+
+// --- Subject ---
 export interface Subject {
     id: string;
-    code: string;
     name: string;
-    programId: string;
-    semester: number;
-    credits: number;
+    code: string;
+    description: string | null;
+    isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
 }
 
-export interface TeacherSubject {
+// --- Class-Subject Mapping ---
+export interface ClassSubject {
     id: string;
-    teacherId: string;
+    classId: string;
     subjectId: string;
-    academicYear: string;
+    sessionId: string;
+    isElective: boolean;
     createdAt: Date;
+    // Joined fields
+    className?: string;
+    subjectName?: string;
+    subjectCode?: string;
 }
 
-export interface StudentSubject {
+// --- Student ---
+export interface Student {
+    id: string;
+    userId: string | null;
+    admissionNumber: string | null;
+    rollNumber: number | null;
+    firstName: string;
+    lastName: string;
+    dateOfBirth: Date | null;
+    gender: 'male' | 'female' | 'other' | null;
+    bloodGroup: string | null;
+    address: string | null;
+    photoUrl: string | null;
+    guardianName: string | null;
+    guardianRelation: string | null;
+    guardianPhone: string | null;
+    guardianEmail: string | null;
+    guardianPhoneAlt: string | null;
+    admissionDate: Date;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+// --- Student Enrollment (Student → Classroom per session) ---
+export interface StudentEnrollment {
     id: string;
     studentId: string;
-    subjectId: string;
-    academicYear: string;
+    classSectionId: string;
+    sessionId: string;
+    rollNumber: number | null;
+    status: 'active' | 'promoted' | 'transferred' | 'withdrawn';
     enrolledAt: Date;
+    // Joined fields
+    studentName?: string;
+    className?: string;
+    sectionName?: string;
 }
 
-export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
-
-export interface AttendanceRecord {
+// --- Teacher Assignment (Teacher → Class-Section + Subject) ---
+export interface TeacherAssignment {
     id: string;
-    subjectId: string;
-    studentId: string;
     teacherId: string;
-    date: Date;
-    lectureNumber: number;
-    status: AttendanceStatus;
-    remarks?: string;
-    recordedAt: Date;
+    classSectionId: string;
+    subjectId: string;
+    sessionId: string;
+    isClassTeacher: boolean;
+    createdAt: Date;
+    // Joined fields
+    teacherName?: string;
+    className?: string;
+    sectionName?: string;
+    subjectName?: string;
 }
 
+// --- Holiday ---
 export interface Holiday {
     id: string;
     name: string;
     date: Date;
-    description?: string;
+    description: string | null;
+    sessionId: string | null;
     createdAt: Date;
+}
+
+// --- Attendance (will be used in Phase 3) ---
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
+
+export interface AttendanceRecord {
+    id: string;
+    studentId: string;
+    classSectionId: string;
+    subjectId: string | null;
+    teacherId: string;
+    date: Date;
+    periodNumber: number;
+    status: AttendanceStatus;
+    remarks: string | null;
+    recordedAt: Date;
 }

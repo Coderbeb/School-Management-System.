@@ -38,14 +38,6 @@ export async function GET(request: NextRequest) {
             queryStr += ` AND dca.department_id = $${paramIndex}`;
             params.push(departmentId);
             paramIndex++;
-        } else if (payload.role === 'hod') {
-            queryStr += ` AND dca.department_id IN (
-                SELECT department_id FROM user_departments WHERE user_id = $${paramIndex}
-                UNION
-                SELECT department_id FROM users WHERE id = $${paramIndex}
-            )`;
-            params.push(payload.userId);
-            paramIndex++;
         }
         
         queryStr += ` ORDER BY dca.department_id, dca.semester, dca.slot_number`;
@@ -83,7 +75,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
         }
 
-        if (!['super_admin', 'hod'].includes(payload.role)) {
+        if (payload.role !== 'super_admin') {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
@@ -108,19 +100,6 @@ export async function POST(request: NextRequest) {
         );
         if (holidayCheck.length > 0) {
             return NextResponse.json({ error: 'Cannot assign classes on a holiday' }, { status: 400 });
-        }
-
-        // HOD must own the department
-        if (payload.role === 'hod') {
-            const owned = await query<{ department_id: string }>(
-                `SELECT department_id FROM user_departments WHERE user_id = $1 AND department_id = $2
-                 UNION
-                 SELECT department_id FROM users WHERE id = $1 AND department_id = $2`,
-                [payload.userId, departmentId]
-            );
-            if (owned.length === 0) {
-                return NextResponse.json({ error: 'Access denied for this department' }, { status: 403 });
-            }
         }
 
         let upsertCount = 0;
@@ -156,7 +135,7 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
         }
 
-        if (!['super_admin', 'hod'].includes(payload.role)) {
+        if (payload.role !== 'super_admin') {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
@@ -168,19 +147,6 @@ export async function DELETE(request: NextRequest) {
 
         if (!departmentId || !date) {
             return NextResponse.json({ error: 'departmentId and date required' }, { status: 400 });
-        }
-
-        // HOD must own the department
-        if (payload.role === 'hod') {
-            const owned = await query<{ department_id: string }>(
-                `SELECT department_id FROM user_departments WHERE user_id = $1 AND department_id = $2
-                 UNION
-                 SELECT department_id FROM users WHERE id = $1 AND department_id = $2`,
-                [payload.userId, departmentId]
-            );
-            if (owned.length === 0) {
-                return NextResponse.json({ error: 'Access denied for this department' }, { status: 403 });
-            }
         }
 
         if (semester && slotNumber) {

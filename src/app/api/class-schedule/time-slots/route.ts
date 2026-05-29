@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
         }
 
-        if (!['super_admin', 'hod'].includes(payload.role)) {
+        if (payload.role !== 'super_admin') {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
 
@@ -60,19 +60,6 @@ export async function POST(request: NextRequest) {
 
         if (!departmentId || !slots || !Array.isArray(slots)) {
             return NextResponse.json({ error: 'departmentId and slots array required' }, { status: 400 });
-        }
-
-        // HOD must own the department
-        if (payload.role === 'hod') {
-            const owned = await query<{ department_id: string }>(
-                `SELECT department_id FROM user_departments WHERE user_id = $1 AND department_id = $2
-                 UNION
-                 SELECT department_id FROM users WHERE id = $1 AND department_id = $2`,
-                [payload.userId, departmentId]
-            );
-            if (owned.length === 0) {
-                return NextResponse.json({ error: 'Access denied for this department' }, { status: 403 });
-            }
         }
 
         // Upsert each slot

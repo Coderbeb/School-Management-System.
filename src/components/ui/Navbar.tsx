@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Menu, GraduationCap, ArrowLeft, LogOut, Lock } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Menu, School, ArrowLeft } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { ProfileModal } from './ProfileModal';
 import { getInitials } from '@/lib/utils';
@@ -10,6 +10,14 @@ interface User {
     role: string;
 }
 
+interface SchoolBranding {
+    schoolName: string;
+    shortName: string;
+    logoUrl: string | null;
+    navbarTitle: string;
+    primaryColor: string;
+}
+
 interface NavbarProps {
     user: User | null;
     onMenuClick: () => void;
@@ -18,10 +26,41 @@ interface NavbarProps {
     backLabel?: string;
 }
 
+const roleLabels: Record<string, string> = {
+    developer: 'Platform Developer',
+    super_admin: 'Administrator',
+    teacher: 'Teacher',
+    accountant: 'Accountant',
+    student: 'Student',
+};
+
 export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: NavbarProps) {
     const router = useRouter();
     const pathname = usePathname();
     const [showProfileModal, setShowProfileModal] = useState(false);
+    const [branding, setBranding] = useState<SchoolBranding | null>(null);
+
+    // Fetch school branding on mount
+    useEffect(() => {
+        const fetchBranding = async () => {
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) return;
+
+                const res = await fetch('/api/settings/school-branding', {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setBranding(data.branding);
+                }
+            } catch (err) {
+                // Silently fail — fallback to defaults
+                console.error('Failed to fetch branding:', err);
+            }
+        };
+        fetchBranding();
+    }, []);
 
     const handleLogout = () => {
         if (onLogout) {
@@ -32,6 +71,20 @@ export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: Navb
             router.replace('/login');
         }
     };
+
+    // Determine the home dashboard based on the user's role
+    const getDashboardPath = () => {
+        if (!user) return '/dashboard';
+        switch (user.role) {
+            case 'developer': return '/developer/dashboard';
+            case 'teacher': return '/teacher/dashboard';
+            case 'accountant': return '/accountant/dashboard';
+            case 'student': return '/student/dashboard';
+            default: return '/dashboard';
+        }
+    };
+
+    const displayTitle = branding?.navbarTitle || branding?.shortName || 'SMS';
 
     return (
         <>
@@ -44,12 +97,22 @@ export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: Navb
                         >
                             <Menu className="w-6 h-6 text-gray-600" />
                         </button>
-                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => router.push('/dashboard')}>
-                            <div className="bg-white p-1 rounded-full h-9 w-9 flex items-center justify-center overflow-hidden border border-blue-100 shadow-sm">
-                                <img src="/college-logo.png" alt="YSM Logo" className="w-full h-full object-contain" />
-                            </div>
-                            <span className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-orange-600 to-blue-700 hidden sm:block">
-                                YSM Ranchi
+                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => router.push(getDashboardPath())}>
+                            {branding?.logoUrl ? (
+                                <div className="h-9 w-9 rounded-xl overflow-hidden shadow-sm border border-gray-100">
+                                    <img
+                                        src={branding.logoUrl}
+                                        alt={branding.schoolName}
+                                        className="h-full w-full object-cover"
+                                    />
+                                </div>
+                            ) : (
+                                <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-1.5 rounded-xl h-9 w-9 flex items-center justify-center overflow-hidden shadow-sm">
+                                    <School className="w-5 h-5 text-white" />
+                                </div>
+                            )}
+                            <span className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-700 hidden sm:block">
+                                {displayTitle}
                             </span>
                         </div>
                         {!pathname.includes('/dashboard') && (
@@ -67,7 +130,7 @@ export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: Navb
 
                     <div className="flex items-center gap-4">
                         {user && (
-                            <div 
+                            <div
                                 className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-1.5 pr-2 rounded-full transition-colors"
                                 onClick={() => setShowProfileModal(true)}
                             >
@@ -75,8 +138,8 @@ export function Navbar({ user, onMenuClick, onLogout, backUrl, backLabel }: Navb
                                     <span className="text-sm font-bold text-gray-900 leading-none">
                                         {user.firstName} {user.lastName}
                                     </span>
-                                    <span className="text-[10px] font-medium text-gray-500 capitalize leading-tight mt-0.5">
-                                        {user.role.replace('_', ' ')}
+                                    <span className="text-[10px] font-medium text-gray-500 leading-tight mt-0.5">
+                                        {roleLabels[user.role] || user.role.replace('_', ' ')}
                                     </span>
                                 </div>
                                 <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 p-0.5 shadow-sm">

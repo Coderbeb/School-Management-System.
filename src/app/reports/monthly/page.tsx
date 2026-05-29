@@ -6,11 +6,10 @@ import { Button } from '@/components/ui/button';
 import { CalendarDays, TrendingUp, TrendingDown, BarChart3, Filter, ChevronDown, AlertCircle } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
-import { useActiveSemesters } from '@/hooks/useActiveSemesters';
 
 interface User {
     id: string;
-    role: 'super_admin' | 'hod' | 'teacher';
+    role: 'super_admin' | 'teacher' | 'accountant' | 'student';
     firstName: string;
     lastName: string;
     email: string;
@@ -23,6 +22,13 @@ interface Department {
     code: string;
     deptType?: string;
     dept_type?: string;
+}
+
+interface Subject {
+    id: string;
+    code: string;
+    name: string;
+    semester: number;
 }
 
 interface MonthlyStats {
@@ -52,11 +58,12 @@ function MonthlyReportContent() {
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
     const [selectedSemester, setSelectedSemester] = useState('');
+    const [selectedSubjectId, setSelectedSubjectId] = useState('');
+    const [subjects, setSubjects] = useState<Subject[]>([]);
 
     const [stats, setStats] = useState<MonthlyStats | null>(null);
     const [dailyBreakdown, setDailyBreakdown] = useState<DailyBreakdown[]>([]);
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const { getActiveSemesters, getBatchLabel } = useActiveSemesters();
 
     const getDeptType = (dept?: Department) => dept?.deptType || dept?.dept_type;
 
@@ -72,7 +79,7 @@ function MonthlyReportContent() {
 
         if (parsedUser.role === 'super_admin') {
             fetchDepartments(token);
-        } else if (parsedUser.role === 'teacher' || parsedUser.role === 'hod') {
+        } else if (parsedUser.role === 'teacher') {
             fetchTeacherDepartments(token, parsedUser.id);
         }
     }, [router]);
@@ -94,7 +101,15 @@ function MonthlyReportContent() {
         if (token && user) {
             fetchMonthlyReport(token);
         }
-    }, [selectedMonth, selectedDepartmentId, selectedSemester, user]);
+    }, [selectedMonth, selectedDepartmentId, selectedSemester, selectedSubjectId, user]);
+
+    // Fetch subjects when department changes
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (token) {
+            fetchSubjects(token);
+        }
+    }, [selectedDepartmentId]);
 
     const getCachedDepartments = () => {
         try {
@@ -153,12 +168,30 @@ function MonthlyReportContent() {
         }
     };
 
+    const fetchSubjects = async (token: string) => {
+        try {
+            const params = new URLSearchParams();
+            if (selectedDepartmentId) params.append('departmentId', selectedDepartmentId);
+            let url = '/api/subjects';
+            if (params.toString()) url += '?' + params.toString();
+            const res = await fetch(url, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            setSubjects(data.subjects || []);
+            setSelectedSubjectId('');
+        } catch (err) {
+            console.error('Error fetching subjects:', err);
+        }
+    };
+
     const fetchMonthlyReport = async (token: string) => {
         setLoading(true);
         try {
             let url = `/api/reports/monthly?month=${selectedMonth}`;
             if (selectedDepartmentId) url += `&departmentId=${selectedDepartmentId}`;
             if (selectedSemester) url += `&semester=${selectedSemester}`;
+            if (selectedSubjectId) url += `&subjectId=${selectedSubjectId}`;
             if (viewParam) url += `&view=${viewParam}`;
 
             const res = await fetch(url, {
@@ -210,6 +243,8 @@ function MonthlyReportContent() {
             <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
                 {/* Hero / Welcome Section */}
                 <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl">
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
+                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-emerald-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
                     <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6">
                         <div>
                             <div className="flex items-center gap-2 mb-2">
@@ -219,7 +254,7 @@ function MonthlyReportContent() {
                                 Monthly Summary <span className="inline-block animate-wave">📈</span>
                             </h1>
                             <p className="text-emerald-100 text-sm max-w-xl">
-                                Analyze attendance trends, identify patterns, and <span className="font-semibold text-white">monitor overall departmental performance</span>.
+                                Analyze attendance trends, identify patterns, and <span className="font-semibold text-white">monitor overall classroom performance</span>.
                             </p>
                         </div>
                     </div>
@@ -245,14 +280,14 @@ function MonthlyReportContent() {
 
                             {(user?.role === 'super_admin' || departments.length > 1) && (
                                 <div className="w-full">
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Department</label>
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Classroom</label>
                                     <div className="relative">
                                         <select
                                             value={selectedDepartmentId}
                                             onChange={(e) => setSelectedDepartmentId(e.target.value)}
                                             className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-emerald-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
                                         >
-                                            <option value="">All Departments</option>
+                                            <option value="">All Classrooms</option>
                                             {departments.map((dept) => (
                                                 <option key={dept.id} value={dept.id}>{dept.name}</option>
                                             ))}
@@ -262,26 +297,21 @@ function MonthlyReportContent() {
                                 </div>
                             )}
 
+                            {/* Subject Filter */}
                             <div className="w-full">
-                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Semester</label>
+                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Subject</label>
                                 <div className="relative">
                                     <select
-                                        value={selectedSemester}
-                                        onChange={(e) => setSelectedSemester(e.target.value)}
+                                        value={selectedSubjectId}
+                                        onChange={(e) => setSelectedSubjectId(e.target.value)}
                                         className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-emerald-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
                                     >
-                                        <option value="">All Semesters</option>
-                                        {(() => {
-                                            const effectiveDeptType = selectedDepartmentId 
-                                                ? getDeptType(departments.find(d => d.id === selectedDepartmentId)) 
-                                                : (user?.role === 'super_admin' ? 'regular' : (departments.length > 0 ? getDeptType(departments[0]) : 'regular'));
-                                            return getActiveSemesters(effectiveDeptType).map((sem) => {
-                                                const label = getBatchLabel(sem, effectiveDeptType);
-                                                return (
-                                                    <option key={sem} value={sem}>Sem {sem}{label ? ` (${label})` : ''}</option>
-                                                );
-                                            });
-                                        })()}
+                                        <option value="">All Subjects</option>
+                                        {subjects.map((subject) => (
+                                            <option key={subject.id} value={subject.id}>
+                                                {subject.code} - {subject.name}
+                                            </option>
+                                        ))}
                                     </select>
                                     <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
                                 </div>
@@ -294,6 +324,7 @@ function MonthlyReportContent() {
                                     onClick={() => {
                                         setSelectedSemester('');
                                         setSelectedDepartmentId('');
+                                        setSelectedSubjectId('');
                                         setSelectedMonth(new Date().toISOString().slice(0, 7));
                                     }}
                                 >

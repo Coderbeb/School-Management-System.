@@ -1,168 +1,190 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
+import { query, queryOne } from '@/lib/db';
+import { requireSchoolAuth, resolveSchoolId } from '@/lib/auth';
 
-interface StudentData {
-    id: string;
-    student_id: string;
-    roll_number: string;
-    first_name: string;
-    last_name: string;
-    department_name: string;
-    current_semester: number;
-    total_lectures: string;
-    attended: string;
-}
-
-// GET - Student-wise attendance report
 export async function GET(request: NextRequest) {
     try {
-        const authHeader = request.headers.get('authorization');
-        if (!authHeader?.startsWith('Bearer ')) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const token = authHeader.split(' ')[1];
-        const payload = verifyToken(token);
-        if (!payload) {
-            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-        }
-
-        const { role, departmentId: userDeptId, userId } = payload;
-
+        const auth = requireSchoolAuth(request);
+        if (auth.error) return auth.error;
+        const { role, userId } = auth.user;
+        const schoolId = resolveSchoolId(auth.user, request);
         const { searchParams } = new URL(request.url);
-        const subjectIdsParam = searchParams.get('subjectIds'); // allows comma-separated string
-        const departmentId = searchParams.get('departmentId');
-        const semester = searchParams.get('semester');
+
+        const classSectionId = searchParams.get('classSectionId') || searchParams.get('departmentId'); // backward compatibility
+        const subjectIdsParam = searchParams.get('subjectIds') || searchParams.get('subjectId');
         const startDate = searchParams.get('startDate');
         const endDate = searchParams.get('endDate');
 
-        // Allow HOD to view as teacher (for My Reports)
-        const view = searchParams.get('view');
-        const effectiveRole = (role === 'hod' && view === 'teacher') ? 'teacher' : role;
+        // Resolve active session
+        let sessionSql = `SELECT id FROM academic_sessions WHERE is_current = true`;
+        const sessionParams: unknown[] = [];
+        if (schoolId) {
+            sessionSql += ` AND school_id = $1`;
+            sessionParams.push(schoolId);
+        }
+        sessionSql += ` LIMIT 1`;
+        const currentSession = await queryOne<{ id: string }>(sessionSql, sessionParams);
+        const sessionId = currentSession?.id;
 
-        // Build filters
-        const filters: string[] = [];
-        const params: (string | number)[] = [];
+        if (!sessionId) {
+            return NextResponse.json({ students: [] });
+        }
 
-        // Role-based restrictions
-        if (effectiveRole === 'hod') {
-            if (departmentId) {
-                params.push(departmentId);
-                params.push(userId);
-                filters.push(`s.department_id = $${params.length - 1} AND s.department_id IN (
-                    SELECT department_id FROM users WHERE id = $${params.length}
-                    UNION SELECT department_id FROM user_departments WHERE user_id = $${params.length}
-                )`);
-            } else {
-                params.push(userId);
-                filters.push(`s.department_id IN (
-                    SELECT department_id FROM users WHERE id = $${params.length}
-                    UNION SELECT department_id FROM user_departments WHERE user_id = $${params.length}
-                )`);
-            }
-        } else if (effectiveRole === 'teacher') {
-            // Teacher: Only show students who are enrolled in subjects this teacher teaches
+        const params: any[] = [sessionId];
+        const filters: string[] = ['se.session_id = $1'];
+
+        if (classSectionId) {
+            params.push(classSectionId);
+            filters.push(`se.class_section_id = $${params.length}`);
+        }
+
+        if (role === 'teacher') {
             params.push(userId);
-            const teacherParamIdx = params.length;
-            filters.push(`s.id IN (
-                SELECT ss.student_id FROM student_subjects ss
-                JOIN teacher_subjects ts ON ts.subject_id = ss.subject_id
-                WHERE ts.teacher_id = $${teacherParamIdx}
+            filters.push(`se.class_section_id IN (
+                SELECT class_section_id FROM teacher_assignments WHERE teacher_id = $${params.length} AND session_id = $1
             )`);
-            if (departmentId) {
-                params.push(departmentId);
-                filters.push(`s.department_id = $${params.length}`);
-            }
-        } else if (effectiveRole === 'super_admin' && departmentId) {
-            params.push(departmentId);
-            filters.push(`s.department_id = $${params.length}`);
         }
 
-        if (semester) {
-            params.push(parseInt(semester));
-            filters.push(`s.current_semester = $${params.length}`);
-        }
+        const filterClause = filters.length > 0 ? 'WHERE ' + filters.join(' AND ') : '';
 
-        // Subject filter
+        // Secondary filters for attendance
+        const attendanceFilters: string[] = ['ar.session_id = $1'];
+        const attendanceParams: any[] = [sessionId];
+
         if (subjectIdsParam) {
-            const subjectIds = subjectIdsParam.split(',').filter(id => id.trim() !== '');
+            const subjectIds = subjectIdsParam.split(',').filter(Boolean);
             if (subjectIds.length > 0) {
                 const placeholders = subjectIds.map(id => {
-                    params.push(id);
-                    return `$${params.length}`;
+                    attendanceParams.push(id);
+                    return `$${attendanceParams.length}`;
                 }).join(', ');
-                filters.push(`ar.subject_id IN (${placeholders})`);
+                attendanceFilters.push(`ar.subject_id IN (${placeholders})`);
             }
         }
 
-        // Date filter
         if (startDate) {
-            params.push(startDate);
-            filters.push(`ar.date >= $${params.length}`);
+            attendanceParams.push(startDate);
+            attendanceFilters.push(`ar.date >= $${attendanceParams.length}`);
         }
         if (endDate) {
-            params.push(endDate);
-            filters.push(`ar.date <= $${params.length}`);
+            attendanceParams.push(endDate);
+            attendanceFilters.push(`ar.date <= $${attendanceParams.length}`);
         }
 
-        const filterClause = filters.length > 0 ? 'AND ' + filters.join(' AND ') : '';
+        const attClause = attendanceFilters.length > 0 ? 'AND ' + attendanceFilters.join(' AND ') : '';
 
-        // For teachers, we also need to filter the COUNTs to only their subjects/records
-        let teacherSubjectFilter = '1=1';
-        if (role === 'teacher' && !subjectIdsParam) {
-            // finding the param index for userId
-            let uIdIndex = params.indexOf(userId);
-            if (uIdIndex === -1) {
-                params.push(userId);
-                uIdIndex = params.length - 1;
-            }
-            // OLD: Filter by subject assignment
-            // teacherSubjectFilter = `ar.subject_id IN (SELECT subject_id FROM teacher_subjects WHERE teacher_id = $${uIdIndex + 1})`;
-
-            // NEW: Filter by who marked the attendance AND only include subjects they are assigned to teach
-            teacherSubjectFilter = `ar.teacher_id = $${uIdIndex + 1} AND ar.subject_id IN (SELECT subject_id FROM teacher_subjects WHERE teacher_id = $${uIdIndex + 1})`;
-        }
-
+        // Core student aggregations
         const queryStr = `
             SELECT 
                 s.id,
-                s.student_id,
-                s.roll_number,
-                s.first_name,
-                s.last_name,
-                d.name as department_name,
-                s.current_semester,
-                COUNT(DISTINCT ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text) as total_lectures,
-                COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || ar.subject_id::text || '-' || ar.lecture_number::text END) as attended
-            FROM students s
-            LEFT JOIN departments d ON d.id = s.department_id
-            LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.subject_id IN (SELECT ss.subject_id FROM student_subjects ss WHERE ss.student_id = s.id) AND (${teacherSubjectFilter})
-            WHERE 1=1
+                s.admission_number as "studentId",
+                se.roll_number as "rollNumber",
+                (s.first_name || ' ' || s.last_name) as "name",
+                (c.name || ' - ' || sec.name) as "department",
+                COALESCE(att.total_lectures, 0) as "totalClasses",
+                COALESCE(att.attended, 0) as "attended"
+            FROM student_enrollments se
+            JOIN students s ON s.id = se.student_id
+            JOIN class_sections cs ON cs.id = se.class_section_id
+            JOIN classes c ON c.id = cs.class_id
+            JOIN sections sec ON sec.id = cs.section_id
+            LEFT JOIN (
+                SELECT 
+                    student_id,
+                    COUNT(DISTINCT ar.date::text || '-' || COALESCE(ar.subject_id::text, 'general') || '-' || ar.period_number::text) as total_lectures,
+                    COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || COALESCE(ar.subject_id::text, 'general') || '-' || ar.period_number::text END) as attended
+                FROM attendance_records ar
+                WHERE 1=1 ${attClause}
+                GROUP BY student_id
+            ) att ON att.student_id = se.student_id
             ${filterClause}
-            GROUP BY s.id, s.student_id, s.roll_number, s.first_name, s.last_name, d.name, s.current_semester
-            ORDER BY s.roll_number ASC
+            ORDER BY c.name, sec.name, se.roll_number ASC
         `;
 
-        const students = await query<StudentData>(queryStr, params);
+        // Select the right parameters based on query
+        // Since the LEFT JOIN subquery has a separate WHERE clause, we need to pass a merged list of parameters
+        // Let's resolve in-memory or build a safe parameterized query
+        // A much cleaner way is to include student_enrollment joins inside the LEFT JOIN subquery!
+        // Let's write the query with inlined parameter lists to avoid parameter count mismatch!
 
-        const formattedStudents = students.map(s => ({
-            id: s.id,
-            studentId: s.student_id,
-            rollNumber: s.roll_number,
-            name: `${s.first_name} ${s.last_name}`,
-            department: s.department_name || 'N/A',
-            semester: s.current_semester,
-            totalClasses: parseInt(s.total_lectures) || 0,
-            attended: parseInt(s.attended) || 0,
-            percentage: parseInt(s.total_lectures) > 0
-                ? Math.round((parseInt(s.attended) / parseInt(s.total_lectures)) * 100)
-                : 0
-        }));
+        // Safer approach: Let's do single parameter array!
+        // Parameters: $1 = sessionId, $2 = classSectionId (optional), $3 = userId (optional), $4 = subjectId (optional), $5 = startDate (optional), $6 = endDate (optional)
+        const safeParams: any[] = [sessionId];
+        let classSectionParam = '';
+        let teacherParam = '';
+        let subjectParam = '';
+        let dateParam = '';
+
+        if (classSectionId) {
+            safeParams.push(classSectionId);
+            classSectionParam = `AND se.class_section_id = $${safeParams.length}`;
+        }
+        if (role === 'teacher') {
+            safeParams.push(userId);
+            teacherParam = `AND se.class_section_id IN (
+                SELECT class_section_id FROM teacher_assignments WHERE teacher_id = $${safeParams.length} AND session_id = $1
+            )`;
+        }
+        if (subjectIdsParam) {
+            const subjectIds = subjectIdsParam.split(',').filter(Boolean);
+            if (subjectIds.length > 0) {
+                const placeholders = subjectIds.map(id => {
+                    safeParams.push(id);
+                    return `$${safeParams.length}`;
+                }).join(', ');
+                subjectParam = `AND ar.subject_id IN (${placeholders})`;
+            }
+        }
+        if (startDate) {
+            safeParams.push(startDate);
+            dateParam += ` AND ar.date >= $${safeParams.length}`;
+        }
+        if (endDate) {
+            safeParams.push(endDate);
+            dateParam += ` AND ar.date <= $${safeParams.length}`;
+        }
+
+        const safeQuery = `
+            SELECT 
+                s.id,
+                s.admission_number as "studentId",
+                se.roll_number as "rollNumber",
+                (s.first_name || ' ' || s.last_name) as "name",
+                (c.name || ' - ' || sec.name) as "department",
+                COUNT(DISTINCT ar.date::text || '-' || COALESCE(ar.subject_id::text, 'general') || '-' || ar.period_number::text) as "totalClasses",
+                COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN ar.date::text || '-' || COALESCE(ar.subject_id::text, 'general') || '-' || ar.period_number::text END) as "attended"
+            FROM student_enrollments se
+            JOIN students s ON s.id = se.student_id
+            JOIN class_sections cs ON cs.id = se.class_section_id
+            JOIN classes c ON c.id = cs.class_id
+            JOIN sections sec ON sec.id = cs.section_id
+            LEFT JOIN attendance_records ar ON ar.student_id = se.student_id AND ar.session_id = se.session_id ${subjectParam} ${dateParam}
+            WHERE se.session_id = $1 ${classSectionParam} ${teacherParam}
+            GROUP BY s.id, s.admission_number, se.roll_number, s.first_name, s.last_name, c.name, sec.name
+            ORDER BY c.name, sec.name, se.roll_number ASC
+        `;
+
+        const studentsList = await query<any>(safeQuery, safeParams);
+
+        const formattedStudents = studentsList.map(s => {
+            const total = parseInt(s.totalClasses) || 0;
+            const attended = parseInt(s.attended) || 0;
+            return {
+                id: s.id,
+                studentId: s.studentId,
+                rollNumber: s.rollNumber,
+                name: s.name,
+                department: s.department || 'N/A',
+                semester: 1, // Default or mapped order
+                totalClasses: total,
+                attended: attended,
+                percentage: total > 0 ? Math.round((attended / total) * 100) : 0
+            };
+        });
 
         return NextResponse.json({ students: formattedStudents });
     } catch (error) {
-        console.error('Student report error:', error);
+        console.error('Student report API error:', error);
         return NextResponse.json({ error: 'Server error' }, { status: 500 });
     }
 }

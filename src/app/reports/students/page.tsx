@@ -9,11 +9,10 @@ import * as XLSX from 'xlsx';
 import { Input } from '@/components/ui/input';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
-import { useActiveSemesters } from '@/hooks/useActiveSemesters';
 
 interface User {
     id: string;
-    role: 'super_admin' | 'hod' | 'teacher';
+    role: 'super_admin' | 'teacher' | 'accountant' | 'student';
     firstName: string;
     lastName: string;
     email: string;
@@ -124,7 +123,6 @@ function StudentReportContent() {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-    const { getActiveSemesters, getBatchLabel } = useActiveSemesters();
 
     const getDeptType = (dept?: Department) => dept?.deptType || dept?.dept_type;
 
@@ -140,7 +138,7 @@ function StudentReportContent() {
 
         if (parsedUser.role === 'super_admin') {
             fetchDepartments(token);
-        } else if (parsedUser.role === 'teacher' || parsedUser.role === 'hod') {
+        } else if (parsedUser.role === 'teacher') {
             fetchTeacherDepartments(token, parsedUser.id);
         }
     }, [router]);
@@ -312,6 +310,13 @@ function StudentReportContent() {
                 return;
             }
             const data = await res.json();
+            if (!res.ok) {
+                alert(data.error || 'Failed to fetch student details');
+                setSelectedStudent(null);
+                setSelectedStudentId(null);
+                setLoadingDetail(false);
+                return;
+            }
             setSelectedStudent(data);
         } catch (err) {
             console.error('Error fetching student detail:', err);
@@ -698,8 +703,8 @@ function StudentReportContent() {
                 <div class="logo-section">
                     <img src="${logoUrl}" class="logo-img" alt="YSM Logo">
                     <div class="college-info">
-                        <h1>Yogoda Satsanga Mahavidyalaya</h1>
-                        <p>Established 1967 | NAAC Accredited Grade 'B'</p>
+                        <h1>Yogoda Satsanga School</h1>
+                        <p>Coaching & School Management System</p>
                         <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
                     </div>
                 </div>
@@ -711,8 +716,8 @@ function StudentReportContent() {
                     <div class="student-roll">Student ID: ${student.studentId || '-'} | Roll No: ${student.rollNumber}</div>
                 </div>
                 <div class="meta-values">
-                    <div class="meta-row"><strong>Department:</strong> ${student.department}</div>
-                    <div class="meta-row"><strong>Semester:</strong> ${student.semester}</div>
+                    <div class="meta-row"><strong>Classroom:</strong> ${student.department}</div>
+                    <div class="meta-row"><strong>Batch:</strong> ${student.semester}</div>
                     <div class="meta-row"><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
                 </div>
             </div>
@@ -771,8 +776,8 @@ function StudentReportContent() {
                     ${summary.attendancePercentage >= 75
                 ? `Student maintains good attendance record. Keep up the consistent engagement in classes.`
                 : summary.attendancePercentage >= 60
-                    ? `Attendance is within acceptable limits but implies scope for improvement. Regularity is advised.`
-                    : `Critical attendance shortage detected. Immediate improvement is required to meet college standards.`}
+                    ? `Attendance is within acceptable limits but improvement is needed. Regularity is advised.`
+                    : `Critical attendance shortage detected. Immediate improvement is required to meet school standards.`}
                 </p>
             </div>
 
@@ -890,11 +895,9 @@ function StudentReportContent() {
 
         const filename = `student_attendance_report_${new Date().toISOString().split('T')[0]}`;
         const deptName = selectedDepartmentId ? departments.find(d => d.id === selectedDepartmentId)?.name || 'All' : 'All';
-
         const metadataRows = [
             ['Generated on:', new Date().toLocaleDateString()],
-            ['Department:', deptName],
-            ['Semester:', selectedSemester || 'All'],
+            ['Classroom:', deptName],
             ['Subjects:', subjectFilterText],
             [] // Empty row spacer
         ];
@@ -954,8 +957,8 @@ function StudentReportContent() {
         <div class="logo-section">
             <img src="${logoUrl}" class="logo-img" alt="YSM Logo">
             <div class="college-info">
-                <h1>Yogoda Satsanga Mahavidyalaya</h1>
-                <p>Established 1967 | NAAC Accredited Grade 'B'</p>
+                <h1>Yogoda Satsanga School</h1>
+                <p>Coaching & School Management System</p>
                 <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
             </div>
         </div>
@@ -964,7 +967,7 @@ function StudentReportContent() {
             <p>Attendance Overview</p>
         </div>
     </div>
-    <p class="meta"><strong>Filters Applied:</strong> Generated on: ${new Date().toLocaleDateString()} | Total Students: ${filteredStudents.length}${selectedSemester ? (() => { const now = new Date(); const acYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1; const admYear = acYear - (parseInt(selectedSemester) - 1); const dept = departments.find(d => d.id === selectedDepartmentId); const duration = dept?.dept_type === 'vocational' ? 3 : dept?.dept_type === 'pg' ? 2 : 4; const gradYear = admYear + duration; return ` | Semester: ${selectedSemester} | Batch: ${admYear}-${String(gradYear).slice(2)}`; })() : ''}${selectedDepartmentId ? ` | Department: ${departments.find(d => d.id === selectedDepartmentId)?.name || ''}` : ''}<br/><strong>Subjects:</strong> ${subjectFilterText}</p>
+    <p class="meta"><strong>Filters Applied:</strong> Generated on: ${new Date().toLocaleDateString()} | Total Students: ${filteredStudents.length}${selectedDepartmentId ? ` | Classroom: ${departments.find(d => d.id === selectedDepartmentId)?.name || ''}` : ''}<br/><strong>Subjects:</strong> ${subjectFilterText}</p>
     <table>
         <thead>
             <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
@@ -1006,8 +1009,8 @@ function StudentReportContent() {
             <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
                 {/* Hero / Welcome Section */}
                 <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl">
-
-
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
+                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
                     <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6">
                         <div>
                             <div className="flex items-center gap-2 mb-2">
@@ -1105,17 +1108,17 @@ function StudentReportContent() {
                                 </div>
                             </div>
 
-                            {/* Department Filter */}
+                            {/* Classroom Filter */}
                             {(user?.role === 'super_admin' || departments.length > 1) && (
                                 <div className="w-full">
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Department</label>
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Classroom</label>
                                     <div className="relative">
                                         <select
                                             value={selectedDepartmentId}
                                             onChange={(e) => setSelectedDepartmentId(e.target.value)}
                                             className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-purple-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
                                         >
-                                            <option value="">All Departments</option>
+                                            <option value="">All Classrooms</option>
                                             {departments.map((dept) => (
                                                 <option key={dept.id} value={dept.id}>{dept.name}</option>
                                             ))}
@@ -1124,34 +1127,6 @@ function StudentReportContent() {
                                     </div>
                                 </div>
                             )}
-
-
-
-                            {/* Semester Filter */}
-                            <div className="w-full">
-                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Semester</label>
-                                <div className="relative">
-                                    <select
-                                        value={selectedSemester}
-                                        onChange={(e) => setSelectedSemester(e.target.value)}
-                                        className="w-full pl-4 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 hover:border-purple-300 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none appearance-none transition-all cursor-pointer font-medium shadow-sm"
-                                    >
-                                        <option value="">All Semesters</option>
-                                        {(() => {
-                                            const effectiveDeptType = selectedDepartmentId
-                                                ? getDeptType(departments.find(d => d.id === selectedDepartmentId))
-                                                : (user?.role === 'super_admin' ? 'regular' : (departments.length > 0 ? getDeptType(departments[0]) : 'regular'));
-                                            return getActiveSemesters(effectiveDeptType).map((sem) => {
-                                                const label = getBatchLabel(sem, effectiveDeptType);
-                                                return (
-                                                    <option key={sem} value={sem}>Sem {sem}{label ? ` (${label})` : ''}</option>
-                                                );
-                                            });
-                                        })()}
-                                    </select>
-                                    <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-3 pointer-events-none" />
-                                </div>
-                            </div>
 
                             {/* Subject Filter Toggle */}
                             {availableSubjects.length > 0 && (
@@ -1180,7 +1155,6 @@ function StudentReportContent() {
                                     onClick={() => {
                                         setStartDate('');
                                         setEndDate('');
-                                        setSelectedSemester('');
                                         setSelectedDepartmentId('');
                                         setSearchTerm('');
                                         setPageSelectedSubjectIds(new Set(availableSubjects.map(s => s.id)));
@@ -1484,14 +1458,14 @@ function StudentReportContent() {
                                         <div className="animate-spin w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full mb-4"></div>
                                         <p className="text-sm text-gray-500">Loading details...</p>
                                     </div>
-                                ) : selectedStudent && (
+                                ) : (selectedStudent && selectedStudent.student) && (
                                     <div className="space-y-8">
                                         {/* Profile Card */}
                                         <div className="bg-linear-to-r from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-100">
                                             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                                                 <div className="flex items-center gap-4">
                                                     <div className="w-16 h-16 bg-white rounded-full shadow-sm flex items-center justify-center text-2xl font-bold text-purple-600 border border-purple-100">
-                                                        {selectedStudent.student.name.charAt(0)}
+                                                        {(selectedStudent.student.name || '').charAt(0)}
                                                     </div>
                                                     <div>
                                                         <h2 className="text-xl font-bold text-gray-900">{selectedStudent.student.name}</h2>
@@ -1504,9 +1478,6 @@ function StudentReportContent() {
                                                             </span>
                                                             <span className="px-2 py-0.5 bg-white text-gray-600 text-xs rounded border border-gray-200">
                                                                 {selectedStudent.student.department}
-                                                            </span>
-                                                            <span className="px-2 py-0.5 bg-white text-gray-600 text-xs rounded border border-gray-200">
-                                                                Sem {selectedStudent.student.semester}
                                                             </span>
                                                         </div>
                                                     </div>

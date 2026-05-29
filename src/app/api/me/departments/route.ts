@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { query, queryOne } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 
-interface DepartmentRow {
+interface ClassroomRow {
     id: string;
     name: string;
     code: string;
-    dept_type: string;
 }
 
-// GET - Fetch only the authenticated user's departments (primary + additional)
-// This replaces the heavy GET /api/teachers call that returned ALL teachers
 export async function GET(request: NextRequest) {
     try {
         const authHeader = request.headers.get('authorization');
@@ -24,26 +21,49 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
         }
 
-        // Single query: Get primary department + all additional departments
-        const departments = await query<DepartmentRow & { degree_type: string }>(
-            `SELECT d.id, d.name, d.code, d.dept_type, d.degree_type
-             FROM departments d
-             WHERE d.id = (SELECT department_id FROM users WHERE id = $1)
-             UNION
-             SELECT d.id, d.name, d.code, d.dept_type, d.degree_type
-             FROM departments d
-             JOIN user_departments ud ON d.id = ud.department_id
-             WHERE ud.user_id = $1`,
-            [payload.userId]
+        const currentSession = await queryOne<{ id: string }>(
+            `SELECT id FROM academic_sessions WHERE is_current = true LIMIT 1`
         );
+        const sessionId = currentSession?.id;
+
+        if (!sessionId) {
+            return NextResponse.json({ departments: [] });
+        }
+
+        let classrooms: ClassroomRow[] = [];
+
+        if (payload.role === 'super_admin') {
+            // For super admin, return all active class sections
+            classrooms = await query<ClassroomRow>(
+                `SELECT cs.id, (c.name || ' - ' || s.name) as name, c.name as code
+                 FROM class_sections cs
+                 JOIN classes c ON c.id = cs.class_id
+                 JOIN sections s ON s.id = cs.section_id
+                 WHERE cs.session_id = $1
+                 ORDER BY c.display_order ASC, s.name ASC`,
+                [sessionId]
+            );
+        } else {
+            // For teacher/other, return only assigned class sections
+            classrooms = await query<ClassroomRow>(
+                `SELECT DISTINCT cs.id, (c.name || ' - ' || s.name) as name, c.name as code
+                 FROM teacher_assignments ta
+                 JOIN class_sections cs ON cs.id = ta.class_section_id
+                 JOIN classes c ON c.id = cs.class_id
+                 JOIN sections s ON s.id = cs.section_id
+                 WHERE ta.teacher_id = $1 AND ta.session_id = $2
+                 ORDER BY c.name ASC, s.name ASC`,
+                [payload.userId, sessionId]
+            );
+        }
 
         return NextResponse.json({
-            departments: departments.map(d => ({
-                id: d.id,
-                name: d.name,
-                code: d.code,
-                deptType: d.dept_type,
-                degreeType: d.degree_type
+            departments: classrooms.map(c => ({
+                id: c.id,
+                name: c.name,
+                code: c.code,
+                deptType: 'regular',
+                degreeType: 'academic'
             }))
         });
     } catch (error) {

@@ -1,88 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
+import { query, queryOne } from '@/lib/db';
+import { requireSchoolAuth, resolveSchoolId } from '@/lib/auth';
 
-interface TeacherData {
-    teacher_id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    department_name: string;
-    subject_names: string;
-    total_sessions: string;
-    working_days: string;
-    avg_attendance: string;
-}
-
-// GET - Teacher-wise attendance report
 export async function GET(request: NextRequest) {
     try {
-        const authHeader = request.headers.get('authorization');
-        if (!authHeader?.startsWith('Bearer ')) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        const auth = requireSchoolAuth(request);
+        if (auth.error) return auth.error;
+        const { role, userId } = auth.user;  
+        const schoolId = resolveSchoolId(auth.user, request);
+
+        // Resolve active session
+        let sessionSql = `SELECT id FROM academic_sessions WHERE is_current = true`;
+        const sessionParams: unknown[] = [];
+        if (schoolId) {
+            sessionSql += ` AND school_id = $1`;
+            sessionParams.push(schoolId);
+        }
+        sessionSql += ` LIMIT 1`;
+        const currentSession = await queryOne<{ id: string }>(sessionSql, sessionParams);
+        const sessionId = currentSession?.id;
+
+        if (!sessionId) {
+            return NextResponse.json({ teachers: [] });
         }
 
-        const token = authHeader.split(' ')[1];
-        const payload = verifyToken(token);
-        if (!payload) {
-            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-        }
+        const filters: string[] = ["u.role = 'teacher'"];
+        const params: any[] = [sessionId];
 
-        const { role, departmentId: userDeptId, userId } = payload;
-
-        const { searchParams } = new URL(request.url);
-        const departmentId = searchParams.get('departmentId');
-
-        // Build role-based filter
-        const filters: string[] = [];
-        const params: string[] = [];
-
-        if (role === 'hod') {
-            // HOD: show teachers whose primary OR secondary departments overlap with HOD's departments
-            params.push(userId);
-            let hodDeptSql = `
-                SELECT department_id FROM users WHERE id = $${params.length}
-                UNION
-                SELECT department_id FROM user_departments WHERE user_id = $${params.length}
-            `;
-            if (departmentId) {
-                params.push(departmentId);
-                // Teacher's primary dept OR any linked dept matches the selected dept (which must be in HOD's authorized depts)
-                filters.push(`(u.department_id = $${params.length} OR u.id IN (SELECT user_id FROM user_departments WHERE department_id = $${params.length})) AND $${params.length} IN (${hodDeptSql})`);
-            } else {
-                // Teacher's primary dept OR any linked dept is in HOD's authorized depts
-                filters.push(`(u.department_id IN (${hodDeptSql}) OR u.id IN (SELECT user_id FROM user_departments WHERE department_id IN (${hodDeptSql})))`);
-            }
-        } else if (role === 'teacher') {
-            // Teacher: only see their own stats
+        if (role === 'teacher') {
             params.push(userId);
             filters.push(`u.id = $${params.length}`);
-        } else if (role === 'super_admin' && departmentId) {
-            // Super admin with department filter
-            params.push(departmentId);
-            filters.push(`u.department_id = $${params.length}`);
         }
 
-        const filterClause = filters.length > 0 ? 'AND ' + filters.join(' AND ') : '';
+        const filterClause = filters.length > 0 ? 'WHERE ' + filters.join(' AND ') : '';
 
-        // Teachers are stored in users table with role = 'teacher' or 'hod'
-        const teachers = await query<TeacherData>(
+        // Query teacher aggregate stats
+        const teachersList = await query<any>(
             `SELECT 
                 u.id as teacher_id,
                 u.first_name,
                 u.last_name,
                 u.email,
-                (
-                    SELECT STRING_AGG(DISTINCT ud_d.code, ', ' ORDER BY ud_d.code)
-                    FROM departments ud_d
-                    WHERE ud_d.id = u.department_id
-                       OR ud_d.id IN (SELECT department_id FROM user_departments ud WHERE ud.user_id = u.id)
-                ) as department_name,
                 COALESCE(
                     STRING_AGG(DISTINCT s.name, ', ' ORDER BY s.name),
-                    ''
+                    '-'
                 ) as subject_names,
-                COUNT(DISTINCT ar.date || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_sessions,
+                COUNT(DISTINCT ar.class_section_id || '-' || ar.date || '-' || COALESCE(ar.subject_id::text, 'general') || '-' || ar.period_number) as total_sessions,
                 COUNT(DISTINCT ar.date) as working_days,
                 COALESCE(
                     ROUND(
@@ -93,21 +56,20 @@ export async function GET(request: NextRequest) {
                     0
                 ) as avg_attendance
              FROM users u
-             LEFT JOIN departments d ON d.id = u.department_id
-             LEFT JOIN teacher_subjects ts ON ts.teacher_id = u.id
-             LEFT JOIN subjects s ON s.id = ts.subject_id
-             LEFT JOIN attendance_records ar ON ar.subject_id = ts.subject_id AND ar.teacher_id = u.id
-             WHERE u.role IN ('teacher', 'hod') ${filterClause}
-             GROUP BY u.id, u.first_name, u.last_name, u.email, d.name
+             LEFT JOIN teacher_assignments ta ON ta.teacher_id = u.id AND ta.session_id = $1
+             LEFT JOIN subjects s ON s.id = ta.subject_id
+             LEFT JOIN attendance_records ar ON ar.teacher_id = u.id AND ar.session_id = $1
+             ${filterClause}
+             GROUP BY u.id, u.first_name, u.last_name, u.email
              ORDER BY u.first_name ASC, u.last_name ASC`,
             params
         );
 
-        const formattedTeachers = teachers.map(t => ({
+        const formattedTeachers = teachersList.map((t: any) => ({
             id: t.teacher_id,
             name: `${t.first_name} ${t.last_name}`,
             email: t.email,
-            department: t.department_name || 'N/A',
+            department: 'Faculty of Academics',
             subjects: t.subject_names || '-',
             totalSessions: parseInt(t.total_sessions) || 0,
             workingDays: parseInt(t.working_days) || 0,
@@ -116,7 +78,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({ teachers: formattedTeachers });
     } catch (error) {
-        console.error('Teacher report error:', error);
+        console.error('Teacher report API error:', error);
         return NextResponse.json({ error: 'Server error' }, { status: 500 });
     }
 }

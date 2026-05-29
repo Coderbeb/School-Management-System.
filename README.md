@@ -1,59 +1,133 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🏫 School Management System
 
+A comprehensive, full-stack **School Management System** built with **Next.js 16**, **TypeScript**, and **PostgreSQL**. Designed for managing attendance, students, teachers, exams, fees, reports, and more — all from a single unified dashboard.
 
-## Getting Started
+---
 
-Follow these steps to set up the project locally:
+## ✨ Features
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/Alpha060/YSM-Attendance.git
-    cd YSM-Attendance
-    ```
+- **🔐 Authentication & Roles** — JWT-based login with role-based access (Admin, Teacher, Student, Accountant, Developer)
+- **📋 Attendance Management** — Mark, track, and report student & staff attendance with offline support
+- **👨‍🎓 Student Management** — Enroll, import (CSV/Excel), and manage student records
+- **👩‍🏫 Teacher Management** — Manage teacher profiles, subject assignments, and schedules
+- **📝 Marks & Exams** — Record exam marks, co-scholastic grades, and generate report cards
+- **💰 Fee Management** — Track fee payments, generate receipts, and manage billing
+- **📊 Reports & Analytics** — Daily, monthly, and department-wise attendance and performance reports
+- **📅 Holiday Calendar** — Manage and import school holidays
+- **📧 Email Notifications** — Automated email alerts for attendance and announcements
+- **📱 PWA Support** — Installable as a Progressive Web App with offline capabilities
+- **⚙️ Settings** — School branding, payment gateway config, and staff attendance settings
 
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
+---
 
-3.  **Environment Setup:**
-    Create a `.env.local` file in the root directory and add your database connection string:
-    ```env
-    DATABASE_URL="postgresql://user:password@localhost:5432/college_attendance"
-    JWT_SECRET="your-secret-key"
-    ```
+## 🛠️ Tech Stack
 
-4.  **Initialize Database:**
-    Run the setup script to create tables, seed data, and create the super admin user:
-    ```bash
-    node scripts/setup-db.js
-    ```
+| Layer       | Technology                        |
+|-------------|-----------------------------------|
+| Framework   | Next.js 16 (App Router)           |
+| Language    | TypeScript                        |
+| Database    | PostgreSQL (Supabase compatible)  |
+| Auth        | JWT (jsonwebtoken + bcrypt)       |
+| Styling     | Tailwind CSS v4                   |
+| UI          | Radix UI + Lucide Icons           |
+| Email       | Nodemailer (Gmail SMTP)           |
+| PDF Reports | Puppeteer                         |
+| Data Import | PapaParse (CSV) + SheetJS (Excel) |
 
-5.  **Run the development server:**
-    ```bash
-    npm run dev
-    ```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🚀 Getting Started
 
+### Prerequisites
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Node.js** >= 18.x
+- **PostgreSQL** database (or a [Supabase](https://supabase.com) project)
+- **npm** or **yarn**
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 1. Clone the repository
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+git clone https://github.com/Coderbeb/School-Management-System.git
+cd School-Management-System
+```
 
-## Learn More
+### 2. Install dependencies
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm install
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 3. Environment Setup
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Copy the example environment file and fill in your values:
 
-## Deploy on Vercel
+```bash
+cp .env.example .env.local
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Edit `.env.local` with your database URL, JWT secret, and email credentials.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 4. Initialize the Database
+
+```bash
+node scripts/setup-db.js
+```
+
+### 5. Run the development server
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) to access the application.
+
+---
+
+## 📁 Project Structure
+
+```
+├── public/              # Static assets, PWA manifest, service worker
+├── scripts/             # Database setup, migration, and seed scripts
+├── sql/                 # SQL schema and migration files
+├── src/
+│   ├── app/             # Next.js App Router pages & API routes
+│   │   ├── api/         # REST API endpoints
+│   │   ├── dashboard/   # Main dashboard
+│   │   ├── attendance/  # Attendance pages
+│   │   ├── manage/      # Admin management pages
+│   │   ├── marks/       # Marks & exam pages
+│   │   ├── reports/     # Report pages
+│   │   └── settings/    # Settings pages
+│   ├── components/      # Reusable UI components
+│   ├── hooks/           # Custom React hooks
+│   ├── lib/             # Utilities (auth, db, email, PDF)
+│   └── types/           # TypeScript type definitions
+├── .env.example         # Environment variable template
+├── next.config.ts       # Next.js configuration
+└── package.json
+```
+
+---
+
+## 🌐 Deployment (Vercel)
+
+This project is optimized for deployment on [Vercel](https://vercel.com):
+
+1. Push your code to GitHub
+2. Go to [vercel.com/new](https://vercel.com/new) and import your repository
+3. Add your environment variables in Vercel's dashboard
+4. Deploy!
+
+> See the **Deployment Guide** section below for detailed instructions.
+
+---
+
+## 📄 License
+
+This project is private and intended for educational/institutional use.
+
+---
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome! Feel free to open an issue or submit a pull request.

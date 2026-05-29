@@ -1,151 +1,93 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
+import { query, queryOne } from '@/lib/db';
+import { requireSchoolAuth, resolveSchoolId } from '@/lib/auth';
 
-interface MonthlyData {
-    total_days: string;
-    total_lectures: string;
-    present_count: string;
-    absent_count: string;
-    total_count: string;
-}
-
-interface DailyData {
-    date: string;
-    total_records: string;
-    present_count: string;
-    absent_count: string;
-    topics: string | null;
-}
-
-interface SubjectData {
-    subject_id: string;
-    subject_name: string;
-    subject_code: string;
-    subject_paper_code: string | null;
-    semester: string;
-    total_records: string;
-    present_count: string;
-    absent_count: string;
-}
-
-// GET - Monthly attendance summary with day-by-day breakdown
 export async function GET(request: NextRequest) {
     try {
-        const authHeader = request.headers.get('authorization');
-        if (!authHeader?.startsWith('Bearer ')) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const token = authHeader.split(' ')[1];
-        const payload = verifyToken(token);
-        if (!payload) {
-            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-        }
-
-        const { role, departmentId: userDeptId, userId } = payload;
-
+        const auth = requireSchoolAuth(request);
+        if (auth.error) return auth.error;
+        const { role, userId } = auth.user;
+        const schoolId = resolveSchoolId(auth.user, request);
         const { searchParams } = new URL(request.url);
-        const getISTMonthStr = () => {
-            const now = new Date();
-            const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
-            return istTime.toISOString().slice(0, 7);
-        };
-        const month = searchParams.get('month') || getISTMonthStr();
-        const departmentId = searchParams.get('departmentId');
-        const semester = searchParams.get('semester');
+
+        const month = searchParams.get('month') || new Date().toISOString().slice(0, 7);
+        const classSectionId = searchParams.get('classSectionId') || searchParams.get('departmentId'); // Map legacy parameter
+        const subjectId = searchParams.get('subjectId');
         const [year, monthNum] = month.split('-');
 
-        // Allow HOD to view as teacher (for My Reports)
-        const view = searchParams.get('view');
-        const effectiveRole = (role === 'hod' && view === 'teacher') ? 'teacher' : role;
+        // Resolve active session
+        let sessionSql = `SELECT id FROM academic_sessions WHERE is_current = true`;
+        const sessionParams: unknown[] = [];
+        if (schoolId) {
+            sessionSql += ` AND school_id = $1`;
+            sessionParams.push(schoolId);
+        }
+        sessionSql += ` LIMIT 1`;
+        const currentSession = await queryOne<{ id: string }>(sessionSql, sessionParams);
+        const sessionId = currentSession?.id;
 
-        // Build role-based filter
-        const filters: string[] = [];
-        const params: (string | number)[] = [parseInt(year), parseInt(monthNum)];
+        if (!sessionId) {
+            return NextResponse.json({
+                stats: { month, totalDays: 0, totalSessions: 0, totalPresent: 0, totalAbsent: 0, totalRecords: 0, averageAttendance: 0, highestAttendance: 0, lowestAttendance: 0 },
+                dailyBreakdown: []
+            });
+        }
 
-        // Role-based restrictions
-        if (effectiveRole === 'hod') {
-            if (departmentId) {
-                filters.push(`ar.student_id IN (
-                    SELECT id FROM students WHERE department_id = $${params.length + 1}
-                    AND department_id IN (
-                        SELECT department_id FROM users WHERE id = $${params.length + 2}
-                        UNION SELECT department_id FROM user_departments WHERE user_id = $${params.length + 2}
-                    )
-                )`);
-                params.push(departmentId);
-                params.push(userId);
-            } else {
-                filters.push(`ar.student_id IN (
-                    SELECT id FROM students WHERE department_id IN (
-                        SELECT department_id FROM users WHERE id = $${params.length + 1}
-                        UNION SELECT department_id FROM user_departments WHERE user_id = $${params.length + 1}
-                    )
-                )`);
-                params.push(userId);
-            }
-        } else if (effectiveRole === 'teacher') {
-            filters.push(`ar.teacher_id = $${params.length + 1}`);
+        const params: any[] = [parseInt(year), parseInt(monthNum), sessionId];
+        const filters: string[] = [
+            'EXTRACT(YEAR FROM ar.date) = $1',
+            'EXTRACT(MONTH FROM ar.date) = $2',
+            'ar.session_id = $3'
+        ];
+
+        if (classSectionId) {
+            params.push(classSectionId);
+            filters.push(`ar.class_section_id = $${params.length}`);
+        }
+
+        if (subjectId) {
+            params.push(subjectId);
+            filters.push(`ar.subject_id = $${params.length}`);
+        }
+
+        if (role === 'teacher') {
             params.push(userId);
-            if (departmentId) {
-                filters.push(`ar.student_id IN (
-                    SELECT id FROM students WHERE department_id = $${params.length + 1}
-                )`);
-                params.push(departmentId);
-            }
-        } else if (effectiveRole === 'super_admin' && departmentId) {
-            filters.push(`ar.student_id IN (
-                SELECT id FROM students WHERE department_id = $${params.length + 1}
+            filters.push(`ar.class_section_id IN (
+                SELECT class_section_id FROM teacher_assignments WHERE teacher_id = $${params.length} AND session_id = $3
             )`);
-            params.push(departmentId);
         }
 
-        // Semester filter
-        if (semester) {
-            filters.push(`ar.student_id IN (
-                SELECT id FROM students WHERE current_semester = $${params.length + 1}
-            )`);
-            params.push(parseInt(semester));
-        }
+        const filterClause = filters.length > 0 ? 'WHERE ' + filters.join(' AND ') : '';
 
-
-        const filterClause = filters.length > 0 ? 'AND ' + filters.join(' AND ') : '';
-
-        // 1. Overall summary
-        const summaryResult = await query<MonthlyData>(
+        // 1. Overall Monthly Summary
+        const summaryResult = await query<any>(
             `SELECT 
                 COUNT(DISTINCT ar.date) as total_days,
-                COUNT(DISTINCT ar.teacher_id || '-' || ar.date || '-' || COALESCE(ar.semester::text, '0') || '-' || ar.lecture_number) as total_lectures,
+                COUNT(DISTINCT ar.class_section_id || '-' || ar.date || '-' || COALESCE(ar.subject_id::text, 'general') || '-' || ar.period_number) as total_lectures,
                 COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as present_count,
                 COUNT(CASE WHEN ar.status = 'absent' THEN 1 END) as absent_count,
                 COUNT(*) as total_count
             FROM attendance_records ar
-            WHERE EXTRACT(YEAR FROM ar.date) = $1 
-              AND EXTRACT(MONTH FROM ar.date) = $2
-              ${filterClause}`,
+            ${filterClause}`,
             params
         );
 
-        // 2. Day-by-day breakdown (with topic names)
-        const dailyResult = await query<DailyData>(
+        // 2. Day-by-day Breakdown
+        const dailyResult = await query<any>(
             `SELECT 
                 ar.date::text as date,
                 COUNT(*) as total_records,
                 COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as present_count,
-                COUNT(CASE WHEN ar.status = 'absent' THEN 1 END) as absent_count,
-                string_agg(DISTINCT ar.topic, ', ' ORDER BY ar.topic) as topics
+                COUNT(CASE WHEN ar.status = 'absent' THEN 1 END) as absent_count
             FROM attendance_records ar
-            WHERE EXTRACT(YEAR FROM ar.date) = $1 
-              AND EXTRACT(MONTH FROM ar.date) = $2
-              ${filterClause}
+            ${filterClause}
             GROUP BY ar.date
             ORDER BY ar.date ASC`,
             params
         );
 
-        // 4. Daily percentages for min/max
-        const percentages = dailyResult.map(d => {
+        // Compute min/max percentages
+        const percentages = dailyResult.map((d: any) => {
             const total = parseInt(d.total_records) || 0;
             const present = parseInt(d.present_count) || 0;
             return total > 0 ? Math.round((present / total) * 100) : 0;
@@ -176,7 +118,7 @@ export async function GET(request: NextRequest) {
                 highestAttendance: percentages.length > 0 ? Math.max(...percentages) : 0,
                 lowestAttendance: percentages.length > 0 ? Math.min(...percentages) : 0
             },
-            dailyBreakdown: dailyResult.map(d => {
+            dailyBreakdown: dailyResult.map((d: any) => {
                 const total = parseInt(d.total_records) || 0;
                 const present = parseInt(d.present_count) || 0;
                 return {
@@ -186,7 +128,7 @@ export async function GET(request: NextRequest) {
             })
         });
     } catch (error) {
-        console.error('Monthly report error:', error);
+        console.error('Monthly report API error:', error);
         return NextResponse.json({ error: 'Server error' }, { status: 500 });
     }
 }

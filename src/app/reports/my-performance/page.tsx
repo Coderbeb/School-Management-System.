@@ -6,11 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Users, Calendar, TrendingUp, BookOpen, Clock, CalendarDays, FileDown } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
-import { useActiveSemesters } from '@/hooks/useActiveSemesters';
 
 interface User {
     id: string;
-    role: 'super_admin' | 'hod' | 'teacher';
+    role: 'super_admin' | 'teacher' | 'accountant' | 'student';
     firstName: string;
     lastName: string;
     email: string;
@@ -76,7 +75,12 @@ export default function MyPerformancePage() {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
 
-    const { getBatchLabel, getActiveSemesters } = useActiveSemesters();
+    const [branding, setBranding] = useState<any>({
+        schoolName: 'Yogoda Satsanga School',
+        address: 'Jagannathpur, Dhurwa, Ranchi-834004',
+        city: 'Ranchi',
+        state: 'Jharkhand',
+    });
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -88,6 +92,34 @@ export default function MyPerformancePage() {
         const parsedUser = JSON.parse(userData);
         setUser(parsedUser);
     }, [router]);
+
+    useEffect(() => {
+        const fetchBranding = async () => {
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) return;
+                const res = await fetch('/api/settings/school-branding', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.branding) {
+                        setBranding({
+                            schoolName: data.branding.schoolName || 'School',
+                            address: data.branding.address || '',
+                            city: data.branding.city || '',
+                            state: data.branding.state || '',
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching branding:', err);
+            }
+        };
+        if (user) {
+            fetchBranding();
+        }
+    }, [user]);
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -439,16 +471,16 @@ export default function MyPerformancePage() {
             <img src="${logoUrl}" class="watermark" />
             
             <div class="badge-container">
-                <div class="ribbon">Faculty Report</div>
+                <div class="ribbon">Teacher Report</div>
             </div>
 
             <header class="header">
                 <div class="logo-section">
                     <img src="${logoUrl}" class="logo-img" alt="YSM Logo">
                     <div class="college-info">
-                        <h1>Yogoda Satsanga Mahavidyalaya</h1>
-                        <p>Established 1967 | NAAC Accredited Grade 'B'</p>
-                        <p>Jagannathpur, Dhurwa, Ranchi-834004</p>
+                        <h1>${branding.schoolName}</h1>
+                        <p>Coaching & School Management System</p>
+                        <p>${branding.address}</p>
                     </div>
                 </div>
             </header>
@@ -459,8 +491,7 @@ export default function MyPerformancePage() {
                     <div class="teacher-email">${teacher.email}</div>
                 </div>
                 <div class="meta-values">
-                    <div class="meta-row"><strong>Department:</strong> ${deptFilter ? data.filters.departments.find(d => d.id === deptFilter)?.name : 'All Departments'}</div>
-                    <div class="meta-row"><strong>Semester:</strong> ${semesterFilter ? (() => { const dept = data.filters.departments.find(d => d.id === deptFilter); const label = getBatchLabel(parseInt(semesterFilter), dept?.deptType); return `Semester ${semesterFilter}${label ? ` (${label})` : ''}`; })() : 'All Semesters'}</div>
+                    <div class="meta-row"><strong>Classroom:</strong> ${deptFilter ? data.filters.departments.find(d => d.id === deptFilter)?.name : 'All Classrooms'}</div>
                     ${subjects.length === 1 ? `<div class="meta-row"><strong>Subject:</strong> ${subjects[0].name} (${subjects[0].paperCode || subjects[0].code})</div>` : ''}
                     ${dateFrom || dateTo ? `<div class="meta-row"><strong>Period:</strong> ${dateFrom || 'Start'} to ${dateTo || 'Present'}</div>` : ''}
                     <div class="meta-row"><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
@@ -556,7 +587,7 @@ export default function MyPerformancePage() {
                 <h3>${status.text}</h3>
                 <p>
                     ${summary.averageAttendance >= 75
-                ? `Dr. ${teacher.name} maintains excellent attendance records across their classes. The average attendance of ${summary.averageAttendance}% indicates strong student engagement.`
+                ? `${teacher.name} maintains excellent attendance records across their classes. The average attendance of ${summary.averageAttendance}% indicates strong student engagement.`
                 : summary.averageAttendance >= 60
                     ? `Performance is within acceptable limits (${summary.averageAttendance}%). Focus on improving student attendance in lower-performing subjects is recommended.`
                     : `Average attendance of ${summary.averageAttendance}% falls below standards. A review of engagement strategies is advised.`}
@@ -602,6 +633,8 @@ export default function MyPerformancePage() {
 
             <main className="flex-1 pt-20 pb-8 px-4 max-w-7xl mx-auto w-full">
                 <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-6 sm:p-8 mb-6 shadow-xl mt-4">
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-indigo-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>
+                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30"></div>
                     <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6">
                         <div>
                             <div className="flex items-center gap-2 mb-2">
@@ -617,7 +650,7 @@ export default function MyPerformancePage() {
 
                         {data && (
                             <Button onClick={downloadTeacherReportCard} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg self-start sm:self-auto">
-                                <FileDown className="w-5 h-5 mr-2" /> Download Faculty Report
+                                <FileDown className="w-5 h-5 mr-2" /> Download Teacher Report
                             </Button>
                         )}
                     </div>
@@ -645,53 +678,14 @@ export default function MyPerformancePage() {
                                             onChange={(e) => setDeptFilter(e.target.value)}
                                             className="px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                                         >
-                                            <option value="">All My Departments</option>
+                                            <option value="">All My Classrooms</option>
                                             {data.filters.departments.map((dept) => (
                                                 <option key={dept.id} value={dept.id}>{dept.name}</option>
                                             ))}
                                         </select>
                                     </div>
                                 )}
-                                {data.filters.semesters?.length > 0 && (
-                                    <div className="flex flex-col gap-1">
-                                        <select
-                                            value={semesterFilter}
-                                            onChange={(e) => setSemesterFilter(e.target.value)}
-                                            className="px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                                        >
-                                            <option value="">All Semesters</option>
-                                            {data.filters.semesters
-                                                .filter(sem => {
-                                                    if (deptFilter) {
-                                                        const selectedDept = data.filters.departments.find(d => d.id === deptFilter);
-                                                        const activeSemesters = getActiveSemesters(selectedDept?.deptType);
-                                                        return activeSemesters.includes(sem);
-                                                    } else {
-                                                        return data.filters.departments.some(dept => {
-                                                            const activeSemesters = getActiveSemesters(dept.deptType);
-                                                            return activeSemesters.includes(sem);
-                                                        });
-                                                    }
-                                                })
-                                                .map((sem) => {
-                                                    let dt: string | undefined;
-                                                    if (deptFilter) {
-                                                        const selectedDept = data.filters.departments.find(d => d.id === deptFilter);
-                                                        dt = selectedDept?.deptType;
-                                                    } else {
-                                                        const validDept = data.filters.departments.find(dept =>
-                                                            getActiveSemesters(dept.deptType).includes(sem)
-                                                        );
-                                                        dt = validDept?.deptType;
-                                                    }
-                                                    const label = getBatchLabel(sem, dt);
-                                                    return (
-                                                        <option key={sem} value={sem}>Semester {sem}{label ? ` (${label})` : ''}</option>
-                                                    );
-                                                })}
-                                        </select>
-                                    </div>
-                                )}
+
                                 <div className="flex flex-col gap-1">
                                     <input
                                         type="date"
@@ -785,7 +779,7 @@ export default function MyPerformancePage() {
                                                 <div className="flex justify-between items-start mb-3">
                                                     <div>
                                                         <h3 className="font-bold text-gray-900">{subject.paperCode || subject.code} - {subject.name}</h3>
-                                                        <p className="text-xs font-medium text-gray-500 mt-0.5">({subject.code}) Sem {subject.semester} • {subject.sessions} lectures</p>
+                                                        <p className="text-xs font-medium text-gray-500 mt-0.5">({subject.code}) • {subject.sessions} lectures</p>
                                                     </div>
                                                     <span className={`px-3 py-1 rounded-full text-xs font-bold shadow-sm ${getAttendanceColor(subject.attendance)}`}>
                                                         {subject.attendance}%
