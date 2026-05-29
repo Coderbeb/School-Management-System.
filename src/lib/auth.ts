@@ -3,8 +3,11 @@ import bcrypt from 'bcrypt';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
 
-if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
-    throw new Error('FATAL: JWT_SECRET environment variable is not defined in production');
+function getJwtSecret(): string {
+    if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'fallback-secret')) {
+        throw new Error('FATAL: JWT_SECRET environment variable is not defined in production');
+    }
+    return JWT_SECRET;
 }
 
 export interface JWTPayload {
@@ -20,12 +23,12 @@ const JWT_REMEMBER_ME_EXPIRES_IN = '30d';
 export function generateToken(payload: JWTPayload, rememberMe: boolean = false): string {
     const expiresIn = rememberMe ? JWT_REMEMBER_ME_EXPIRES_IN : JWT_EXPIRES_IN;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return jwt.sign(payload, JWT_SECRET, { expiresIn } as any);
+    return jwt.sign(payload, getJwtSecret(), { expiresIn } as any);
 }
 
 export function verifyToken(token: string): JWTPayload | null {
     try {
-        return jwt.verify(token, JWT_SECRET) as JWTPayload;
+        return jwt.verify(token, getJwtSecret()) as JWTPayload;
     } catch {
         return null;
     }
