@@ -240,3 +240,69 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Server error' }, { status: 500 });
     }
 }
+
+// PATCH: Admin reset check-in or check-out for a specific record
+export async function PATCH(request: NextRequest) {
+    try {
+        const auth = requireSchoolAuth(request, ['super_admin']);
+        if (auth.error) return auth.error;
+        const schoolId = resolveSchoolId(auth.user, request);
+
+        const { recordId, resetType } = await request.json();
+
+        if (!recordId || !resetType) {
+            return NextResponse.json({ error: 'recordId and resetType are required' }, { status: 400 });
+        }
+
+        if (resetType !== 'check_in' && resetType !== 'check_out') {
+            return NextResponse.json({ error: 'resetType must be check_in or check_out' }, { status: 400 });
+        }
+
+        // Verify the record belongs to this school
+        const existing = await queryOne<StaffAttendanceRow>(
+            `SELECT * FROM staff_attendance WHERE id = $1 AND school_id = $2`,
+            [recordId, schoolId]
+        );
+
+        if (!existing) {
+            return NextResponse.json({ error: 'Record not found' }, { status: 404 });
+        }
+
+        if (resetType === 'check_in') {
+            // Reset check-in: clear check_in_time, check_in_lat, check_in_lng, and also check_out if exists
+            const record = await queryOne<StaffAttendanceRow>(
+                `UPDATE staff_attendance SET
+                     check_in_time = NULL,
+                     check_in_lat = NULL,
+                     check_in_lng = NULL,
+                     check_out_time = NULL,
+                     check_out_lat = NULL,
+                     check_out_lng = NULL,
+                     status = 'absent',
+                     auto_status = NULL,
+                     remarks = COALESCE(remarks, '') || ' [Check-in reset by admin]'
+                 WHERE id = $1
+                 RETURNING *`,
+                [recordId]
+            );
+            return NextResponse.json({ record, message: 'Check-in has been reset. Teacher can check in again.' });
+        } else {
+            // Reset check-out: clear check_out_time, check_out_lat, check_out_lng
+            const record = await queryOne<StaffAttendanceRow>(
+                `UPDATE staff_attendance SET
+                     check_out_time = NULL,
+                     check_out_lat = NULL,
+                     check_out_lng = NULL,
+                     status = COALESCE(auto_status, status),
+                     remarks = COALESCE(remarks, '') || ' [Check-out reset by admin]'
+                 WHERE id = $1
+                 RETURNING *`,
+                [recordId]
+            );
+            return NextResponse.json({ record, message: 'Check-out has been reset. Teacher can check out again.' });
+        }
+    } catch (error) {
+        console.error('PATCH staff-attendance error:', error);
+        return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    }
+}

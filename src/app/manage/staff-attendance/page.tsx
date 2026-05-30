@@ -8,7 +8,7 @@ import {
     Users, Clock, UserCheck, UserX, CalendarOff,
     BarChart3, Calendar, Plane, Settings,
     ChevronDown, ChevronUp, Loader2, CheckCircle,
-    XCircle, AlertCircle, Send, ArrowLeft
+    XCircle, AlertCircle, Send, ArrowLeft, RotateCcw
 } from 'lucide-react';
 
 interface UserData {
@@ -56,6 +56,7 @@ export default function StaffAttendanceDashboard() {
     const [manualRemarks, setManualRemarks] = useState('');
     const [submittingManual, setSubmittingManual] = useState(false);
     const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+    const [resettingId, setResettingId] = useState<string | null>(null);
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -163,6 +164,35 @@ export default function StaffAttendanceDashboard() {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         router.replace('/login');
+    };
+
+    // Reset check-in or check-out for a record
+    const handleResetAttendance = async (recordId: string, resetType: 'check_in' | 'check_out') => {
+        const confirmMsg = resetType === 'check_in'
+            ? 'Reset this teacher\'s check-in? They will be able to check in again. This also clears their check-out.'
+            : 'Reset this teacher\'s check-out? They will be able to check out again.';
+        if (!confirm(confirmMsg)) return;
+
+        setResettingId(recordId);
+        try {
+            const token = localStorage.getItem('token')!;
+            const res = await fetch('/api/staff-attendance', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ recordId, resetType })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setToast({ type: 'error', message: data.error || 'Failed to reset' });
+            } else {
+                setToast({ type: 'success', message: data.message || `${resetType === 'check_in' ? 'Check-in' : 'Check-out'} has been reset` });
+                fetchData(token);
+            }
+        } catch {
+            setToast({ type: 'error', message: 'Server error. Please try again.' });
+        } finally {
+            setResettingId(null);
+        }
     };
 
     if (!user) return null;
@@ -371,6 +401,7 @@ export default function StaffAttendanceDashboard() {
                                                     <th className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider px-5 py-3">Check-In</th>
                                                     <th className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider px-5 py-3">Check-Out</th>
                                                     <th className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider px-5 py-3">Status</th>
+                                                    <th className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider px-5 py-3">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -390,6 +421,35 @@ export default function StaffAttendanceDashboard() {
                                                         <td className="px-5 py-3 text-xs text-gray-600 font-mono">{formatTime(record.check_in_time)}</td>
                                                         <td className="px-5 py-3 text-xs text-gray-600 font-mono">{formatTime(record.check_out_time)}</td>
                                                         <td className="px-5 py-3">{getStatusBadge(record.status)}</td>
+                                                        <td className="px-5 py-3">
+                                                            <div className="flex gap-1">
+                                                                {record.check_in_time && (
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleResetAttendance(record.id, 'check_in'); }}
+                                                                        disabled={resettingId === record.id}
+                                                                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 transition-colors disabled:opacity-50 flex items-center gap-1"
+                                                                        title="Reset check-in (teacher can check-in again)"
+                                                                    >
+                                                                        {resettingId === record.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                                                                        Reset In
+                                                                    </button>
+                                                                )}
+                                                                {record.check_out_time && (
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleResetAttendance(record.id, 'check_out'); }}
+                                                                        disabled={resettingId === record.id}
+                                                                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-100 transition-colors disabled:opacity-50 flex items-center gap-1"
+                                                                        title="Reset check-out (teacher can check-out again)"
+                                                                    >
+                                                                        {resettingId === record.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                                                                        Reset Out
+                                                                    </button>
+                                                                )}
+                                                                {!record.check_in_time && !record.check_out_time && (
+                                                                    <span className="text-[10px] text-gray-300">—</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
                                                     </tr>
                                                 ))}
                                             </tbody>

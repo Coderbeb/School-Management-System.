@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Users, Calendar, TrendingUp, BookOpen, Clock, CalendarDays, FileDown } from 'lucide-react';
+import { Users, Calendar, TrendingUp, BookOpen, Clock, CalendarDays, FileDown, MapPin, CheckCircle, XCircle, Timer, Briefcase } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 
@@ -62,12 +62,30 @@ interface PerformanceData {
     }[];
 }
 
+interface AttendanceAnalytics {
+    overall: {
+        totalDays: number; presentDays: number; lateDays: number; absentDays: number;
+        leaveDays: number; halfDays: number; avgWorkingHours: number;
+        punctualityScore: number; attendanceRate: number;
+    };
+    currentMonth: {
+        totalDays: number; presentDays: number; lateDays: number; absentDays: number;
+        leaveDays: number; halfDays: number; avgWorkingHours: number;
+        earliestCheckIn: string | null; latestCheckIn: string | null;
+    };
+    monthlyTrend: { month: string; present: number; late: number; absent: number; leave: number; halfDay: number; total: number; avgHours: number; }[];
+    recentRecords: { id: string; date: string; check_in_time: string; check_out_time: string; status: string; working_hours: string; }[];
+}
+
 export default function MyPerformancePage() {
     const router = useRouter();
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<PerformanceData | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState<'teaching' | 'attendance'>('teaching');
+    const [attendanceAnalytics, setAttendanceAnalytics] = useState<AttendanceAnalytics | null>(null);
+    const [loadingAttendance, setLoadingAttendance] = useState(false);
 
     // Filters
     const [deptFilter, setDeptFilter] = useState('');
@@ -125,8 +143,25 @@ export default function MyPerformancePage() {
         const token = localStorage.getItem('token');
         if (token && user) {
             fetchMyPerformance(token, user.id);
+            fetchAttendanceAnalytics(token);
         }
     }, [user, deptFilter, semesterFilter, dateFrom, dateTo]);
+
+    const fetchAttendanceAnalytics = async (token: string) => {
+        setLoadingAttendance(true);
+        try {
+            const res = await fetch('/api/staff-attendance/reports/analytics', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const result = await res.json();
+                setAttendanceAnalytics(result.analytics);
+            }
+        } catch (err) {
+            console.error('Error fetching attendance analytics:', err);
+        }
+        setLoadingAttendance(false);
+    };
 
     const handleLogout = () => {
         localStorage.removeItem('token');
@@ -656,6 +691,34 @@ export default function MyPerformancePage() {
                     </div>
                 </div>
 
+                {/* Tab Switcher */}
+                <div className="flex gap-2 mb-6 bg-white rounded-2xl p-1.5 border border-gray-100 shadow-sm">
+                    <button
+                        onClick={() => setActiveTab('teaching')}
+                        className={`flex-1 py-3 px-4 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                            activeTab === 'teaching'
+                                ? 'bg-indigo-600 text-white shadow-lg'
+                                : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                        }`}
+                    >
+                        <BookOpen className="w-4 h-4" />
+                        Teaching Analysis
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('attendance')}
+                        className={`flex-1 py-3 px-4 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                            activeTab === 'attendance'
+                                ? 'bg-emerald-600 text-white shadow-lg'
+                                : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                        }`}
+                    >
+                        <MapPin className="w-4 h-4" />
+                        Attendance Analysis
+                    </button>
+                </div>
+
+                {activeTab === 'teaching' ? (
+                    <>
                 {loading && !data ? (
                     <div className="flex flex-col items-center justify-center py-20">
                         <div className="animate-spin w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full mb-4"></div>
@@ -850,6 +913,183 @@ export default function MyPerformancePage() {
                             </div>
                         )}
 
+                    </div>
+                )}
+                    </>
+                ) : (
+                    /* ===== ATTENDANCE ANALYSIS TAB ===== */
+                    <div className="space-y-6 pb-8">
+                        {loadingAttendance && !attendanceAnalytics ? (
+                            <div className="flex flex-col items-center justify-center py-20">
+                                <div className="animate-spin w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full mb-4"></div>
+                                <div className="text-gray-500 font-medium">Loading attendance analytics...</div>
+                            </div>
+                        ) : !attendanceAnalytics ? (
+                            <div className="flex items-center justify-center py-20">
+                                <div className="text-gray-500 font-medium">No attendance data available yet.</div>
+                            </div>
+                        ) : (
+                            <>
+                                {/* Overview Stats */}
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <div className="border border-gray-100 shadow-sm bg-white rounded-2xl p-5 hover:shadow-md transition-shadow">
+                                        <div className="flex items-start justify-between">
+                                            <div>
+                                                <p className="text-gray-500 text-xs uppercase tracking-wide font-bold">Attendance Rate</p>
+                                                <p className="text-gray-900 text-2xl font-bold mt-1">{attendanceAnalytics.overall.attendanceRate}%</p>
+                                            </div>
+                                            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl"><TrendingUp className="w-5 h-5" /></div>
+                                        </div>
+                                    </div>
+                                    <div className="border border-gray-100 shadow-sm bg-white rounded-2xl p-5 hover:shadow-md transition-shadow">
+                                        <div className="flex items-start justify-between">
+                                            <div>
+                                                <p className="text-gray-500 text-xs uppercase tracking-wide font-bold">Punctuality Score</p>
+                                                <p className="text-gray-900 text-2xl font-bold mt-1">{attendanceAnalytics.overall.punctualityScore}%</p>
+                                            </div>
+                                            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Timer className="w-5 h-5" /></div>
+                                        </div>
+                                    </div>
+                                    <div className="border border-gray-100 shadow-sm bg-white rounded-2xl p-5 hover:shadow-md transition-shadow">
+                                        <div className="flex items-start justify-between">
+                                            <div>
+                                                <p className="text-gray-500 text-xs uppercase tracking-wide font-bold">Avg Working Hours</p>
+                                                <p className="text-gray-900 text-2xl font-bold mt-1">{attendanceAnalytics.overall.avgWorkingHours || 0}h</p>
+                                            </div>
+                                            <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><Clock className="w-5 h-5" /></div>
+                                        </div>
+                                    </div>
+                                    <div className="border border-gray-100 shadow-sm bg-white rounded-2xl p-5 hover:shadow-md transition-shadow">
+                                        <div className="flex items-start justify-between">
+                                            <div>
+                                                <p className="text-gray-500 text-xs uppercase tracking-wide font-bold">Total Recorded</p>
+                                                <p className="text-gray-900 text-2xl font-bold mt-1">{attendanceAnalytics.overall.totalDays}</p>
+                                            </div>
+                                            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><CalendarDays className="w-5 h-5" /></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Breakdown Cards */}
+                                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                                    <div className="bg-emerald-50 rounded-2xl border border-emerald-100 p-4 text-center">
+                                        <CheckCircle className="w-5 h-5 text-emerald-500 mx-auto mb-1" />
+                                        <div className="text-2xl font-bold text-emerald-700">{attendanceAnalytics.overall.presentDays}</div>
+                                        <div className="text-xs text-emerald-600 font-medium">Present</div>
+                                    </div>
+                                    <div className="bg-amber-50 rounded-2xl border border-amber-100 p-4 text-center">
+                                        <Clock className="w-5 h-5 text-amber-500 mx-auto mb-1" />
+                                        <div className="text-2xl font-bold text-amber-700">{attendanceAnalytics.overall.lateDays}</div>
+                                        <div className="text-xs text-amber-600 font-medium">Late</div>
+                                    </div>
+                                    <div className="bg-red-50 rounded-2xl border border-red-100 p-4 text-center">
+                                        <XCircle className="w-5 h-5 text-red-500 mx-auto mb-1" />
+                                        <div className="text-2xl font-bold text-red-700">{attendanceAnalytics.overall.absentDays}</div>
+                                        <div className="text-xs text-red-600 font-medium">Absent</div>
+                                    </div>
+                                    <div className="bg-blue-50 rounded-2xl border border-blue-100 p-4 text-center">
+                                        <Briefcase className="w-5 h-5 text-blue-500 mx-auto mb-1" />
+                                        <div className="text-2xl font-bold text-blue-700">{attendanceAnalytics.overall.leaveDays}</div>
+                                        <div className="text-xs text-blue-600 font-medium">Leave</div>
+                                    </div>
+                                    <div className="bg-orange-50 rounded-2xl border border-orange-100 p-4 text-center">
+                                        <Clock className="w-5 h-5 text-orange-500 mx-auto mb-1" />
+                                        <div className="text-2xl font-bold text-orange-700">{attendanceAnalytics.overall.halfDays}</div>
+                                        <div className="text-xs text-orange-600 font-medium">Half Day</div>
+                                    </div>
+                                </div>
+
+                                {/* Monthly Trend */}
+                                {attendanceAnalytics.monthlyTrend.length > 0 && (
+                                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                                        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                                            <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                                                <TrendingUp className="w-5 h-5 text-emerald-500" />
+                                                Monthly Attendance Trend
+                                            </h3>
+                                        </div>
+                                        <div className="p-6">
+                                            <div className="flex items-end gap-3 h-40">
+                                                {attendanceAnalytics.monthlyTrend.map(m => {
+                                                    const rate = m.total > 0 ? Math.round(((m.present + m.late + m.halfDay) / m.total) * 100) : 0;
+                                                    const [yr, mo] = m.month.split('-');
+                                                    const label = new Date(parseInt(yr), parseInt(mo) - 1).toLocaleDateString('en-US', { month: 'short' });
+                                                    return (
+                                                        <div key={m.month} className="flex-1 flex flex-col items-center gap-1">
+                                                            <span className="text-xs font-bold text-gray-700">{rate}%</span>
+                                                            <div className="w-full bg-gray-100 rounded-t-lg relative" style={{ height: '120px' }}>
+                                                                <div
+                                                                    className={`absolute bottom-0 w-full rounded-t-lg transition-all duration-700 ${
+                                                                        rate >= 85 ? 'bg-emerald-500' : rate >= 70 ? 'bg-amber-500' : 'bg-red-500'
+                                                                    }`}
+                                                                    style={{ height: `${rate}%` }}
+                                                                />
+                                                            </div>
+                                                            <span className="text-[10px] font-medium text-gray-400">{label}</span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Recent Records */}
+                                {attendanceAnalytics.recentRecords.length > 0 && (
+                                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                                        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                                            <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                                                <CalendarDays className="w-5 h-5 text-indigo-500" />
+                                                Recent Attendance Records
+                                            </h3>
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-sm">
+                                                <thead className="bg-gray-50">
+                                                    <tr>
+                                                        <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-6 py-3">Date</th>
+                                                        <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-6 py-3">Check-In</th>
+                                                        <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-6 py-3">Check-Out</th>
+                                                        <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-6 py-3">Hours</th>
+                                                        <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-6 py-3">Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-50">
+                                                    {attendanceAnalytics.recentRecords.map(record => (
+                                                        <tr key={record.id} className="hover:bg-gray-50/50 transition-colors">
+                                                            <td className="px-6 py-3 font-medium text-gray-900">
+                                                                {new Date(record.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+                                                            </td>
+                                                            <td className="px-6 py-3 text-gray-600 font-mono text-xs">
+                                                                {record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '—'}
+                                                            </td>
+                                                            <td className="px-6 py-3 text-gray-600 font-mono text-xs">
+                                                                {record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '—'}
+                                                            </td>
+                                                            <td className="px-6 py-3 text-gray-700 font-medium">
+                                                                {record.working_hours ? `${record.working_hours}h` : '—'}
+                                                            </td>
+                                                            <td className="px-6 py-3">
+                                                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                                                                    record.status === 'present' ? 'bg-emerald-100 text-emerald-800' :
+                                                                    record.status === 'late' ? 'bg-amber-100 text-amber-800' :
+                                                                    record.status === 'absent' ? 'bg-red-100 text-red-800' :
+                                                                    record.status === 'on_leave' ? 'bg-blue-100 text-blue-800' :
+                                                                    record.status === 'half_day' ? 'bg-orange-100 text-orange-800' :
+                                                                    'bg-gray-100 text-gray-800'
+                                                                }`}>
+                                                                    {record.status?.replace('_', ' ')}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
                     </div>
                 )}
             </main>
