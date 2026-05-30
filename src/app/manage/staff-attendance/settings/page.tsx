@@ -21,7 +21,7 @@ interface UserData {
 interface AttendanceSettings {
     latitude: number | null;
     longitude: number | null;
-    geofence_radius: number;
+    geofence_radius: number | null;
     entry_time: string;
     grace_period: number;
     exit_time: string;
@@ -41,7 +41,7 @@ export default function AttendanceSettingsPage() {
     const [settings, setSettings] = useState<AttendanceSettings>({
         latitude: null,
         longitude: null,
-        geofence_radius: 200,
+        geofence_radius: null,
         entry_time: '08:00',
         grace_period: 15,
         exit_time: '15:30',
@@ -341,14 +341,15 @@ export default function AttendanceSettingsPage() {
                                         type="number"
                                         min={50}
                                         max={5000}
-                                        value={settings.geofence_radius}
-                                        onChange={(e) => setSettings(prev => ({ ...prev, geofence_radius: parseInt(e.target.value) || 200 }))}
+                                        value={settings.geofence_radius ?? ''}
+                                        placeholder="e.g. 200"
+                                        onChange={(e) => setSettings(prev => ({ ...prev, geofence_radius: e.target.value === '' ? null : (parseInt(e.target.value) || null) }))}
                                         className="w-full h-10 rounded-xl border border-gray-200 px-4 text-sm bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                     />
                                 </div>
                                 <p className="text-[10px] text-gray-400 flex items-start gap-1.5">
                                     <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
-                                    Teachers must be within this radius from the school location to mark attendance. Default: 200 meters.
+                                    Teachers must be within this radius from the school location to mark attendance. (Prototype default is 200 meters if not set)
                                 </p>
                             </div>
                         </div>

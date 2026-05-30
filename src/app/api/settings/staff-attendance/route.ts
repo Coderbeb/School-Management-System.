@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
             const settings = {
                 latitude: row.geo_lat ? parseFloat(String(row.geo_lat)) : null,
                 longitude: row.geo_lng ? parseFloat(String(row.geo_lng)) : null,
-                geofence_radius: row.geo_radius_meters || 200,
+                geofence_radius: row.geo_radius_meters,
                 entry_time: row.staff_entry_time ? String(row.staff_entry_time).substring(0, 5) : '08:00',
                 grace_period: row.staff_grace_minutes ?? 15,
                 exit_time: row.staff_exit_time ? String(row.staff_exit_time).substring(0, 5) : '15:30',
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
                     settings: {
                         latitude: null,
                         longitude: null,
-                        geofence_radius: 200,
+                        geofence_radius: null,
                         entry_time: '08:00',
                         grace_period: 15,
                         exit_time: '15:30',
@@ -84,7 +84,9 @@ export async function PUT(request: NextRequest) {
         // Accept both naming conventions from frontend
         const latitude = body.latitude;
         const longitude = body.longitude;
-        const radius = body.geofence_radius || body.radius || 200;
+        const radius = body.geofence_radius !== undefined && body.geofence_radius !== null && body.geofence_radius !== '' 
+            ? parseInt(String(body.geofence_radius)) 
+            : null;
         const entryTime = body.entry_time || body.entryTime || '08:00';
         const graceMinutes = body.grace_period ?? body.graceMinutes ?? 15;
         const exitTime = body.exit_time || body.exitTime || '15:30';
@@ -115,7 +117,7 @@ export async function PUT(request: NextRequest) {
         const settings = {
             latitude: updated.geo_lat ? parseFloat(String(updated.geo_lat)) : null,
             longitude: updated.geo_lng ? parseFloat(String(updated.geo_lng)) : null,
-            geofence_radius: updated.geo_radius_meters || 200,
+            geofence_radius: updated.geo_radius_meters,
             entry_time: updated.staff_entry_time ? String(updated.staff_entry_time).substring(0, 5) : '08:00',
             grace_period: updated.staff_grace_minutes ?? 15,
             exit_time: updated.staff_exit_time ? String(updated.staff_exit_time).substring(0, 5) : '15:30',
