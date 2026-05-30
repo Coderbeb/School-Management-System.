@@ -79,7 +79,7 @@ export async function PUT(request: NextRequest) {
         if (auth.error) return auth.error;
         const schoolId = resolveSchoolId(auth.user, request);
 
-        const { id, firstName, lastName, email, phone, role, isActive } = await request.json();
+        const { id, firstName, lastName, email, phone, role, isActive, password } = await request.json();
         if (!id) return NextResponse.json({ error: 'Account ID required' }, { status: 400 });
 
         if (role && !['super_admin', 'accountant'].includes(role)) {
@@ -92,6 +92,11 @@ export async function PUT(request: NextRequest) {
             if (role && role !== 'super_admin') return NextResponse.json({ error: 'Cannot change your own role' }, { status: 400 });
         }
 
+        let passwordHash: string | null = null;
+        if (password && password.trim() !== '') {
+            passwordHash = await hashPassword(password);
+        }
+
         let sql = `UPDATE users SET
                 first_name = COALESCE($2, first_name),
                 last_name = COALESCE($3, last_name),
@@ -99,12 +104,13 @@ export async function PUT(request: NextRequest) {
                 phone = COALESCE($5, phone),
                 role = COALESCE($6, role),
                 is_active = COALESCE($7, is_active),
+                password_hash = COALESCE($8, password_hash),
                 updated_at = CURRENT_TIMESTAMP
              WHERE id = $1 AND role IN ('super_admin', 'accountant')`;
-        const params: unknown[] = [id, firstName, lastName, email, phone, role, isActive];
+        const params: unknown[] = [id, firstName, lastName, email, phone, role, isActive, passwordHash];
 
         if (schoolId) {
-            sql += ` AND school_id = $8`;
+            sql += ` AND school_id = $9`;
             params.push(schoolId);
         }
 

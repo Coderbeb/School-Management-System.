@@ -26,6 +26,7 @@ interface Account {
     role: 'super_admin' | 'accountant';
     is_active: boolean;
     created_at: string;
+    password?: string;
 }
 
 export default function AccountsPage() {
@@ -148,7 +149,8 @@ export default function AccountsPage() {
                     email: showEditForm.email,
                     phone: showEditForm.phone,
                     role: showEditForm.role,
-                    isActive: showEditForm.is_active
+                    isActive: showEditForm.is_active,
+                    password: showEditForm.password || undefined
                 })
             });
 
@@ -491,6 +493,17 @@ export default function AccountsPage() {
                                     value={showEditForm.phone || ''}
                                     onChange={(e) => setShowEditForm({ ...showEditForm, phone: e.target.value })}
                                     className="mt-1 rounded-lg border-gray-200 focus:ring-indigo-500 w-full"
+                                />
+                            </div>
+
+                            <div>
+                                <Label className="text-gray-750 font-medium">Change Password (leave blank to keep current)</Label>
+                                <Input
+                                    type="password"
+                                    value={showEditForm.password || ''}
+                                    onChange={(e) => setShowEditForm({ ...showEditForm, password: e.target.value })}
+                                    className="mt-1 rounded-lg border-gray-200 focus:ring-indigo-500 w-full"
+                                    placeholder="Enter new password"
                                 />
                             </div>
 

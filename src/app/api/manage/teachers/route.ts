@@ -75,8 +75,13 @@ export async function PUT(request: NextRequest) {
         if (auth.error) return auth.error;
         const schoolId = resolveSchoolId(auth.user, request);
 
-        const { id, firstName, lastName, email, phone, isActive } = await request.json();
+        const { id, firstName, lastName, email, phone, isActive, password } = await request.json();
         if (!id) return NextResponse.json({ error: 'Teacher ID required' }, { status: 400 });
+
+        let passwordHash: string | null = null;
+        if (password && password.trim() !== '') {
+            passwordHash = await hashPassword(password);
+        }
 
         let sql = `UPDATE users SET
                 first_name = COALESCE($2, first_name),
@@ -84,12 +89,13 @@ export async function PUT(request: NextRequest) {
                 email = COALESCE($4, email),
                 phone = COALESCE($5, phone),
                 is_active = COALESCE($6, is_active),
+                password_hash = COALESCE($7, password_hash),
                 updated_at = CURRENT_TIMESTAMP
              WHERE id = $1 AND role = 'teacher'`;
-        const params: unknown[] = [id, firstName, lastName, email, phone, isActive];
+        const params: unknown[] = [id, firstName, lastName, email, phone, isActive, passwordHash];
 
         if (schoolId) {
-            sql += ` AND school_id = $7`;
+            sql += ` AND school_id = $8`;
             params.push(schoolId);
         }
 

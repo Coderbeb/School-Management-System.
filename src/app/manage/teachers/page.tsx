@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 interface UserData { id: string; email: string; firstName: string; lastName: string; role: 'super_admin' | 'teacher' | 'accountant' | 'student'; }
-interface Teacher { id: string; first_name: string; last_name: string; email: string; phone: string | null; is_active: boolean; }
+interface Teacher { id: string; first_name: string; last_name: string; email: string; phone: string | null; is_active: boolean; password?: string; }
 interface Session { id: string; name: string; is_current: boolean; }
 interface ClassSection { id: string; display_name: string; }
 interface Subject { id: string; name: string; code: string; }
@@ -144,7 +144,8 @@ export default function TeachersPage() {
                     lastName: showEditForm.last_name,
                     email: showEditForm.email,
                     phone: showEditForm.phone,
-                    isActive: showEditForm.is_active
+                    isActive: showEditForm.is_active,
+                    password: showEditForm.password || undefined
                 })
             });
             const data = await res.json();
@@ -536,6 +537,17 @@ export default function TeachersPage() {
                                     value={showEditForm.phone || ''}
                                     onChange={(e) => setShowEditForm({ ...showEditForm, phone: e.target.value })}
                                     className="mt-1 rounded-lg border-gray-200"
+                                />
+                            </div>
+
+                            <div>
+                                <Label className="text-gray-750 font-medium">Change Password (leave blank to keep current)</Label>
+                                <Input
+                                    type="password"
+                                    value={showEditForm.password || ''}
+                                    onChange={(e) => setShowEditForm({ ...showEditForm, password: e.target.value })}
+                                    className="mt-1 rounded-lg border-gray-200"
+                                    placeholder="Enter new password"
                                 />
                             </div>
 
