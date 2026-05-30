@@ -17,9 +17,9 @@ function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
 interface SchoolGeoSettings {
     geo_lat: number | null;
     geo_lng: number | null;
-    geo_radius_meters: number;
+    geo_radius_meters: number | null;
     staff_entry_time: string;
-    staff_grace_minutes: number;
+    staff_grace_minutes: number | null;
     staff_exit_time: string;
 }
 
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
             // Determine auto_status based on current time vs entry_time + grace
             const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
             const [entryH, entryM] = school.staff_entry_time.split(':').map(Number);
-            const graceMinutes = school.staff_grace_minutes || 15;
+            const graceMinutes = school.staff_grace_minutes ?? 15;
 
             const entryDeadline = new Date(nowIST);
             entryDeadline.setHours(entryH, entryM + graceMinutes, 0, 0);

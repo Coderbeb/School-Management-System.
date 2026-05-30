@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
                 longitude: row.geo_lng ? parseFloat(String(row.geo_lng)) : null,
                 geofence_radius: row.geo_radius_meters,
                 entry_time: row.staff_entry_time ? String(row.staff_entry_time).substring(0, 5) : '08:00',
-                grace_period: row.staff_grace_minutes ?? 15,
+                grace_period: row.staff_grace_minutes,
                 exit_time: row.staff_exit_time ? String(row.staff_exit_time).substring(0, 5) : '15:30',
             };
 
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
                         longitude: null,
                         geofence_radius: null,
                         entry_time: '08:00',
-                        grace_period: 15,
+                        grace_period: null,
                         exit_time: '15:30',
                     }
                 });
@@ -88,7 +88,9 @@ export async function PUT(request: NextRequest) {
             ? parseInt(String(body.geofence_radius)) 
             : null;
         const entryTime = body.entry_time || body.entryTime || '08:00';
-        const graceMinutes = body.grace_period ?? body.graceMinutes ?? 15;
+        const graceMinutes = body.grace_period !== undefined && body.grace_period !== null && body.grace_period !== '' 
+            ? parseInt(String(body.grace_period)) 
+            : null;
         const exitTime = body.exit_time || body.exitTime || '15:30';
 
         if (latitude === undefined || latitude === null || longitude === undefined || longitude === null) {
@@ -119,7 +121,7 @@ export async function PUT(request: NextRequest) {
             longitude: updated.geo_lng ? parseFloat(String(updated.geo_lng)) : null,
             geofence_radius: updated.geo_radius_meters,
             entry_time: updated.staff_entry_time ? String(updated.staff_entry_time).substring(0, 5) : '08:00',
-            grace_period: updated.staff_grace_minutes ?? 15,
+            grace_period: updated.staff_grace_minutes,
             exit_time: updated.staff_exit_time ? String(updated.staff_exit_time).substring(0, 5) : '15:30',
         };
 

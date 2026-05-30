@@ -23,7 +23,7 @@ interface AttendanceSettings {
     longitude: number | null;
     geofence_radius: number | null;
     entry_time: string;
-    grace_period: number;
+    grace_period: number | null;
     exit_time: string;
 }
 
@@ -43,7 +43,7 @@ export default function AttendanceSettingsPage() {
         longitude: null,
         geofence_radius: null,
         entry_time: '08:00',
-        grace_period: 15,
+        grace_period: null,
         exit_time: '15:30',
     });
 
@@ -380,8 +380,13 @@ export default function AttendanceSettingsPage() {
                                             type="number"
                                             min={0}
                                             max={120}
-                                            value={settings.grace_period}
-                                            onChange={(e) => setSettings(prev => ({ ...prev, grace_period: parseInt(e.target.value) || 0 }))}
+                                            value={settings.grace_period ?? ''}
+                                            placeholder="e.g. 15"
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                const parsed = parseInt(val);
+                                                setSettings(prev => ({ ...prev, grace_period: val === '' || isNaN(parsed) ? null : parsed }));
+                                            }}
                                             className="w-full h-10 rounded-xl border border-gray-200 px-4 text-sm bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                                         />
                                     </div>
