@@ -9,10 +9,10 @@ export async function POST(request: NextRequest) {
     const schoolId = resolveSchoolId(auth.user, request);
 
     try {
-        const { feeStructureId } = await request.json();
+        const { feeStructureId, invoiceId } = await request.json();
 
-        if (!feeStructureId) {
-            return NextResponse.json({ error: 'Fee Structure ID is required' }, { status: 400 });
+        if (!feeStructureId && !invoiceId) {
+            return NextResponse.json({ error: 'Fee Structure ID or Invoice ID is required' }, { status: 400 });
         }
 
         // 1. Resolve student ID from auth.user.userId
@@ -25,24 +25,42 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Student record not found' }, { status: 404 });
         }
 
-        // 2. Fetch fee structure
-        const structure = await queryOne<any>(
-            `SELECT * FROM fee_structures WHERE id = $1 AND school_id = $2 AND is_active = true`,
-            [feeStructureId, schoolId]
-        );
+        let remainingAmount = 0;
+        let dbInsertCol = '';
+        let dbInsertVal: string | null = null;
 
-        if (!structure) {
-            return NextResponse.json({ error: 'Fee structure not found or inactive' }, { status: 404 });
+        // 2. Fetch invoice/structure details and calculate remaining amount
+        if (invoiceId) {
+            const invoice = await queryOne<any>(
+                `SELECT * FROM invoices WHERE id = $1 AND student_id = $2 AND school_id = $3`,
+                [invoiceId, student.id, schoolId]
+            );
+            if (!invoice) {
+                return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+            }
+            if (invoice.status === 'paid') {
+                return NextResponse.json({ error: 'This invoice is already fully paid' }, { status: 400 });
+            }
+            remainingAmount = parseFloat(invoice.total_amount) - parseFloat(invoice.paid_amount || '0');
+            dbInsertCol = 'invoice_id';
+            dbInsertVal = invoiceId;
+        } else {
+            const structure = await queryOne<any>(
+                `SELECT * FROM fee_structures WHERE id = $1 AND school_id = $2 AND is_active = true`,
+                [feeStructureId, schoolId]
+            );
+            if (!structure) {
+                return NextResponse.json({ error: 'Fee structure not found or inactive' }, { status: 404 });
+            }
+            const paidResult = await queryOne<any>(
+                `SELECT SUM(amount_paid) as total_paid FROM fee_payments WHERE student_id = $1 AND fee_structure_id = $2`,
+                [student.id, feeStructureId]
+            );
+            const totalPaid = parseFloat(paidResult?.total_paid || '0');
+            remainingAmount = parseFloat(structure.amount) - totalPaid;
+            dbInsertCol = 'fee_structure_id';
+            dbInsertVal = feeStructureId;
         }
-
-        // 3. Fetch already paid amount
-        const paidResult = await queryOne<any>(
-            `SELECT SUM(amount_paid) as total_paid FROM fee_payments WHERE student_id = $1 AND fee_structure_id = $2`,
-            [student.id, feeStructureId]
-        );
-
-        const totalPaid = parseFloat(paidResult?.total_paid || '0');
-        const remainingAmount = parseFloat(structure.amount) - totalPaid;
 
         if (remainingAmount <= 0) {
             return NextResponse.json({ error: 'This fee is already fully paid' }, { status: 400 });
@@ -73,9 +91,9 @@ export async function POST(request: NextRequest) {
         // 6. Record order in fee_payment_orders
         await query(
             `INSERT INTO fee_payment_orders
-                (student_id, fee_structure_id, school_id, razorpay_order_id, amount, status)
+                (student_id, ${dbInsertCol}, school_id, razorpay_order_id, amount, status)
             VALUES ($1, $2, $3, $4, $5, 'created')`,
-            [student.id, feeStructureId, schoolId, order.id, remainingAmount]
+            [student.id, dbInsertVal, schoolId, order.id, remainingAmount]
         );
 
         return NextResponse.json({

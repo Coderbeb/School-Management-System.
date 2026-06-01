@@ -4,12 +4,12 @@ import { requireSchoolAuth, resolveSchoolId } from '@/lib/auth';
 
 /**
  * GET /api/fees/payments — List fee payments (with filters)
- * POST /api/fees/payments — Record a new fee payment
+ * POST /api/fees/payments — Record a new fee payment (invoice-based or structure-based)
  */
 
 // GET: List payments
 export async function GET(request: NextRequest) {
-    const auth = requireSchoolAuth(request, ['super_admin', 'accountant', 'developer']);
+    const auth = requireSchoolAuth(request, ['super_admin', 'accountant', 'developer', 'student']);
     if (auth.error) return auth.error;
     const schoolId = resolveSchoolId(auth.user, request);
 
@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url);
         const studentId = searchParams.get('studentId');
         const feeStructureId = searchParams.get('feeStructureId');
+        const invoiceId = searchParams.get('invoiceId');
         const status = searchParams.get('status');
 
         let sql = `
@@ -24,10 +25,12 @@ export async function GET(request: NextRequest) {
                 st.first_name || ' ' || st.last_name as student_name,
                 st.admission_number,
                 fs.name as fee_name, fs.amount as fee_amount, fs.fee_type,
+                inv.invoice_number, inv.total_amount as invoice_total,
                 u.first_name || ' ' || u.last_name as collected_by_name
             FROM fee_payments fp
             JOIN students st ON fp.student_id = st.id
-            JOIN fee_structures fs ON fp.fee_structure_id = fs.id
+            LEFT JOIN fee_structures fs ON fp.fee_structure_id = fs.id
+            LEFT JOIN invoices inv ON fp.invoice_id = inv.id
             LEFT JOIN users u ON fp.collected_by = u.id
             WHERE 1=1
         `;
@@ -45,6 +48,10 @@ export async function GET(request: NextRequest) {
         if (feeStructureId) {
             sql += ` AND fp.fee_structure_id = $${idx++}`;
             params.push(feeStructureId);
+        }
+        if (invoiceId) {
+            sql += ` AND fp.invoice_id = $${idx++}`;
+            params.push(invoiceId);
         }
         if (status) {
             sql += ` AND fp.payment_status = $${idx++}`;
@@ -66,13 +73,65 @@ export async function POST(request: NextRequest) {
     if (auth.error) return auth.error;
 
     try {
-        const { studentId, feeStructureId, amountPaid, paymentMode, paymentDate, receiptNumber, remarks } = await request.json();
+        const { studentId, feeStructureId, invoiceId, amountPaid, paymentMode, paymentDate, receiptNumber, remarks } = await request.json();
 
-        if (!studentId || !feeStructureId || !amountPaid) {
-            return NextResponse.json({ error: 'studentId, feeStructureId, and amountPaid are required' }, { status: 400 });
+        if (!studentId || !amountPaid) {
+            return NextResponse.json({ error: 'studentId and amountPaid are required' }, { status: 400 });
         }
 
-        // Get fee structure to check expected amount
+        const parsedAmountPaid = parseFloat(amountPaid);
+        const finalReceipt = receiptNumber || `RCP-${Date.now().toString(36).toUpperCase()}`;
+
+        // 1. Invoice-Based Payment Flow
+        if (invoiceId) {
+            const invoice = await queryOne<any>(
+                `SELECT * FROM invoices WHERE id = $1`, [invoiceId]
+            );
+            if (!invoice) {
+                return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+            }
+
+            const currentPaid = parseFloat(invoice.paid_amount || '0');
+            const totalAmount = parseFloat(invoice.total_amount || '0');
+            const newPaid = currentPaid + parsedAmountPaid;
+
+            let invoiceStatus = 'unpaid';
+            if (newPaid >= totalAmount) {
+                invoiceStatus = 'paid';
+            } else if (newPaid > 0) {
+                invoiceStatus = 'partially_paid';
+            }
+
+            // Update Invoice
+            await query(
+                `UPDATE invoices SET paid_amount = $2, status = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+                [invoiceId, newPaid, invoiceStatus]
+            );
+
+            // Record Payment
+            const payment = await queryOne<any>(
+                `INSERT INTO fee_payments (student_id, invoice_id, amount_paid, payment_mode, payment_date, receipt_number, payment_status, remarks, collected_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+                [studentId, invoiceId, parsedAmountPaid, paymentMode || 'cash', paymentDate || new Date().toISOString().split('T')[0],
+                 finalReceipt, 'completed', remarks || null, auth.user.userId]
+            );
+
+            return NextResponse.json({
+                payment,
+                summary: {
+                    totalAmount,
+                    totalPaid: newPaid,
+                    remaining: Math.max(0, totalAmount - newPaid),
+                    status: invoiceStatus
+                }
+            }, { status: 201 });
+        }
+
+        // 2. Backward Compatible Flow (using feeStructureId)
+        if (!feeStructureId) {
+            return NextResponse.json({ error: 'Either invoiceId or feeStructureId must be provided' }, { status: 400 });
+        }
+
         const feeStructure = await queryOne<any>(
             `SELECT * FROM fee_structures WHERE id = $1`, [feeStructureId]
         );
@@ -80,24 +139,20 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Fee structure not found' }, { status: 404 });
         }
 
-        // Calculate total already paid for this student + fee structure
         const alreadyPaid = await queryOne<{ total: string }>(
             `SELECT COALESCE(SUM(amount_paid), 0) as total FROM fee_payments 
              WHERE student_id = $1 AND fee_structure_id = $2 AND payment_status = 'completed'`,
             [studentId, feeStructureId]
         );
 
-        const totalPaid = parseFloat(alreadyPaid?.total || '0') + parseFloat(amountPaid);
+        const totalPaid = parseFloat(alreadyPaid?.total || '0') + parsedAmountPaid;
         const feeAmount = parseFloat(feeStructure.amount);
         const paymentStatus = totalPaid >= feeAmount ? 'completed' : 'partial';
-
-        // Auto-generate receipt number if not provided
-        const finalReceipt = receiptNumber || `RCP-${Date.now().toString(36).toUpperCase()}`;
 
         const payment = await queryOne<any>(
             `INSERT INTO fee_payments (student_id, fee_structure_id, amount_paid, payment_mode, payment_date, receipt_number, payment_status, remarks, collected_by)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-            [studentId, feeStructureId, amountPaid, paymentMode || 'cash', paymentDate || new Date().toISOString().split('T')[0],
+            [studentId, feeStructureId, parsedAmountPaid, paymentMode || 'cash', paymentDate || new Date().toISOString().split('T')[0],
              finalReceipt, paymentStatus, remarks || null, auth.user.userId]
         );
 
@@ -107,8 +162,8 @@ export async function POST(request: NextRequest) {
                 feeAmount,
                 totalPaid,
                 remaining: Math.max(0, feeAmount - totalPaid),
-                status: paymentStatus,
-            },
+                status: paymentStatus
+            }
         }, { status: 201 });
     } catch (error) {
         console.error('Error recording payment:', error);

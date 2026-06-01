@@ -22,7 +22,8 @@ import {
     Trophy,
     Award,
     UserCog,
-    Send
+    Send,
+    IndianRupee
 } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getInitials } from '@/lib/utils';
@@ -129,6 +130,13 @@ export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebar
                     ]
                 },
                 {
+                    label: 'Finance & Salary',
+                    color: 'text-emerald-500',
+                    links: [
+                        { id: 'finance', title: 'Finance Dashboard', href: '/manage/finance', icon: <IndianRupee className="w-5 h-5" /> },
+                    ]
+                },
+                {
                     label: 'Reports',
                     color: 'text-gray-400',
                     links: [
@@ -188,10 +196,13 @@ export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebar
             // accountant
             return [
                 {
-                    label: 'Main Menu',
-                    color: 'text-gray-400',
+                    label: 'Finance Portal',
+                    color: 'text-emerald-500',
                     links: [
-                        { id: 'dashboard', title: 'Dashboard', href: '/accountant/dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
+                        { id: 'finance', title: 'Finance Dashboard', href: '/manage/finance', icon: <IndianRupee className="w-5 h-5" /> },
+                        { id: 'collect', title: 'Collect Fee', href: '/manage/finance?tab=collect', icon: <ClipboardList className="w-5 h-5" /> },
+                        { id: 'payments', title: 'Payment History', href: '/manage/finance?tab=payments', icon: <BarChart3 className="w-5 h-5" /> },
+                        { id: 'defaulters', title: 'Defaulters', href: '/manage/finance?tab=defaulters', icon: <Users className="w-5 h-5" /> },
                     ]
                 },
             ];

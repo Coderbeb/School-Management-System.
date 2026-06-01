@@ -159,8 +159,8 @@ export default function DashboardPage() {
             gradient: 'from-orange-100 to-amber-100', textColor: 'text-orange-700', borderColor: 'border-orange-200'
         },
         {
-            id: 'finance', title: 'Finance', description: 'Fee structures, collection & invoices',
-            href: '/manage/fee-management', iconComponent: <IndianRupee className="w-6 h-6" />,
+            id: 'finance', title: 'Finance', description: 'Fee collection, salary, reports & setup',
+            href: '/manage/finance', iconComponent: <IndianRupee className="w-6 h-6" />,
             gradient: 'from-green-100 to-emerald-100', textColor: 'text-green-700', borderColor: 'border-green-200'
         },
         {

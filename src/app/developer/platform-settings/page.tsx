@@ -7,7 +7,7 @@ import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import {
     ArrowLeft, Save, Eye, EyeOff, Loader2, CheckCircle, AlertTriangle,
     IndianRupee, Building2, CreditCard, Users, CalendarDays, TrendingUp,
-    ChevronRight, Settings
+    ChevronRight, Settings, Trash2, Plus
 } from 'lucide-react';
 
 interface User { id: string; email: string; firstName: string; lastName: string; role: string; }
@@ -23,6 +23,7 @@ interface PlatformCharge {
     id: string; school_name: string; billing_month: string;
     student_count: number; charge_model: string; charge_amount: string;
     total_amount: string; status: string; paid_at: string | null;
+    description: string | null; due_date: string | null;
 }
 
 export default function PlatformSettingsPage() {
@@ -47,6 +48,16 @@ export default function PlatformSettingsPage() {
     const [charges, setCharges] = useState<PlatformCharge[]>([]);
     const [generateMonth, setGenerateMonth] = useState(new Date().toISOString().slice(0, 7));
     const [generating, setGenerating] = useState(false);
+    const [schoolsList, setSchoolsList] = useState<any[]>([]);
+
+    // Custom Charge Creation state
+    const [showCustomModal, setShowCustomModal] = useState(false);
+    const [customSchoolId, setCustomSchoolId] = useState('');
+    const [customMonth, setCustomMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [customAmount, setCustomAmount] = useState('');
+    const [customDescription, setCustomDescription] = useState('');
+    const [customDueDate, setCustomDueDate] = useState('');
+    const [creatingCustom, setCreatingCustom] = useState(false);
 
     // Offline payment modal state
     const [showOfflineModal, setShowOfflineModal] = useState(false);
@@ -72,9 +83,10 @@ export default function PlatformSettingsPage() {
     const fetchData = async (token: string) => {
         setLoading(true);
         try {
-            const [configRes, chargesRes] = await Promise.all([
+            const [configRes, chargesRes, schoolsRes] = await Promise.all([
                 fetch('/api/developer/platform-config', { headers: { Authorization: `Bearer ${token}` } }),
                 fetch('/api/developer/platform-charges', { headers: { Authorization: `Bearer ${token}` } }),
+                fetch('/api/developer/schools', { headers: { Authorization: `Bearer ${token}` } }),
             ]);
             if (configRes.ok) {
                 const data = await configRes.json();
@@ -88,6 +100,10 @@ export default function PlatformSettingsPage() {
             if (chargesRes.ok) {
                 const data = await chargesRes.json();
                 setCharges(data.charges || []);
+            }
+            if (schoolsRes.ok) {
+                const data = await schoolsRes.json();
+                setSchoolsList(data.schools || []);
             }
         } catch { /* silent */ }
         setLoading(false);
@@ -141,6 +157,63 @@ export default function PlatformSettingsPage() {
     };
 
     const handleLogout = () => { localStorage.removeItem('token'); localStorage.removeItem('user'); router.replace('/login'); };
+
+    const handleCreateCustomCharge = async () => {
+        if (!customSchoolId || !customAmount) {
+            setMessage({ type: 'error', text: 'School and Amount are required' });
+            return;
+        }
+        setCreatingCustom(true);
+        setMessage(null);
+        try {
+            const res = await fetch('/api/developer/platform-charges', {
+                method: 'POST',
+                headers: headers(),
+                body: JSON.stringify({
+                    schoolId: customSchoolId,
+                    billingMonth: customMonth,
+                    totalAmount: parseFloat(customAmount),
+                    description: customDescription,
+                    dueDate: customDueDate || undefined,
+                })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setMessage({ type: 'success', text: 'Custom platform charge created successfully!' });
+                setShowCustomModal(false);
+                setCustomSchoolId('');
+                setCustomAmount('');
+                setCustomDescription('');
+                setCustomDueDate('');
+                fetchData(getToken());
+            } else {
+                setMessage({ type: 'error', text: data.error || 'Failed to create' });
+            }
+        } catch {
+            setMessage({ type: 'error', text: 'Network error' });
+        }
+        setCreatingCustom(false);
+    };
+
+    const handleDeleteCharge = async (id: string) => {
+        if (!confirm('Are you sure you want to delete this billing record?')) return;
+        setMessage(null);
+        try {
+            const res = await fetch(`/api/developer/platform-charges?id=${id}`, {
+                method: 'DELETE',
+                headers: headers(),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setMessage({ type: 'success', text: 'Platform charge deleted successfully!' });
+                fetchData(getToken());
+            } else {
+                setMessage({ type: 'error', text: data.error || 'Failed to delete' });
+            }
+        } catch {
+            setMessage({ type: 'error', text: 'Network error' });
+        }
+    };
 
     const handleMarkOffline = async () => {
         if (!selectedCharge) return;
@@ -320,49 +393,64 @@ export default function PlatformSettingsPage() {
                                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                                     {saving ? 'Saving...' : 'Save Configuration'}
                                 </button>
-                            </div>
-                        )}
-
-                        {/* Billing Tab */}
+                               {/* Billing Tab */}
                         {activeTab === 'billing' && (
                             <div className="space-y-6">
-                                {/* Generate Charges */}
-                                <div className="bg-white border border-gray-200 rounded-2xl p-5">
-                                    <h3 className="font-bold text-gray-900 text-sm mb-3">Generate Monthly Charges</h3>
-                                    <div className="flex gap-3">
-                                        <input type="month" value={generateMonth} onChange={e => setGenerateMonth(e.target.value)}
-                                            className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-500" />
-                                        <button onClick={handleGenerateCharges} disabled={generating}
-                                            className="px-6 py-2.5 bg-violet-600 text-white font-bold rounded-xl text-sm hover:bg-violet-700 disabled:opacity-50 transition-colors flex items-center gap-2 cursor-pointer">
-                                            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarDays className="w-4 h-4" />}
-                                            {generating ? 'Generating...' : 'Generate'}
+                                {/* Generate / Custom Charges actions */}
+                                <div className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col md:flex-row gap-5 items-stretch justify-between">
+                                    <div className="flex-1">
+                                        <h3 className="font-bold text-gray-900 text-sm mb-2">Generate Monthly Subscription Bills</h3>
+                                        <div className="flex gap-2">
+                                            <input type="month" value={generateMonth} onChange={e => setGenerateMonth(e.target.value)}
+                                                className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-500" />
+                                            <button onClick={handleGenerateCharges} disabled={generating}
+                                                className="px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl text-sm disabled:opacity-50 transition-colors flex items-center gap-2 cursor-pointer">
+                                                {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarDays className="w-4 h-4" />}
+                                                {generating ? 'Generating...' : 'Batch Generate'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="border-t md:border-t-0 md:border-l border-gray-100 my-1 md:mx-2" />
+                                    <div className="flex flex-col justify-center">
+                                        <button onClick={() => setShowCustomModal(true)}
+                                            className="px-6 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer">
+                                            <Plus className="w-4 h-4" /> Create Custom Charge
                                         </button>
                                     </div>
                                 </div>
 
                                 {/* Charges List */}
                                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-                                    <div className="px-5 py-4 border-b border-gray-100">
+                                    <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                                         <h3 className="font-bold text-gray-900">All Billing Records</h3>
+                                        <span className="text-xs text-gray-500">{charges.length} record{charges.length !== 1 ? 's' : ''} found</span>
                                     </div>
                                     {charges.length === 0 ? (
                                         <div className="p-10 text-center text-gray-400 text-sm">
-                                            No billing records yet. Generate charges for a month above.
+                                            No billing records yet. Generate charges or create a custom one above.
                                         </div>
                                     ) : (
                                         <div className="divide-y max-h-[500px] overflow-y-auto">
                                             {charges.map(c => (
                                                 <div key={c.id} className="px-5 py-3.5 flex items-center justify-between hover:bg-gray-50">
-                                                    <div>
-                                                        <p className="text-sm font-semibold text-gray-900">{c.school_name}</p>
-                                                        <p className="text-xs text-gray-500">
-                                                            {c.billing_month} · {c.student_count} students · {c.charge_model?.replace('_', ' ')}
+                                                    <div className="space-y-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="text-sm font-bold text-gray-900">{c.school_name}</p>
+                                                            {c.charge_model === 'custom' && (
+                                                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold border border-emerald-100">Custom</span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-xs text-gray-650 font-medium">
+                                                            {c.description || `Platform Subscription Fee (${c.billing_month})`}
+                                                        </p>
+                                                        <p className="text-[11px] text-gray-400">
+                                                            Billing Month: {c.billing_month} · {c.student_count > 0 ? `${c.student_count} students` : 'N/A'} · Model: {c.charge_model?.replace('_', ' ')}
                                                         </p>
                                                     </div>
-                                                    <div className="text-right flex items-center gap-3">
-                                                        <div>
+                                                    <div className="text-right flex items-center gap-4">
+                                                        <div className="flex flex-col items-end">
                                                             <p className="text-sm font-bold text-gray-900">₹{parseFloat(c.total_amount).toLocaleString('en-IN')}</p>
-                                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 ${
                                                                 c.status === 'paid' ? 'bg-emerald-100 text-emerald-700' :
                                                                 c.status === 'overdue' ? 'bg-red-100 text-red-700' :
                                                                 'bg-amber-100 text-amber-700'
@@ -370,14 +458,25 @@ export default function PlatformSettingsPage() {
                                                                 {c.status === 'paid' ? '✓ Paid' : c.status === 'overdue' ? '⚠ Overdue' : '⏳ Pending'}
                                                             </span>
                                                         </div>
-                                                        {(c.status === 'pending' || c.status === 'overdue') && (
-                                                            <button
-                                                                onClick={() => { setSelectedCharge(c); setShowOfflineModal(true); }}
-                                                                className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
-                                                            >
-                                                                Mark as Paid
-                                                            </button>
-                                                        )}
+                                                        <div className="flex items-center gap-1.5">
+                                                            {c.status !== 'paid' && (
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => { setSelectedCharge(c); setShowOfflineModal(true); }}
+                                                                        className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
+                                                                    >
+                                                                        Mark Paid
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleDeleteCharge(c.id)}
+                                                                        className="p-2 rounded-xl text-gray-400 hover:text-red-650 hover:bg-red-50 transition-all cursor-pointer"
+                                                                        title="Delete charge"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))}
@@ -432,6 +531,65 @@ export default function PlatformSettingsPage() {
                                 className="flex-1 py-3 bg-gradient-to-r from-violet-500 to-indigo-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl disabled:opacity-50 transition-all text-sm flex items-center justify-center gap-2 cursor-pointer">
                                 {markingPaid ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                                 {markingPaid ? 'Processing...' : 'Confirm Payment'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Custom Platform Charge Modal */}
+            {showCustomModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100">
+                        <h3 className="text-lg font-bold text-gray-900 mb-1">Create Custom Platform Charge</h3>
+                        <p className="text-xs text-gray-500 mb-5">Create a single platform bill/charge for a specific school manually.</p>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Select School *</label>
+                                <select value={customSchoolId} onChange={e => setCustomSchoolId(e.target.value)}
+                                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-500">
+                                    <option value="">-- Select a School --</option>
+                                    {schoolsList.map(s => (
+                                        <option key={s.id} value={s.id}>{s.name} ({s.subscription_tier})</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Billing Month *</label>
+                                    <input type="month" value={customMonth} onChange={e => setCustomMonth(e.target.value)}
+                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-500" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Amount (₹) *</label>
+                                    <input type="number" value={customAmount} onChange={e => setCustomAmount(e.target.value)}
+                                        placeholder="e.g. 5000"
+                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-500" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Description</label>
+                                <input type="text" value={customDescription} onChange={e => setCustomDescription(e.target.value)}
+                                    placeholder="e.g. Setup & Onboarding Fees, Hosting Fee"
+                                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-500" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Due Date (Optional)</label>
+                                <input type="date" value={customDueDate} onChange={e => setCustomDueDate(e.target.value)}
+                                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-500" />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2 mt-6">
+                            <button onClick={() => { setShowCustomModal(false); setCustomSchoolId(''); setCustomAmount(''); setCustomDescription(''); setCustomDueDate(''); }}
+                                className="flex-1 py-3 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold transition-all border border-gray-150 cursor-pointer">
+                                Cancel
+                            </button>
+                            <button onClick={handleCreateCustomCharge} disabled={creatingCustom}
+                                className="flex-1 py-3 bg-gradient-to-r from-violet-500 to-indigo-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl disabled:opacity-50 transition-all text-sm flex items-center justify-center gap-2 cursor-pointer">
+                                {creatingCustom ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                                {creatingCustom ? 'Creating...' : 'Create Charge'}
                             </button>
                         </div>
                     </div>

@@ -147,6 +147,21 @@ export async function GET(request: NextRequest) {
             };
         });
 
+        const invoices = await query<any>(
+            `SELECT * FROM invoices WHERE student_id = $1 ORDER BY due_date DESC`,
+            [studentId]
+        );
+
+        for (const inv of invoices) {
+            inv.items = await query<any>(
+                `SELECT ii.*, fh.name as head_name, fh.category as head_category
+                 FROM invoice_items ii
+                 LEFT JOIN fee_heads fh ON ii.fee_head_id = fh.id
+                 WHERE ii.invoice_id = $1`,
+                [inv.id]
+            );
+        }
+
         const pgConfig = await queryOne<any>(
             `SELECT is_active FROM payment_gateway_config WHERE school_id = $1 AND gateway_type = 'razorpay'`,
             [student.school_id]
@@ -157,6 +172,7 @@ export async function GET(request: NextRequest) {
             student,
             feeStructures: structuresWithSummary,
             payments,
+            invoices,
             onlinePaymentsEnabled,
             schoolConfig: {
                 lateFeeEnabled: !!schoolConfig?.late_fee_enabled,

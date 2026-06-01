@@ -13,11 +13,11 @@ import {
 interface User { id: string; email: string; firstName: string; lastName: string; role: string; }
 
 interface FeeStats {
-    totalStructures: number;
+    totalGroups: number;
     totalCollected: number;
     totalPayments: number;
     todayCollected: number;
-    pendingCount: number;
+    pendingInvoices: number;
     gatewayConfigured: boolean;
 }
 
@@ -27,8 +27,8 @@ export default function FeeHubPage() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState<FeeStats>({
-        totalStructures: 0, totalCollected: 0, totalPayments: 0,
-        todayCollected: 0, pendingCount: 0, gatewayConfigured: false
+        totalGroups: 0, totalCollected: 0, totalPayments: 0,
+        todayCollected: 0, pendingInvoices: 0, gatewayConfigured: false
     });
 
     useEffect(() => {
@@ -44,27 +44,30 @@ export default function FeeHubPage() {
     const fetchStats = async (token: string) => {
         setLoading(true);
         try {
-            const [structRes, payRes, gwRes] = await Promise.all([
-                fetch('/api/fees/structures', { headers: { Authorization: `Bearer ${token}` } }),
+            const [groupRes, payRes, invRes, gwRes] = await Promise.all([
+                fetch('/api/fees/groups', { headers: { Authorization: `Bearer ${token}` } }),
                 fetch('/api/fees/payments', { headers: { Authorization: `Bearer ${token}` } }),
+                fetch('/api/fees/invoices', { headers: { Authorization: `Bearer ${token}` } }).catch(() => null),
                 fetch('/api/settings/payment-gateway', { headers: { Authorization: `Bearer ${token}` } }).catch(() => null),
             ]);
 
-            const structures = structRes.ok ? (await structRes.json()).structures || [] : [];
+            const groups = groupRes.ok ? (await groupRes.json()).groups || [] : [];
             const payments = payRes.ok ? (await payRes.json()).payments || [] : [];
+            const invoices = invRes && invRes.ok ? (await invRes.json()).invoices || [] : [];
             const gatewayData = gwRes && gwRes.ok ? await gwRes.json() : null;
 
             const today = new Date().toISOString().split('T')[0];
             const todayPayments = payments.filter((p: any) => p.payment_date === today);
             const totalCollected = payments.reduce((s: number, p: any) => s + parseFloat(p.amount_paid || '0'), 0);
             const todayCollected = todayPayments.reduce((s: number, p: any) => s + parseFloat(p.amount_paid || '0'), 0);
+            const pendingInvoices = invoices.filter((inv: any) => inv.status === 'unpaid' || inv.status === 'overdue' || inv.status === 'partially_paid').length;
 
             setStats({
-                totalStructures: structures.length,
+                totalGroups: groups.length,
                 totalCollected,
                 totalPayments: payments.length,
                 todayCollected,
-                pendingCount: 0,
+                pendingInvoices,
                 gatewayConfigured: !!gatewayData?.config?.is_active,
             });
         } catch { /* silent */ }
@@ -76,29 +79,34 @@ export default function FeeHubPage() {
     const quickStats = [
         { label: 'Total Collected', value: `₹${stats.totalCollected.toLocaleString('en-IN')}`, icon: <TrendingUp className="w-4 h-4" />, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200' },
         { label: "Today's Collection", value: `₹${stats.todayCollected.toLocaleString('en-IN')}`, icon: <Clock className="w-4 h-4" />, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
-        { label: 'Fee Structures', value: stats.totalStructures.toString(), icon: <FileText className="w-4 h-4" />, color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-200' },
-        { label: 'Total Payments', value: stats.totalPayments.toString(), icon: <Receipt className="w-4 h-4" />, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200' },
+        { label: 'Fee Groups', value: stats.totalGroups.toString(), icon: <FileText className="w-4 h-4" />, color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-200' },
+        { label: 'Pending Invoices', value: stats.pendingInvoices.toString(), icon: <Receipt className="w-4 h-4" />, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200' },
     ];
 
     const managementCards = [
         {
-            title: 'Fee Structures', desc: 'Create & manage class-wise fee types, amounts, and schedules',
-            href: '/manage/fee-structures', icon: <IndianRupee className="w-6 h-6" />,
+            title: 'Fee Heads', desc: 'Define individual fee items: Tuition, Transport, Sports, Mess, Exam',
+            href: '/manage/fee-heads', icon: <IndianRupee className="w-6 h-6" />,
             gradient: 'from-emerald-500 to-teal-600', bg: 'bg-emerald-50', color: 'text-emerald-700', border: 'border-emerald-200',
         },
         {
-            title: 'Collect Fee', desc: 'Search a student and record cash, cheque, or UPI payments',
-            href: '/accountant/dashboard', icon: <CreditCard className="w-6 h-6" />,
-            gradient: 'from-blue-500 to-indigo-600', bg: 'bg-blue-50', color: 'text-blue-700', border: 'border-blue-200',
+            title: 'Fee Groups', desc: 'Bundle fee heads into customizable packages like Day Scholar or Boarder',
+            href: '/manage/fee-groups', icon: <FileText className="w-6 h-6" />,
+            gradient: 'from-indigo-500 to-purple-600', bg: 'bg-indigo-50', color: 'text-indigo-700', border: 'border-indigo-200',
         },
         {
-            title: 'Payment History', desc: 'View all transactions, receipts, and collection reports',
-            href: '/accountant/dashboard', icon: <Receipt className="w-6 h-6" />,
-            gradient: 'from-violet-500 to-purple-600', bg: 'bg-violet-50', color: 'text-violet-700', border: 'border-violet-200',
+            title: 'Assign Groups', desc: 'Assign student batches to fee groups for automatic fee calculations',
+            href: '/manage/student-groups', icon: <Users className="w-6 h-6" />,
+            gradient: 'from-blue-500 to-cyan-600', bg: 'bg-blue-50', color: 'text-blue-700', border: 'border-blue-200',
         },
         {
-            title: 'Fee Reports', desc: 'Download monthly, class-wise, and student-wise fee reports',
-            href: '/accountant/dashboard', icon: <BarChart3 className="w-6 h-6" />,
+            title: 'Invoices & Billing', desc: 'Generate student invoices in bulk or individually and track balances',
+            href: '/manage/invoices', icon: <Receipt className="w-6 h-6" />,
+            gradient: 'from-violet-500 to-fuchsia-600', bg: 'bg-violet-50', color: 'text-violet-700', border: 'border-violet-200',
+        },
+        {
+            title: 'Legacy Fee Structures', desc: 'Manage old single-amount class-wise fee schedules',
+            href: '/manage/fee-structures', icon: <Settings className="w-6 h-6" />,
             gradient: 'from-amber-500 to-orange-600', bg: 'bg-amber-50', color: 'text-amber-700', border: 'border-amber-200',
         },
     ];
@@ -177,7 +185,7 @@ export default function FeeHubPage() {
 
                         {/* Management Cards */}
                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">Fee Operations</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-8">
                             {managementCards.map(card => (
                                 <div key={card.title} onClick={() => router.push(card.href)}
                                     className={`group bg-white border ${card.border} rounded-2xl p-5 cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all overflow-hidden relative`}>

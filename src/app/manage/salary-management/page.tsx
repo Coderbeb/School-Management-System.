@@ -6,7 +6,7 @@ import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { Navbar } from '@/components/ui/Navbar';
 import {
     IndianRupee, ArrowLeft, X, Search, Plus, Trash2, Edit3, Loader2,
-    CheckCircle, Users, CalendarDays, Banknote, ClipboardList, ChevronRight,
+    CheckCircle, Users, CalendarDays, Banknote, ClipboardList, ChevronRight, Receipt, Filter
 } from 'lucide-react';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -54,6 +54,7 @@ export default function SalaryManagementPage() {
 
     // Staff search
     const [staffSearch, setStaffSearch] = useState('');
+    const [staffRoleFilter, setStaffRoleFilter] = useState('');
     const [staffResults, setStaffResults] = useState<StaffMember[]>([]);
     const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
 
@@ -96,7 +97,7 @@ export default function SalaryManagementPage() {
     }, [headers, historyMonth]);
 
     const fetchStaff = useCallback(async () => {
-        try { const r = await fetch('/api/teachers', { headers: headers() }); if (r.ok) { const d = await r.json(); setStaff(d.teachers || []); } } catch { }
+        try { const r = await fetch('/api/manage/staff', { headers: headers() }); if (r.ok) { const d = await r.json(); setStaff(d.staff || []); } } catch { }
     }, [headers]);
 
     useEffect(() => {
@@ -176,11 +177,16 @@ export default function SalaryManagementPage() {
     };
 
     // ── Staff search ──
-    const searchStaff = (term: string) => {
+    const searchStaff = (term: string, role: string = staffRoleFilter) => {
         setStaffSearch(term);
-        if (term.length < 2) { setStaffResults([]); return; }
+        setStaffRoleFilter(role);
+        if (term.length < 2 && !role) { setStaffResults([]); return; }
         const lower = term.toLowerCase();
-        setStaffResults(staff.filter(s => `${s.first_name} ${s.last_name}`.toLowerCase().includes(lower) || s.email?.toLowerCase().includes(lower)).slice(0, 8));
+        setStaffResults(staff.filter(s => {
+            const matchesTerm = !term || `${s.first_name} ${s.last_name}`.toLowerCase().includes(lower) || s.email?.toLowerCase().includes(lower);
+            const matchesRole = !role || s.role === role;
+            return matchesTerm && matchesRole;
+        }).slice(0, 8));
     };
 
     // ── Pay salary ──
@@ -351,12 +357,14 @@ export default function SalaryManagementPage() {
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-lg font-bold text-gray-900">Pay Salary</h2>
                                 <div className="flex items-center gap-3">
+                                    {Object.values(payForm).filter(f => f.checked).length > 1 && (
+                                        <button onClick={handlePayAll} disabled={payingAll} className="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 shadow-sm disabled:opacity-50 flex items-center gap-2 transition-all cursor-pointer">
+                                            {payingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Banknote className="w-4 h-4" />}
+                                            Pay Selected ({Object.values(payForm).filter(f => f.checked).length})
+                                        </button>
+                                    )}
                                     <input type="month" value={payMonth} onChange={e => setPayMonth(e.target.value)}
                                         className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500" />
-                                    <button onClick={handlePayAll} disabled={payingAll || structures.filter(s => s.is_active).length === 0}
-                                        className="px-5 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white text-sm font-bold rounded-xl hover:shadow-lg disabled:opacity-50 transition-all cursor-pointer">
-                                        {payingAll ? <><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Processing...</> : 'Pay All Selected'}
-                                    </button>
                                 </div>
                             </div>
 
@@ -438,6 +446,7 @@ export default function SalaryManagementPage() {
                                             <th className="px-5 py-3">Reference</th>
                                             <th className="px-5 py-3">Date</th>
                                             <th className="px-5 py-3">Status</th>
+                                            <th className="px-5 py-3 w-16"></th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y">
@@ -458,6 +467,14 @@ export default function SalaryManagementPage() {
                                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.status === 'paid' ? 'bg-green-100 text-green-700' : p.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
                                                         {p.status?.toUpperCase()}
                                                     </span>
+                                                </td>
+                                                <td className="px-5 py-3.5">
+                                                    {p.status === 'paid' && (
+                                                        <a href={`/payslip/${p.id}`} target="_blank" rel="noopener noreferrer" 
+                                                           className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 border border-blue-100 text-blue-700 text-[10px] font-bold rounded-lg hover:bg-blue-100 cursor-pointer transition-colors">
+                                                            <Receipt className="w-3 h-3" /> Print
+                                                        </a>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}
@@ -534,17 +551,27 @@ export default function SalaryManagementPage() {
                                         <button onClick={() => { setSelectedStaff(null); setStructureForm(f => ({ ...f, userId: '' })); setStaffSearch(''); }} className="p-1 rounded hover:bg-amber-100 cursor-pointer"><X className="w-4 h-4 text-gray-500" /></button>
                                     </div>
                                 ) : (
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                        <input type="text" placeholder="Search teacher by name..." value={staffSearch} onChange={e => searchStaff(e.target.value)}
-                                            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500" />
+                                    <div className="relative flex flex-col sm:flex-row gap-2">
+                                        <div className="relative flex-1">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                            <input type="text" placeholder="Search staff by name or email..." value={staffSearch} onChange={e => searchStaff(e.target.value)}
+                                                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500" />
+                                        </div>
+                                        <select value={staffRoleFilter} onChange={e => searchStaff(staffSearch, e.target.value)}
+                                            className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 bg-white">
+                                            <option value="">All Roles</option>
+                                            <option value="teacher">Teacher</option>
+                                            <option value="accountant">Accountant</option>
+                                            <option value="admin">Admin</option>
+                                            <option value="librarian">Librarian</option>
+                                        </select>
                                         {staffResults.length > 0 && (
-                                            <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                                            <div className="absolute top-full left-0 z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
                                                 {staffResults.map(s => (
-                                                    <button key={s.id} onClick={() => { setSelectedStaff(s); setStructureForm(f => ({ ...f, userId: s.id })); setStaffResults([]); setStaffSearch(''); }}
-                                                        className="w-full text-left px-4 py-2.5 hover:bg-gray-50 text-sm border-b last:border-b-0 cursor-pointer">
+                                                    <button key={s.id} onClick={() => { setSelectedStaff(s); setStructureForm(f => ({ ...f, userId: s.id, roleTarget: s.role })); setStaffResults([]); setStaffSearch(''); setStaffRoleFilter(''); }}
+                                                        className="w-full text-left px-4 py-2.5 hover:bg-gray-50 text-sm border-b last:border-b-0 cursor-pointer flex justify-between items-center">
                                                         <span className="font-semibold">{s.first_name} {s.last_name}</span>
-                                                        <span className="text-gray-400 ml-2 text-xs">{s.role}</span>
+                                                        <span className="text-gray-400 text-xs capitalize bg-gray-100 px-2 py-0.5 rounded-md">{s.role.replace('_', ' ')}</span>
                                                     </button>
                                                 ))}
                                             </div>

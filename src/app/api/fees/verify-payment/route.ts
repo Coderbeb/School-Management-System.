@@ -70,14 +70,43 @@ export async function POST(request: NextRequest) {
         // 6. Generate a unique receipt number
         const receiptNumber = `REC-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-        // 7. Insert into fee_payments
-        const payment = await queryOne<any>(
-            `INSERT INTO fee_payments
-                (student_id, fee_structure_id, amount_paid, payment_mode, payment_date, receipt_number, payment_status, remarks, razorpay_payment_id, razorpay_order_id, school_id)
-            VALUES ($1, $2, $3, 'online', CURRENT_DATE, $4, 'completed', 'Online payment via Razorpay', $5, $6, $7)
-            RETURNING id, receipt_number, amount_paid, payment_date`,
-            [student.id, order.fee_structure_id, order.amount, receiptNumber, razorpay_payment_id, razorpay_order_id, schoolId]
-        );
+        let payment;
+        if (order.invoice_id) {
+            // Update Invoice paid_amount & status
+            const invoice = await queryOne<any>(
+                `SELECT * FROM invoices WHERE id = $1`, [order.invoice_id]
+            );
+            if (invoice) {
+                const currentPaid = parseFloat(invoice.paid_amount || '0');
+                const totalAmount = parseFloat(invoice.total_amount || '0');
+                const orderAmount = parseFloat(order.amount);
+                const newPaid = currentPaid + orderAmount;
+                const newStatus = newPaid >= totalAmount ? 'paid' : 'partially_paid';
+
+                await query(
+                    `UPDATE invoices SET paid_amount = $2, status = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+                    [order.invoice_id, newPaid, newStatus]
+                );
+            }
+
+            // Insert into fee_payments with invoice_id
+            payment = await queryOne<any>(
+                `INSERT INTO fee_payments
+                    (student_id, invoice_id, amount_paid, payment_mode, payment_date, receipt_number, payment_status, remarks, razorpay_payment_id, razorpay_order_id, school_id)
+                VALUES ($1, $2, $3, 'online', CURRENT_DATE, $4, 'completed', 'Online invoice payment via Razorpay', $5, $6, $7)
+                RETURNING id, receipt_number, amount_paid, payment_date`,
+                [student.id, order.invoice_id, order.amount, receiptNumber, razorpay_payment_id, razorpay_order_id, schoolId]
+            );
+        } else {
+            // Insert into fee_payments with fee_structure_id
+            payment = await queryOne<any>(
+                `INSERT INTO fee_payments
+                    (student_id, fee_structure_id, amount_paid, payment_mode, payment_date, receipt_number, payment_status, remarks, razorpay_payment_id, razorpay_order_id, school_id)
+                VALUES ($1, $2, $3, 'online', CURRENT_DATE, $4, 'completed', 'Online payment via Razorpay', $5, $6, $7)
+                RETURNING id, receipt_number, amount_paid, payment_date`,
+                [student.id, order.fee_structure_id, order.amount, receiptNumber, razorpay_payment_id, razorpay_order_id, schoolId]
+            );
+        }
 
         return NextResponse.json({
             success: true,

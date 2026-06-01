@@ -243,11 +243,19 @@ export default function TeacherSalaryPage() {
                                                             −₹{parseFloat(p.total_deductions).toLocaleString('en-IN')}
                                                         </span>
                                                     </div>
-                                                    <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                                        p.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                                                    }`}>
-                                                        {p.status === 'paid' ? '✓ Paid' : '⏳ Pending'}
-                                                    </span>
+                                                    <div className="flex items-center gap-2 justify-end mt-2">
+                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                                            p.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                                                        }`}>
+                                                            {p.status === 'paid' ? '✓ Paid' : '⏳ Pending'}
+                                                        </span>
+                                                        {p.status === 'paid' && (
+                                                            <a href={`/payslip/${p.id}`} target="_blank" rel="noopener noreferrer" 
+                                                               className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 border border-blue-100 text-blue-700 text-[10px] font-bold rounded-lg hover:bg-blue-100 cursor-pointer transition-colors">
+                                                                <Receipt className="w-3 h-3" /> Payslip
+                                                            </a>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

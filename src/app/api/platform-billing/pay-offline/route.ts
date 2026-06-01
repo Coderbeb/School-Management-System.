@@ -7,7 +7,7 @@ import { requireSchoolAuth } from '@/lib/auth';
  */
 
 export async function POST(request: NextRequest) {
-    const auth = requireSchoolAuth(request, ['super_admin', 'developer']);
+    const auth = requireSchoolAuth(request, ['super_admin', 'accountant', 'developer']);
     if (auth.error) return auth.error;
 
     try {

@@ -1026,6 +1026,147 @@ const MIGRATIONS: { name: string; sql: string }[] = [
             ALTER TABLE schools ADD COLUMN IF NOT EXISTS concession_enabled BOOLEAN DEFAULT false;
         `
     },
+    {
+        name: '015_invoice_ledger_system',
+        sql: `
+            -- 1. FEE HEADS (master list of charge types per school)
+            CREATE TABLE IF NOT EXISTS fee_heads (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                name VARCHAR(100) NOT NULL,
+                category VARCHAR(50) DEFAULT 'academic' CHECK (category IN ('academic', 'transport', 'hostel', 'activity', 'one_time', 'other')),
+                is_taxable BOOLEAN DEFAULT false,
+                tax_rate DECIMAL(5, 2) DEFAULT 0,
+                hsn_code VARCHAR(20),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, name)
+            );
+
+            -- 2. FEE GROUPS (bundles of fee heads per school)
+            CREATE TABLE IF NOT EXISTS fee_groups (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                name VARCHAR(100) NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, name)
+            );
+
+            -- 3. FEE GROUP HEADS (junction table linking heads to groups with specific amount & frequency)
+            CREATE TABLE IF NOT EXISTS fee_group_heads (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                fee_group_id UUID NOT NULL REFERENCES fee_groups(id) ON DELETE CASCADE,
+                fee_head_id UUID NOT NULL REFERENCES fee_heads(id) ON DELETE CASCADE,
+                amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                frequency VARCHAR(30) DEFAULT 'monthly' CHECK (frequency IN ('monthly', 'quarterly', 'half_yearly', 'yearly', 'one_time')),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(fee_group_id, fee_head_id)
+            );
+
+            -- 4. STUDENT FEE GROUPS (assigning students to fee groups for a session)
+            CREATE TABLE IF NOT EXISTS student_fee_groups (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                fee_group_id UUID NOT NULL REFERENCES fee_groups(id) ON DELETE CASCADE,
+                session_id UUID NOT NULL REFERENCES academic_sessions(id) ON DELETE CASCADE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(student_id, fee_group_id, session_id)
+            );
+
+            -- 5. INVOICES
+            CREATE TABLE IF NOT EXISTS invoices (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                session_id UUID NOT NULL REFERENCES academic_sessions(id) ON DELETE CASCADE,
+                invoice_number VARCHAR(50) NOT NULL UNIQUE,
+                due_date DATE NOT NULL,
+                billing_period_start DATE,
+                billing_period_end DATE,
+                subtotal DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                tax_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                discount_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                late_fee_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                total_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                paid_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                status VARCHAR(20) DEFAULT 'unpaid' CHECK (status IN ('unpaid', 'partially_paid', 'paid', 'void', 'overdue')),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- 6. INVOICE ITEMS (individual lines in an invoice)
+            CREATE TABLE IF NOT EXISTS invoice_items (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+                fee_head_id UUID REFERENCES fee_heads(id) ON DELETE SET NULL,
+                name VARCHAR(150) NOT NULL,
+                amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                tax_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                discount_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                total_amount DECIMAL(10, 2) NOT NULL DEFAULT 0
+            );
+
+            -- 7. ALTER fee_payments to link to invoice
+            ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS invoice_id UUID REFERENCES invoices(id) ON DELETE SET NULL;
+
+            -- 8. INDEXES for fast lookups
+            CREATE INDEX IF NOT EXISTS idx_fee_heads_school ON fee_heads(school_id);
+            CREATE INDEX IF NOT EXISTS idx_fee_groups_school ON fee_groups(school_id);
+            CREATE INDEX IF NOT EXISTS idx_invoices_school ON invoices(school_id);
+            CREATE INDEX IF NOT EXISTS idx_invoices_student ON invoices(student_id);
+            CREATE INDEX IF NOT EXISTS idx_invoices_session ON invoices(session_id);
+            CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+            CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice ON invoice_items(invoice_id);
+            CREATE INDEX IF NOT EXISTS idx_fee_payments_invoice ON fee_payments(invoice_id);
+        `
+    },
+    {
+        name: '016_fee_groups_hierarchy',
+        sql: `
+            -- ============================================================
+            -- FEE GROUPS HIERARCHY UPGRADE
+            -- Adds class-range targeting, auto-assignment, and scope control
+            -- to fee_groups for full multi-school fee hierarchy support.
+            -- ============================================================
+
+            -- 1. Target classes: which classes this group applies to (array of class UUIDs)
+            ALTER TABLE fee_groups ADD COLUMN IF NOT EXISTS target_class_ids UUID[] DEFAULT '{}';
+
+            -- 2. Is this a default/mandatory group that auto-assigns on enrollment?
+            ALTER TABLE fee_groups ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT false;
+
+            -- 3. Scope: 'all' = every student, 'specific_classes' = only target classes, 'individual' = manual
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'fee_groups' AND column_name = 'apply_to'
+                ) THEN
+                    ALTER TABLE fee_groups ADD COLUMN apply_to VARCHAR(20) DEFAULT 'individual';
+                    ALTER TABLE fee_groups ADD CONSTRAINT fee_groups_apply_to_check
+                        CHECK (apply_to IN ('all', 'specific_classes', 'individual'));
+                END IF;
+            END $$;
+
+            -- 4. Display order for sorting in UI
+            ALTER TABLE fee_groups ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0;
+
+            -- 5. Active flag to enable/disable without deleting
+            ALTER TABLE fee_groups ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+
+            -- 6. Indexes for efficient queries
+            CREATE INDEX IF NOT EXISTS idx_fee_groups_apply_to ON fee_groups(apply_to);
+            CREATE INDEX IF NOT EXISTS idx_fee_groups_is_default ON fee_groups(is_default);
+            CREATE INDEX IF NOT EXISTS idx_fee_groups_active ON fee_groups(is_active);
+        `
+    },
+    {
+        name: '017_platform_charges_description',
+        sql: `
+            ALTER TABLE platform_charges ADD COLUMN IF NOT EXISTS description TEXT;
+        `
+    },
 ];
 
 

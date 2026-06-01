@@ -47,16 +47,19 @@ export async function POST(request: NextRequest) {
     const schoolId = resolveSchoolId(auth.user, request);
 
     try {
-        const { name, classId, sessionId, amount, dueDate, description, feeType } = await request.json();
+        const { name, classId, sessionId, amount, dueDate, description, feeType,
+                frequency, lateFeePerDay, gracePeriodDays, lateFeeEnabled, concessionAllowed } = await request.json();
 
         if (!name || !amount) {
             return NextResponse.json({ error: 'Name and amount are required' }, { status: 400 });
         }
 
         const structure = await queryOne<any>(
-            `INSERT INTO fee_structures (name, class_id, session_id, amount, due_date, description, fee_type, school_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-            [name, classId || null, sessionId || null, amount, dueDate || null, description || null, feeType || 'tuition', schoolId]
+            `INSERT INTO fee_structures (name, class_id, session_id, amount, due_date, description, fee_type, school_id,
+                frequency, late_fee_per_day, grace_period_days, late_fee_enabled, concession_allowed)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+            [name, classId || null, sessionId || null, amount, dueDate || null, description || null, feeType || 'tuition', schoolId,
+             frequency || 'one_time', lateFeePerDay || 0, gracePeriodDays || 0, lateFeeEnabled || false, concessionAllowed !== false]
         );
 
         return NextResponse.json({ structure }, { status: 201 });
@@ -72,7 +75,8 @@ export async function PUT(request: NextRequest) {
     if (auth.error) return auth.error;
 
     try {
-        const { id, name, classId, amount, dueDate, description, feeType, isActive } = await request.json();
+        const { id, name, classId, amount, dueDate, description, feeType, isActive,
+                frequency, lateFeePerDay, gracePeriodDays, lateFeeEnabled, concessionAllowed } = await request.json();
         if (!id) return NextResponse.json({ error: 'Fee structure ID required' }, { status: 400 });
 
         const updated = await queryOne<any>(
@@ -84,9 +88,15 @@ export async function PUT(request: NextRequest) {
                 description = COALESCE($6, description),
                 fee_type = COALESCE($7, fee_type),
                 is_active = COALESCE($8, is_active),
+                frequency = COALESCE($9, frequency),
+                late_fee_per_day = COALESCE($10, late_fee_per_day),
+                grace_period_days = COALESCE($11, grace_period_days),
+                late_fee_enabled = COALESCE($12, late_fee_enabled),
+                concession_allowed = COALESCE($13, concession_allowed),
                 updated_at = CURRENT_TIMESTAMP
              WHERE id = $1 RETURNING *`,
-            [id, name, classId, amount, dueDate, description, feeType, isActive]
+            [id, name, classId, amount, dueDate, description, feeType, isActive,
+             frequency, lateFeePerDay, gracePeriodDays, lateFeeEnabled, concessionAllowed]
         );
 
         return NextResponse.json({ structure: updated });

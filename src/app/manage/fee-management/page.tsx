@@ -304,6 +304,20 @@ export default function FeeManagementPage() {
 
             <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 mt-16">
 
+                {/* ═══════ Legacy System Banner ═══════ */}
+                <div className="mb-6 p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex items-start gap-3">
+                    <div className="p-2 bg-amber-100 rounded-xl text-amber-600 mt-0.5 flex-shrink-0">
+                        <AlertCircle className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1">
+                        <p className="text-sm font-bold text-amber-900">Legacy Fee System</p>
+                        <p className="text-xs text-amber-700 mt-0.5">This is the old single-amount fee system. For class-range targeting, multi-group assignments, auto-assign, and invoicing, use the <strong>new Fee Hub</strong>.</p>
+                    </div>
+                    <button onClick={() => router.push('/manage/fee-hub')} className="px-4 py-2 bg-amber-600 text-white text-xs font-bold rounded-xl hover:bg-amber-700 transition-colors cursor-pointer whitespace-nowrap">
+                        Open Fee Hub →
+                    </button>
+                </div>
+
                 {/* ═══════ Hero Banner ═══════ */}
                 <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white p-8 mb-8 shadow-xl">
                     <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-green-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-pulse"></div>

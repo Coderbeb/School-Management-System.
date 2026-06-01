@@ -38,7 +38,8 @@ export default function StudentFeesPage() {
     const [loading, setLoading] = useState(true);
     const [feeStructures, setFeeStructures] = useState<FeeItem[]>([]);
     const [payments, setPayments] = useState<PaymentRecord[]>([]);
-    const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview');
+    const [invoices, setInvoices] = useState<any[]>([]);
+    const [activeTab, setActiveTab] = useState<'invoices' | 'overview' | 'history'>('invoices');
     const [onlinePaymentsEnabled, setOnlinePaymentsEnabled] = useState(false);
     const [payingId, setPayingId] = useState<string | null>(null);
     const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -66,6 +67,11 @@ export default function StudentFeesPage() {
                 const data = await res.json();
                 setFeeStructures(data.feeStructures || []);
                 setPayments(data.payments || []);
+                const invs = data.invoices || [];
+                setInvoices(invs);
+                if (invs.length === 0) {
+                    setActiveTab('overview');
+                }
                 setOnlinePaymentsEnabled(data.onlinePaymentsEnabled || false);
                 if (data.schoolConfig) {
                     setSchoolConfig(data.schoolConfig);
@@ -121,6 +127,89 @@ export default function StudentFeesPage() {
                 order_id: orderData.orderId,
                 handler: async function (response: any) {
                     setPayingId(feeStructureId); // Show loading during verification
+                    try {
+                        const verifyRes = await fetch('/api/fees/verify-payment', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify({
+                                razorpay_order_id: response.razorpay_order_id,
+                                razorpay_payment_id: response.razorpay_payment_id,
+                                razorpay_signature: response.razorpay_signature
+                            })
+                        });
+
+                        const verifyData = await verifyRes.json();
+                        if (!verifyRes.ok) throw new Error(verifyData.error || 'Payment verification failed');
+
+                        setPaymentSuccessMessage('✓ Payment completed successfully! Receipt No: ' + verifyData.payment.receipt_number);
+                        fetchFees(token); // Reload fee list
+                    } catch (err: any) {
+                        setPaymentError(err.message || 'Signature verification failed. Please contact admin.');
+                    } finally {
+                        setPayingId(null);
+                    }
+                },
+                prefill: {
+                    name: `${user?.firstName || ''} ${user?.lastName || ''}`,
+                    email: user?.email || '',
+                },
+                theme: {
+                    color: '#059669', // Emerald 600
+                },
+                modal: {
+                    ondismiss: function() {
+                        setPayingId(null);
+                    }
+                }
+            };
+
+            const paymentObject = new (window as any).Razorpay(options);
+            paymentObject.open();
+        } catch (err: any) {
+            setPaymentError(err.message || 'An error occurred during payment');
+            setPayingId(null);
+        }
+    };
+
+    const handlePayInvoiceOnline = async (invoiceId: string) => {
+        setPayingId(invoiceId);
+        setPaymentError(null);
+        setPaymentSuccessMessage(null);
+
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        try {
+            // 1. Create order on backend
+            const orderRes = await fetch('/api/fees/create-order', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ invoiceId })
+            });
+
+            const orderData = await orderRes.json();
+            if (!orderRes.ok) throw new Error(orderData.error || 'Failed to initiate payment');
+
+            // 2. Load Razorpay script
+            const loaded = await loadRazorpay();
+            if (!loaded) throw new Error('Failed to load Razorpay SDK. Please check your internet connection.');
+
+            // 3. Open Razorpay checkout
+            const options = {
+                key: orderData.keyId,
+                amount: orderData.amount,
+                currency: orderData.currency,
+                name: schoolNameLabel(),
+                description: 'Online Invoice Payment',
+                order_id: orderData.orderId,
+                handler: async function (response: any) {
+                    setPayingId(invoiceId); // Show loading during verification
                     try {
                         const verifyRes = await fetch('/api/fees/verify-payment', {
                             method: 'POST',
@@ -228,6 +317,17 @@ export default function StudentFeesPage() {
         return labels[mode] || mode;
     };
 
+    const getStatusStyle = (status: string) => {
+        switch (status) {
+            case 'paid': return 'bg-emerald-50 border-emerald-100 text-emerald-700';
+            case 'partially_paid': return 'bg-blue-50 border-blue-100 text-blue-700';
+            case 'unpaid': return 'bg-amber-50 border-amber-100 text-amber-700';
+            case 'void': return 'bg-gray-100 border-gray-200 text-gray-400';
+            case 'overdue': return 'bg-red-50 border-red-100 text-red-700';
+            default: return 'bg-gray-50 border-gray-100 text-gray-700';
+        }
+    };
+
     return (
         <div className="min-h-screen bg-gray-50 font-sans">
             <MobileSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={handleLogout} />
@@ -302,13 +402,75 @@ export default function StudentFeesPage() {
 
                         {/* Tabs */}
                         <div className="flex gap-1.5 bg-gray-100 p-1 rounded-xl mb-6">
+                            {invoices.length > 0 && (
+                                <button onClick={() => setActiveTab('invoices')} className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'invoices' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+                                    🧾 My Invoices ({invoices.length})
+                                </button>
+                            )}
                             <button onClick={() => setActiveTab('overview')} className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'overview' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
                                 📋 Fee Breakdown
                             </button>
                             <button onClick={() => setActiveTab('history')} className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
-                                🧾 Payment History ({payments.length})
+                                ⏳ Payment History ({payments.length})
                             </button>
                         </div>
+
+                        {/* Invoices List */}
+                        {activeTab === 'invoices' && invoices.length > 0 && (
+                            <div className="space-y-3">
+                                {invoices.map(inv => {
+                                    const total = parseFloat(inv.total_amount);
+                                    const paid = parseFloat(inv.paid_amount || '0');
+                                    const balance = total - paid;
+
+                                    return (
+                                        <div key={inv.id} className={`bg-white border rounded-2xl p-4 transition-all ${inv.status === 'overdue' ? 'border-red-200' : 'border-gray-200'}`}>
+                                            <div className="flex items-start justify-between mb-3 border-b border-gray-100 pb-3">
+                                                <div>
+                                                    <h3 className="font-bold text-gray-900 text-sm">{inv.invoice_number}</h3>
+                                                    <p className="text-xs text-gray-500 mt-0.5">
+                                                        Due Date: {new Date(inv.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    </p>
+                                                </div>
+                                                <span className={`px-2.5 py-1 rounded-full border text-xs font-semibold ${getStatusStyle(inv.status)}`}>
+                                                    {inv.status.replace('_', ' ').toUpperCase()}
+                                                </span>
+                                            </div>
+
+                                            <div className="space-y-2 mb-4">
+                                                {inv.items && inv.items.map((item: any, idx: number) => (
+                                                    <div key={idx} className="flex justify-between text-xs text-gray-600">
+                                                        <span>{item.name}</span>
+                                                        <span>₹{parseFloat(item.total_amount).toLocaleString('en-IN')}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <div className="flex items-center justify-between border-t border-dashed border-gray-100 pt-3">
+                                                <div className="text-left">
+                                                    <p className="text-xs text-gray-400 font-bold uppercase">Balance Due</p>
+                                                    <p className="text-lg font-black text-red-600">₹{balance.toLocaleString('en-IN')}</p>
+                                                </div>
+                                                {balance > 0 && onlinePaymentsEnabled && (
+                                                    <button
+                                                        onClick={() => handlePayInvoiceOnline(inv.id)}
+                                                        disabled={payingId === inv.id}
+                                                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                                                    >
+                                                        {payingId === inv.id ? (
+                                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                        ) : (
+                                                            <CreditCard className="w-3.5 h-3.5" />
+                                                        )}
+                                                        Pay Invoice
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
 
                         {/* Fee Breakdown */}
                         {activeTab === 'overview' && (
@@ -439,6 +601,15 @@ export default function StudentFeesPage() {
                                                                     <Copy className="w-3 h-3 text-gray-400" />
                                                                 )}
                                                             </button>
+                                                            <a
+                                                                href={`/receipt/${p.id}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-md hover:bg-emerald-200 cursor-pointer transition-colors"
+                                                                title="View &amp; print receipt"
+                                                            >
+                                                                <Download className="w-2.5 h-2.5" /> Receipt
+                                                            </a>
                                                         </div>
                                                     </div>
                                                 </div>

@@ -9,7 +9,7 @@ import Razorpay from 'razorpay';
  */
 
 export async function POST(request: NextRequest) {
-    const auth = requireSchoolAuth(request, ['super_admin']);
+    const auth = requireSchoolAuth(request, ['super_admin', 'accountant']);
     if (auth.error) return auth.error;
 
     try {
