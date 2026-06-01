@@ -27,14 +27,28 @@ const MIGRATIONS: { name: string; sql: string }[] = [
                 END IF;
             END $$;
 
-            -- Step 2: Backfill semester from student's current_semester
-            UPDATE attendance_records ar
-            SET semester = s.current_semester
-            FROM students s
-            WHERE ar.student_id = s.id AND ar.semester IS NULL;
+            -- Step 2: Backfill semester from student's current_semester (only if column exists)
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'students' AND column_name = 'current_semester'
+                ) THEN
+                    UPDATE attendance_records ar
+                    SET semester = s.current_semester
+                    FROM students s
+                    WHERE ar.student_id = s.id AND ar.semester IS NULL;
+                ELSE
+                    UPDATE attendance_records SET semester = 1 WHERE semester IS NULL;
+                END IF;
+            END $$;
 
             -- Step 3: Set default for future records
-            ALTER TABLE attendance_records ALTER COLUMN semester SET DEFAULT 1;
+            DO $$
+            BEGIN
+                ALTER TABLE attendance_records ALTER COLUMN semester SET DEFAULT 1;
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END $$;
 
             -- Step 4: Drop old constraint, add new one with semester
             DO $$
@@ -55,24 +69,53 @@ const MIGRATIONS: { name: string; sql: string }[] = [
                     SELECT 1 FROM pg_constraint 
                     WHERE conname = 'attendance_records_unique_with_semester'
                 ) THEN
-                    ALTER TABLE attendance_records 
-                        ADD CONSTRAINT attendance_records_unique_with_semester 
-                        UNIQUE(subject_id, student_id, teacher_id, date, lecture_number, semester);
+                    -- Only add constraint if legacy columns exist
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'attendance_records' AND column_name = 'lecture_number'
+                    ) THEN
+                        ALTER TABLE attendance_records 
+                            ADD CONSTRAINT attendance_records_unique_with_semester 
+                            UNIQUE(subject_id, student_id, teacher_id, date, lecture_number, semester);
+                    END IF;
                 END IF;
             END $$;
 
-            -- Step 5: Add indexes
-            CREATE INDEX IF NOT EXISTS idx_attendance_semester ON attendance_records(semester);
-            CREATE INDEX IF NOT EXISTS idx_attendance_session_count 
-                ON attendance_records(date, subject_id, semester, lecture_number);
+            -- Step 5: Add indexes (safe - only if columns exist)
+            DO $$
+            BEGIN
+                CREATE INDEX IF NOT EXISTS idx_attendance_semester ON attendance_records(semester);
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END $$;
+
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'attendance_records' AND column_name = 'lecture_number'
+                ) THEN
+                    CREATE INDEX IF NOT EXISTS idx_attendance_session_count 
+                        ON attendance_records(date, subject_id, semester, lecture_number);
+                END IF;
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END $$;
         `
     },
     {
         name: '002_holidays_department_id',
         sql: `
             -- Add department_id to holidays for department-specific holidays
-            ALTER TABLE holidays
-            ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE CASCADE;
+            -- Only if departments table exists (legacy college model)
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_name = 'departments' AND table_schema = 'public'
+                ) THEN
+                    ALTER TABLE holidays
+                    ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE CASCADE;
+                END IF;
+            END $$;
 
             -- Drop unique date constraint so multiple departments can have holidays on the same date
             ALTER TABLE holidays
@@ -89,36 +132,44 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     {
         name: '004_class_schedule',
         sql: `
-            -- Class time slots: persists across days (HOD sets once, reused daily)
-            CREATE TABLE IF NOT EXISTS class_time_slots (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
-                slot_number INTEGER NOT NULL CHECK (slot_number >= 1 AND slot_number <= 6),
-                start_time TIME NOT NULL,
-                end_time TIME NOT NULL,
-                updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(department_id, slot_number)
-            );
+            -- Class time slots & daily assignments: Only create if departments table exists (legacy model)
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_name = 'departments' AND table_schema = 'public'
+                ) THEN
+                    CREATE TABLE IF NOT EXISTS class_time_slots (
+                        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                        department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
+                        slot_number INTEGER NOT NULL CHECK (slot_number >= 1 AND slot_number <= 6),
+                        start_time TIME NOT NULL,
+                        end_time TIME NOT NULL,
+                        updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(department_id, slot_number)
+                    );
 
-            -- Daily class assignments: teacher+subject per semester+slot, resets daily
-            CREATE TABLE IF NOT EXISTS daily_class_assignments (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
-                semester INTEGER NOT NULL,
-                slot_number INTEGER NOT NULL CHECK (slot_number >= 1 AND slot_number <= 6),
-                teacher_id UUID REFERENCES users(id) ON DELETE CASCADE,
-                subject_id UUID REFERENCES subjects(id) ON DELETE CASCADE,
-                date DATE NOT NULL DEFAULT CURRENT_DATE,
-                created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(department_id, semester, slot_number, date)
-            );
+                    CREATE TABLE IF NOT EXISTS daily_class_assignments (
+                        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                        department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
+                        semester INTEGER NOT NULL,
+                        slot_number INTEGER NOT NULL CHECK (slot_number >= 1 AND slot_number <= 6),
+                        teacher_id UUID REFERENCES users(id) ON DELETE CASCADE,
+                        subject_id UUID REFERENCES subjects(id) ON DELETE CASCADE,
+                        date DATE NOT NULL DEFAULT CURRENT_DATE,
+                        created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(department_id, semester, slot_number, date)
+                    );
 
-            -- Indexes for fast lookups
-            CREATE INDEX IF NOT EXISTS idx_class_time_slots_dept ON class_time_slots(department_id);
-            CREATE INDEX IF NOT EXISTS idx_daily_assignments_dept_date ON daily_class_assignments(department_id, date);
-            CREATE INDEX IF NOT EXISTS idx_daily_assignments_teacher_date ON daily_class_assignments(teacher_id, date);
+                    CREATE INDEX IF NOT EXISTS idx_class_time_slots_dept ON class_time_slots(department_id);
+                    CREATE INDEX IF NOT EXISTS idx_daily_assignments_dept_date ON daily_class_assignments(department_id, date);
+                    CREATE INDEX IF NOT EXISTS idx_daily_assignments_teacher_date ON daily_class_assignments(teacher_id, date);
+                ELSE
+                    RAISE NOTICE 'Skipping 004_class_schedule: departments table does not exist (school model)';
+                END IF;
+            END $$;
         `
     },
     {
@@ -646,6 +697,17 @@ const MIGRATIONS: { name: string; sql: string }[] = [
                 report_card_layout VARCHAR(50) DEFAULT 'standard',
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
+
+            -- Ensure grading scales exist before seeding board templates (safety net)
+            INSERT INTO grading_scales (id, name, description, is_default)
+            VALUES ('00000000-0000-0000-0000-000000000001', 'CBSE Pattern', 'Standard CBSE 8-point grading scale', true)
+            ON CONFLICT DO NOTHING;
+            INSERT INTO grading_scales (id, name, description)
+            VALUES ('00000000-0000-0000-0000-000000000002', 'Percentage Only', 'No grades, just percentage-based results')
+            ON CONFLICT DO NOTHING;
+            INSERT INTO grading_scales (id, name, description)
+            VALUES ('00000000-0000-0000-0000-000000000003', 'Simple (A-F)', 'Simple 5-grade scale')
+            ON CONFLICT DO NOTHING;
 
             -- Seed board templates
             INSERT INTO school_board_templates (board_type, name, description, grading_scale_id, default_exam_pattern, default_mark_components) VALUES
