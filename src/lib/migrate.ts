@@ -607,7 +607,7 @@ const MIGRATIONS: { name: string; sql: string }[] = [
             -- CBSE Pattern
             INSERT INTO grading_scales (id, name, description, is_default)
             VALUES ('00000000-0000-0000-0000-000000000001', 'CBSE Pattern', 'Standard CBSE 8-point grading scale', true)
-            ON CONFLICT DO NOTHING;
+            ON CONFLICT (id) DO NOTHING;
 
             INSERT INTO grade_definitions (grading_scale_id, grade_name, min_percentage, max_percentage, grade_point, description, display_order)
             VALUES
@@ -624,12 +624,12 @@ const MIGRATIONS: { name: string; sql: string }[] = [
             -- Percentage Only
             INSERT INTO grading_scales (id, name, description)
             VALUES ('00000000-0000-0000-0000-000000000002', 'Percentage Only', 'No grades, just percentage-based results')
-            ON CONFLICT DO NOTHING;
+            ON CONFLICT (id) DO NOTHING;
 
             -- Simple A-F
             INSERT INTO grading_scales (id, name, description)
             VALUES ('00000000-0000-0000-0000-000000000003', 'Simple (A-F)', 'Simple 5-grade scale')
-            ON CONFLICT DO NOTHING;
+            ON CONFLICT (id) DO NOTHING;
 
             INSERT INTO grade_definitions (grading_scale_id, grade_name, min_percentage, max_percentage, grade_point, description, display_order)
             VALUES
@@ -701,13 +701,13 @@ const MIGRATIONS: { name: string; sql: string }[] = [
             -- Ensure grading scales exist before seeding board templates (safety net)
             INSERT INTO grading_scales (id, name, description, is_default)
             VALUES ('00000000-0000-0000-0000-000000000001', 'CBSE Pattern', 'Standard CBSE 8-point grading scale', true)
-            ON CONFLICT DO NOTHING;
+            ON CONFLICT (id) DO NOTHING;
             INSERT INTO grading_scales (id, name, description)
             VALUES ('00000000-0000-0000-0000-000000000002', 'Percentage Only', 'No grades, just percentage-based results')
-            ON CONFLICT DO NOTHING;
+            ON CONFLICT (id) DO NOTHING;
             INSERT INTO grading_scales (id, name, description)
             VALUES ('00000000-0000-0000-0000-000000000003', 'Simple (A-F)', 'Simple 5-grade scale')
-            ON CONFLICT DO NOTHING;
+            ON CONFLICT (id) DO NOTHING;
 
             -- Seed board templates
             INSERT INTO school_board_templates (board_type, name, description, grading_scale_id, default_exam_pattern, default_mark_components) VALUES
