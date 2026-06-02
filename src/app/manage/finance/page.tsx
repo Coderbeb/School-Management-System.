@@ -43,7 +43,17 @@ const HEAD_CATEGORIES = [
 // ═══════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════
+import React, { Suspense } from 'react';
+
 export default function FinanceDashboard() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="w-10 h-10 text-emerald-500 animate-spin" /></div>}>
+            <FinanceDashboardContent />
+        </Suspense>
+    );
+}
+
+function FinanceDashboardContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
