@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
@@ -308,7 +308,7 @@ export default function PlatformSettingsPage() {
                 {loading ? (
                     <div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 text-violet-500 animate-spin" /></div>
                 ) : (
-                    <>
+                    <Fragment>
                         {/* Config Tab */}
                         {activeTab === 'config' && (
                             <div className="space-y-6">
@@ -393,7 +393,9 @@ export default function PlatformSettingsPage() {
                                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                                     {saving ? 'Saving...' : 'Save Configuration'}
                                 </button>
-                               {/* Billing Tab */}
+                            </div>
+                        )}
+                        {/* Billing Tab */}
                         {activeTab === 'billing' && (
                             <div className="space-y-6">
                                 {/* Generate / Custom Charges actions */}
@@ -460,7 +462,7 @@ export default function PlatformSettingsPage() {
                                                         </div>
                                                         <div className="flex items-center gap-1.5">
                                                             {c.status !== 'paid' && (
-                                                                <>
+                                                                <Fragment>
                                                                     <button
                                                                         onClick={() => { setSelectedCharge(c); setShowOfflineModal(true); }}
                                                                         className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
@@ -474,7 +476,7 @@ export default function PlatformSettingsPage() {
                                                                     >
                                                                         <Trash2 className="w-4 h-4" />
                                                                     </button>
-                                                                </>
+                                                                </Fragment>
                                                             )}
                                                         </div>
                                                     </div>
@@ -485,7 +487,7 @@ export default function PlatformSettingsPage() {
                                 </div>
                             </div>
                         )}
-                    </>
+                    </Fragment>
                 )}
             </main>
 
