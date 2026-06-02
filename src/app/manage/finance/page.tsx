@@ -23,7 +23,7 @@ interface Payment { id: string; student_name: string; admission_number: string; 
 interface SalaryStructure { id: string; user_id: string; staff_name: string; staff_email: string; role_target: string; designation: string; base_salary: string; allowances: Record<string, number>; deductions: Record<string, number>; net_salary: string; effective_from: string; is_active: boolean; }
 interface SalaryPayment { id: string; user_id: string; staff_name: string; staff_email: string; month: string; gross_amount: string; deductions_amount: string; net_amount: string; payment_mode: string; payment_date: string; reference_number: string; remarks: string; status: string; designation: string; }
 interface Defaulter { student_name: string; admission_number: string; class_name: string; guardian_phone: string; total_due: string; overdue_days: number; }
-interface PlatformCharge { id: string; billing_month: string; total_amount: string; due_date: string; status: string; description: string; }
+interface PlatformCharge { id: string; billing_month: string; total_amount: string; due_date: string; status: string; description: string; payment_mode?: string; charge_model?: string; payment_date?: string; }
 interface StudentAssignment { student_id: string; first_name: string; last_name: string; admission_number: string; class_name: string; class_id: string; assigned_groups: { fee_group_id: string; fee_group_name: string; assignment_id: string; }[]; estimated_monthly: number; estimated_yearly: number; }
 
 type Section = 'home' | 'collect' | 'reports' | 'fee-setup' | 'salary' | 'settings';
