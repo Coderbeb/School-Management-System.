@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const sqlParams: any[] = [id];
 
         // RBAC: If it's a teacher/staff (not super_admin/admin), they can only see their own payslips
-        if (payload.role !== 'super_admin' && payload.role !== 'admin' && payload.role !== 'accountant') {
+        if (payload.role !== 'super_admin' && payload.role !== 'developer' && payload.role !== 'accountant') {
             sql += ` AND sp.user_id = $2`;
             sqlParams.push(payload.id);
         }
