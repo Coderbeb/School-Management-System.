@@ -111,11 +111,11 @@ export default function NewStudentPage() {
                     <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
                         <SectionHeader icon={<User className="w-4 h-4" />} title="Personal Details" />
                         <div className="grid grid-cols-2 gap-4">
-                            <div><Label>First Name *</Label><Input value={form.firstName} onChange={e => set('firstName', e.target.value)} placeholder="First name" required className="mt-1" /></div>
-                            <div><Label>Last Name *</Label><Input value={form.lastName} onChange={e => set('lastName', e.target.value)} placeholder="Last name" required className="mt-1" /></div>
-                            <div><Label>Date of Birth</Label><Input type="date" value={form.dateOfBirth} onChange={e => set('dateOfBirth', e.target.value)} className="mt-1" /></div>
+                            <div><Label>First Name <span className="text-red-500 ml-0.5">*</span></Label><Input value={form.firstName} onChange={e => set('firstName', e.target.value)} placeholder="First name" required className="mt-1" /></div>
+                            <div><Label>Last Name <span className="text-red-500 ml-0.5">*</span></Label><Input value={form.lastName} onChange={e => set('lastName', e.target.value)} placeholder="Last name" required className="mt-1" /></div>
+                            <div><Label>Date of Birth <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label><Input type="date" value={form.dateOfBirth} onChange={e => set('dateOfBirth', e.target.value)} className="mt-1" /></div>
                             <div>
-                                <Label>Gender</Label>
+                                <Label>Gender <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label>
                                 <select value={form.gender} onChange={e => set('gender', e.target.value)} className="mt-1 w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white">
                                     <option value="">Select Gender</option>
                                     <option value="male">Male</option>
@@ -123,16 +123,16 @@ export default function NewStudentPage() {
                                     <option value="other">Other</option>
                                 </select>
                             </div>
-                            <div><Label>Blood Group</Label>
+                            <div><Label>Blood Group <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label>
                                 <select value={form.bloodGroup} onChange={e => set('bloodGroup', e.target.value)} className="mt-1 w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white">
                                     <option value="">Select</option>
                                     {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(g => <option key={g} value={g}>{g}</option>)}
                                 </select>
                             </div>
-                            <div><Label>Admission Number</Label><Input value={form.admissionNumber} onChange={e => set('admissionNumber', e.target.value)} placeholder="e.g. ADM-2026-001" className="mt-1" /></div>
-                            <div><Label>Admission Date</Label><Input type="date" value={form.admissionDate} onChange={e => set('admissionDate', e.target.value)} className="mt-1" /></div>
+                            <div><Label>Admission Number <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label><Input value={form.admissionNumber} onChange={e => set('admissionNumber', e.target.value)} placeholder="e.g. ADM-2026-001" className="mt-1" /></div>
+                            <div><Label>Admission Date <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label><Input type="date" value={form.admissionDate} onChange={e => set('admissionDate', e.target.value)} className="mt-1" /></div>
                         </div>
-                        <div className="mt-4"><Label>Address</Label><textarea value={form.address} onChange={e => set('address', e.target.value)} placeholder="Full residential address" rows={2} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400" /></div>
+                        <div className="mt-4"><Label>Address <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label><textarea value={form.address} onChange={e => set('address', e.target.value)} placeholder="Full residential address" rows={2} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400" /></div>
                     </div>
 
                     {/* Login Credentials */}
@@ -140,11 +140,11 @@ export default function NewStudentPage() {
                         <SectionHeader icon={<User className="w-4 h-4" />} title="Student Login Credentials" />
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <Label>Student Email (Login Username)</Label>
+                                <Label>Student Email (Login Username) <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label>
                                 <Input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="student@school.com" className="mt-1" />
                             </div>
                             <div>
-                                <Label>Student Password</Label>
+                                <Label>Student Password <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label>
                                 <Input type="text" value={form.password} onChange={e => set('password', e.target.value)} placeholder="Default: Test@1234" className="mt-1" />
                             </div>
                         </div>
@@ -154,16 +154,16 @@ export default function NewStudentPage() {
                     <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
                         <SectionHeader icon={<Phone className="w-4 h-4" />} title="Guardian / Parent Details" />
                         <div className="grid grid-cols-2 gap-4">
-                            <div><Label>Guardian Name</Label><Input value={form.guardianName} onChange={e => set('guardianName', e.target.value)} placeholder="Parent / Guardian name" className="mt-1" /></div>
+                            <div><Label>Guardian Name <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label><Input value={form.guardianName} onChange={e => set('guardianName', e.target.value)} placeholder="Parent / Guardian name" className="mt-1" /></div>
                             <div>
-                                <Label>Relation</Label>
+                                <Label>Relation <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label>
                                 <select value={form.guardianRelation} onChange={e => set('guardianRelation', e.target.value)} className="mt-1 w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white">
                                     {['Father','Mother','Guardian','Grandparent','Uncle','Aunt','Other'].map(r => <option key={r} value={r}>{r}</option>)}
                                 </select>
                             </div>
-                            <div><Label>WhatsApp Number *</Label><Input value={form.guardianPhone} onChange={e => set('guardianPhone', e.target.value)} placeholder="+91 9999999999" required className="mt-1" /></div>
-                            <div><Label>Alternate Phone</Label><Input value={form.guardianPhoneAlt} onChange={e => set('guardianPhoneAlt', e.target.value)} placeholder="Alternate number" className="mt-1" /></div>
-                            <div className="col-span-2"><Label>Guardian Email</Label><Input type="email" value={form.guardianEmail} onChange={e => set('guardianEmail', e.target.value)} placeholder="parent@email.com" className="mt-1" /></div>
+                            <div><Label>WhatsApp Number <span className="text-red-500 ml-0.5">*</span></Label><Input value={form.guardianPhone} onChange={e => set('guardianPhone', e.target.value)} placeholder="+91 9999999999" required className="mt-1" /></div>
+                            <div><Label>Alternate Phone <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label><Input value={form.guardianPhoneAlt} onChange={e => set('guardianPhoneAlt', e.target.value)} placeholder="Alternate number" className="mt-1" /></div>
+                            <div className="col-span-2"><Label>Guardian Email <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label><Input type="email" value={form.guardianEmail} onChange={e => set('guardianEmail', e.target.value)} placeholder="parent@email.com" className="mt-1" /></div>
                         </div>
                     </div>
 
@@ -172,20 +172,20 @@ export default function NewStudentPage() {
                         <SectionHeader icon={<BookOpen className="w-4 h-4" />} title="Class Enrollment" />
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <Label>Academic Session</Label>
+                                <Label>Academic Session <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label>
                                 <select value={form.sessionId} onChange={e => { set('sessionId', e.target.value); set('classSectionId', ''); loadClassSections(e.target.value); }} className="mt-1 w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white">
                                     <option value="">Select Session</option>
                                     {sessions.map(s => <option key={s.id} value={s.id}>{s.name}{s.is_current ? ' (Current)' : ''}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <Label>Class & Section</Label>
+                                <Label>Class & Section <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label>
                                 <select value={form.classSectionId} onChange={e => set('classSectionId', e.target.value)} className="mt-1 w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white" disabled={!form.sessionId}>
                                     <option value="">Select Classroom</option>
                                     {classSections.map(cs => <option key={cs.id} value={cs.id}>{cs.display_name}</option>)}
                                 </select>
                             </div>
-                            <div><Label>Roll Number</Label><Input type="number" value={form.rollNumber} onChange={e => set('rollNumber', e.target.value)} placeholder="Optional" className="mt-1" /></div>
+                            <div><Label>Roll Number <span className="text-xs text-gray-400 font-normal ml-1">(Optional)</span></Label><Input type="number" value={form.rollNumber} onChange={e => set('rollNumber', e.target.value)} placeholder="Optional" className="mt-1" /></div>
                         </div>
                         <p className="text-xs text-gray-400 mt-3">* Enrollment can also be done later from the student&apos;s profile.</p>
                     </div>

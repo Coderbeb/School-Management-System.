@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query, queryOne } from '@/lib/db';
+import { query, queryOne, pool } from '@/lib/db';
 import { requireSchoolAuth, resolveSchoolId, hashPassword } from '@/lib/auth';
 
 // GET: List students — filter by sessionId, classSectionId, or search query (scoped by school)
@@ -109,57 +109,77 @@ export async function POST(request: NextRequest) {
             }, { status: 403 });
         }
 
-        let userId = null;
-        if (email) {
-            const trimmedEmail = email.trim().toLowerCase();
-            const existingUser = await queryOne<{ id: string }>(
-                `SELECT id FROM users WHERE LOWER(email) = LOWER($1)`,
-                [trimmedEmail]
-            );
-            if (existingUser) {
-                return NextResponse.json({ error: 'Email already registered' }, { status: 409 });
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            let userId = null;
+            if (email) {
+                const trimmedEmail = email.trim().toLowerCase();
+                const existingUserRes = await client.query<{ id: string }>(
+                    `SELECT id FROM users WHERE LOWER(email) = LOWER($1)`,
+                    [trimmedEmail]
+                );
+                const existingUser = existingUserRes.rows[0];
+                if (existingUser) {
+                    await client.query('ROLLBACK');
+                    client.release();
+                    return NextResponse.json({ error: 'Email already registered' }, { status: 409 });
+                }
+
+                const plainPassword = password || 'Test@1234';
+                const passHash = await hashPassword(plainPassword);
+
+                const newUserRes = await client.query<{ id: string }>(
+                    `INSERT INTO users (email, password_hash, first_name, last_name, role, is_active, school_id)
+                     VALUES ($1, $2, $3, $4, 'student', true, $5)
+                     RETURNING id`,
+                    [trimmedEmail, passHash, firstName, lastName, schoolId]
+                );
+                const newUser = newUserRes.rows[0];
+                if (newUser) {
+                    userId = newUser.id;
+                }
             }
 
-            const plainPassword = password || 'Test@1234';
-            const passHash = await hashPassword(plainPassword);
-
-            const newUser = await queryOne<{ id: string }>(
-                `INSERT INTO users (email, password_hash, first_name, last_name, role, is_active, school_id)
-                 VALUES ($1, $2, $3, $4, 'student', true, $5)
-                 RETURNING id`,
-                [trimmedEmail, passHash, firstName, lastName, schoolId]
+            // Create student record
+            const studentRes = await client.query<{ id: string }>(
+                `INSERT INTO students (
+                    user_id, first_name, last_name, date_of_birth, gender, blood_group, address, photo_url,
+                    guardian_name, guardian_relation, guardian_phone, guardian_email, guardian_phone_alt,
+                    admission_number, admission_date, is_active, school_id
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,true,$16)
+                RETURNING id`,
+                [userId, firstName, lastName, dateOfBirth || null, gender || null, bloodGroup || null,
+                 address || null, photoUrl || null, guardianName || null, guardianRelation || null,
+                 guardianPhone, guardianEmail || null, guardianPhoneAlt || null,
+                 admissionNumber || null, admissionDate || new Date().toISOString().split('T')[0], schoolId]
             );
-            if (newUser) {
-                userId = newUser.id;
+            const student = studentRes.rows[0];
+
+            if (!student) {
+                await client.query('ROLLBACK');
+                client.release();
+                return NextResponse.json({ error: 'Failed to create student' }, { status: 500 });
             }
+
+            // If class section and session provided, create enrollment
+            if (classSectionId && sessionId) {
+                await client.query(
+                    `INSERT INTO student_enrollments (student_id, class_section_id, session_id, roll_number)
+                     VALUES ($1, $2, $3, $4)`,
+                    [student.id, classSectionId, sessionId, rollNumber || null]
+                );
+            }
+
+            await client.query('COMMIT');
+            client.release();
+            return NextResponse.json({ student }, { status: 201 });
+        } catch (txError) {
+            await client.query('ROLLBACK');
+            client.release();
+            throw txError;
         }
-
-        // Create student record
-        const student = await queryOne<{ id: string }>(
-            `INSERT INTO students (
-                user_id, first_name, last_name, date_of_birth, gender, blood_group, address, photo_url,
-                guardian_name, guardian_relation, guardian_phone, guardian_email, guardian_phone_alt,
-                admission_number, admission_date, is_active, school_id
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,true,$15)
-            RETURNING id`,
-            [userId, firstName, lastName, dateOfBirth || null, gender || null, bloodGroup || null,
-             address || null, photoUrl || null, guardianName || null, guardianRelation || null,
-             guardianPhone, guardianEmail || null, guardianPhoneAlt || null,
-             admissionNumber || null, admissionDate || new Date().toISOString().split('T')[0], schoolId]
-        );
-
-        if (!student) return NextResponse.json({ error: 'Failed to create student' }, { status: 500 });
-
-        // If class section and session provided, create enrollment
-        if (classSectionId && sessionId) {
-            await queryOne(
-                `INSERT INTO student_enrollments (student_id, class_section_id, session_id, roll_number)
-                 VALUES ($1, $2, $3, $4)`,
-                [student.id, classSectionId, sessionId, rollNumber || null]
-            );
-        }
-
-        return NextResponse.json({ student }, { status: 201 });
     } catch (error: any) {
         console.error('POST student error:', error);
         if (error?.code === '23505') return NextResponse.json({ error: 'Admission number already exists' }, { status: 409 });
