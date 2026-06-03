@@ -1251,6 +1251,15 @@ const MIGRATIONS: { name: string; sql: string }[] = [
             CREATE INDEX IF NOT EXISTS idx_fpo_invoice ON fee_payment_orders(invoice_id);
         `
     },
+    {
+        name: '019_fix_platform_config_upsert',
+        sql: `
+            -- platform_config is a singleton table (only 1 row for the entire platform).
+            -- The developer config API uses ON CONFLICT ((true)) to upsert,
+            -- which requires a unique index on the expression (true).
+            CREATE UNIQUE INDEX IF NOT EXISTS platform_config_singleton ON platform_config ((true));
+        `
+    },
 ];
 
 

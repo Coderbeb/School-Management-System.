@@ -12,8 +12,8 @@ import {
 
 interface User { id: string; email: string; firstName: string; lastName: string; role: string; }
 interface PlatformConfig {
-    razorpay_key_id_masked: string;
-    razorpay_key_secret_set: boolean;
+    razorpay_key_id: string | null;
+    razorpay_key_secret: string | null;
     charge_model: string;
     charge_amount: string;
     charge_percentage: string;
@@ -322,21 +322,21 @@ export default function PlatformSettingsPage() {
                                         <div>
                                             <label className="block text-sm font-semibold text-gray-700 mb-1.5">Razorpay Key ID</label>
                                             <input type="text" value={formKeyId} onChange={e => setFormKeyId(e.target.value)}
-                                                placeholder={config?.razorpay_key_id_masked || 'rzp_live_xxxxxxxxxxxx'}
+                                                placeholder={config?.razorpay_key_id || 'rzp_live_xxxxxxxxxxxx'}
                                                 className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 font-mono" />
-                                            {config?.razorpay_key_id_masked && <p className="text-xs text-gray-400 mt-1">Current: {config.razorpay_key_id_masked}</p>}
+                                            {config?.razorpay_key_id && <p className="text-xs text-gray-400 mt-1">Current: {config.razorpay_key_id}</p>}
                                         </div>
                                         <div>
                                             <label className="block text-sm font-semibold text-gray-700 mb-1.5">Razorpay Key Secret</label>
                                             <div className="relative">
                                                 <input type={showSecret ? 'text' : 'password'} value={formKeySecret} onChange={e => setFormKeySecret(e.target.value)}
-                                                    placeholder={config?.razorpay_key_secret_set ? '••••••••••••' : 'Enter your key secret'}
+                                                    placeholder={config?.razorpay_key_secret ? '••••••••••••' : 'Enter your key secret'}
                                                     className="w-full px-4 pr-12 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 font-mono" />
                                                 <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer">
                                                     {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                                 </button>
                                             </div>
-                                            {config?.razorpay_key_secret_set && <p className="text-xs text-emerald-600 mt-1">✓ Secret is saved</p>}
+                                            {config?.razorpay_key_secret && <p className="text-xs text-emerald-600 mt-1">✓ Secret is saved</p>}
                                         </div>
                                     </div>
                                 </div>

@@ -34,36 +34,53 @@ export async function PUT(request: NextRequest) {
             chargeModel, chargeAmount, chargePercentage
         } = await request.json();
 
-        if (!razorpayKeyId || !razorpayKeySecret) {
-            return NextResponse.json({ error: 'Razorpay Key ID and Key Secret are required' }, { status: 400 });
-        }
-
         const validModels = ['monthly_flat', 'per_student', 'per_transaction'];
         if (chargeModel && !validModels.includes(chargeModel)) {
             return NextResponse.json({ error: `Invalid charge model. Must be one of: ${validModels.join(', ')}` }, { status: 400 });
         }
 
-        const config = await queryOne<any>(
-            `INSERT INTO platform_config
-                (id, developer_user_id, razorpay_key_id, razorpay_key_secret,
-                 charge_model, charge_amount, charge_percentage, is_active)
-            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, true)
-            ON CONFLICT ((true)) DO UPDATE SET
-                developer_user_id = $1,
-                razorpay_key_id = $2,
-                razorpay_key_secret = $3,
-                charge_model = COALESCE($4, platform_config.charge_model),
-                charge_amount = COALESCE($5, platform_config.charge_amount),
-                charge_percentage = COALESCE($6, platform_config.charge_percentage),
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING id, developer_user_id,
-                '****' || RIGHT(razorpay_key_id, 4) as razorpay_key_id,
-                '********' as razorpay_key_secret,
-                charge_model, charge_amount, charge_percentage, is_active,
-                created_at, updated_at`,
-            [auth.user.userId, razorpayKeyId, razorpayKeySecret,
-             chargeModel || 'monthly_flat', chargeAmount || 0, chargePercentage || 0]
-        );
+        // Check if a config row already exists
+        const existing = await queryOne<any>(`SELECT id FROM platform_config LIMIT 1`);
+
+        let config;
+        if (existing) {
+            // UPDATE — only overwrite keys if provided, use COALESCE to preserve existing
+            config = await queryOne<any>(
+                `UPDATE platform_config SET
+                    developer_user_id = $1,
+                    razorpay_key_id = COALESCE(NULLIF($2, ''), razorpay_key_id),
+                    razorpay_key_secret = COALESCE(NULLIF($3, ''), razorpay_key_secret),
+                    charge_model = COALESCE($4, charge_model),
+                    charge_amount = COALESCE($5, charge_amount),
+                    charge_percentage = COALESCE($6, charge_percentage),
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING id, developer_user_id,
+                    CASE WHEN razorpay_key_id IS NOT NULL THEN '****' || RIGHT(razorpay_key_id, 4) ELSE NULL END as razorpay_key_id,
+                    CASE WHEN razorpay_key_secret IS NOT NULL THEN '********' ELSE NULL END as razorpay_key_secret,
+                    charge_model, charge_amount, charge_percentage, is_active,
+                    created_at, updated_at`,
+                [auth.user.userId, razorpayKeyId || '', razorpayKeySecret || '',
+                 chargeModel || null, chargeAmount ?? null, chargePercentage ?? null]
+            );
+        } else {
+            // INSERT — first time setup, keys are required
+            if (!razorpayKeyId || !razorpayKeySecret) {
+                return NextResponse.json({ error: 'Razorpay Key ID and Key Secret are required for initial setup' }, { status: 400 });
+            }
+            config = await queryOne<any>(
+                `INSERT INTO platform_config
+                    (developer_user_id, razorpay_key_id, razorpay_key_secret,
+                     charge_model, charge_amount, charge_percentage, is_active)
+                VALUES ($1, $2, $3, $4, $5, $6, true)
+                RETURNING id, developer_user_id,
+                    '****' || RIGHT(razorpay_key_id, 4) as razorpay_key_id,
+                    '********' as razorpay_key_secret,
+                    charge_model, charge_amount, charge_percentage, is_active,
+                    created_at, updated_at`,
+                [auth.user.userId, razorpayKeyId, razorpayKeySecret,
+                 chargeModel || 'monthly_flat', chargeAmount || 0, chargePercentage || 0]
+            );
+        }
 
         return NextResponse.json({ config });
     } catch (error) {
