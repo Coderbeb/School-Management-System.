@@ -135,7 +135,7 @@ export default function FeeManagementPage() {
     }, [headers]);
 
     const fetchGatewayStatus = useCallback(async () => {
-        try { const r = await fetch('/api/settings/payment-gateway', { headers: headers() }); if (r.ok) { const d = await r.json(); setGatewayStatus(d.status || 'not_configured'); } } catch { }
+        try { const r = await fetch('/api/settings/payment-gateway', { headers: headers() }); if (r.ok) { const d = await r.json(); setGatewayStatus(d.config && d.config.is_active ? 'connected' : 'not_configured'); } } catch { }
     }, [headers]);
 
     useEffect(() => {
@@ -673,7 +673,7 @@ export default function FeeManagementPage() {
                                         <p className="text-xs text-gray-500">{gatewayStatus === 'connected' ? 'Connected & Active' : 'Not Configured'}</p>
                                     </div>
                                 </div>
-                                <button onClick={() => router.push('/settings')} className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-sm font-semibold rounded-xl hover:bg-gray-800 transition-colors">
+                                <button onClick={() => router.push('/settings?tab=payment-gateway')} className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-sm font-semibold rounded-xl hover:bg-gray-800 transition-colors cursor-pointer">
                                     <ExternalLink className="w-4 h-4" /> Configure
                                 </button>
                             </div>

@@ -56,6 +56,11 @@ export async function POST(request: NextRequest) {
             .digest('hex');
 
         if (generatedSignature !== razorpay_signature) {
+            // Mark the order as failed
+            await query(
+                `UPDATE fee_payment_orders SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+                [order.id]
+            );
             return NextResponse.json({ error: 'Payment verification failed: signature mismatch' }, { status: 400 });
         }
 
@@ -71,8 +76,9 @@ export async function POST(request: NextRequest) {
         const receiptNumber = `REC-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
         let payment;
+
         if (order.invoice_id) {
-            // Update Invoice paid_amount & status
+            // ── Invoice-based payment ──
             const invoice = await queryOne<any>(
                 `SELECT * FROM invoices WHERE id = $1`, [order.invoice_id]
             );
@@ -89,20 +95,20 @@ export async function POST(request: NextRequest) {
                 );
             }
 
-            // Insert into fee_payments with invoice_id
+            // Insert into fee_payments with invoice_id (fee_structure_id is NULL)
             payment = await queryOne<any>(
                 `INSERT INTO fee_payments
-                    (student_id, invoice_id, amount_paid, payment_mode, payment_date, receipt_number, payment_status, remarks, razorpay_payment_id, razorpay_order_id, school_id)
-                VALUES ($1, $2, $3, 'online', CURRENT_DATE, $4, 'completed', 'Online invoice payment via Razorpay', $5, $6, $7)
+                    (student_id, invoice_id, fee_structure_id, amount_paid, payment_mode, payment_date, receipt_number, payment_status, remarks, razorpay_payment_id, razorpay_order_id, school_id)
+                VALUES ($1, $2, NULL, $3, 'online', CURRENT_DATE, $4, 'completed', 'Online invoice payment via Razorpay', $5, $6, $7)
                 RETURNING id, receipt_number, amount_paid, payment_date`,
                 [student.id, order.invoice_id, order.amount, receiptNumber, razorpay_payment_id, razorpay_order_id, schoolId]
             );
         } else {
-            // Insert into fee_payments with fee_structure_id
+            // ── Fee-structure-based payment ──
             payment = await queryOne<any>(
                 `INSERT INTO fee_payments
-                    (student_id, fee_structure_id, amount_paid, payment_mode, payment_date, receipt_number, payment_status, remarks, razorpay_payment_id, razorpay_order_id, school_id)
-                VALUES ($1, $2, $3, 'online', CURRENT_DATE, $4, 'completed', 'Online payment via Razorpay', $5, $6, $7)
+                    (student_id, fee_structure_id, invoice_id, amount_paid, payment_mode, payment_date, receipt_number, payment_status, remarks, razorpay_payment_id, razorpay_order_id, school_id)
+                VALUES ($1, $2, NULL, $3, 'online', CURRENT_DATE, $4, 'completed', 'Online payment via Razorpay', $5, $6, $7)
                 RETURNING id, receipt_number, amount_paid, payment_date`,
                 [student.id, order.fee_structure_id, order.amount, receiptNumber, razorpay_payment_id, razorpay_order_id, schoolId]
             );

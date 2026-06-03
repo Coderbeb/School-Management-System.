@@ -26,8 +26,8 @@ export async function POST(request: NextRequest) {
         }
 
         let remainingAmount = 0;
-        let dbInsertCol = '';
-        let dbInsertVal: string | null = null;
+        let orderInvoiceId: string | null = null;
+        let orderFeeStructureId: string | null = null;
 
         // 2. Fetch invoice/structure details and calculate remaining amount
         if (invoiceId) {
@@ -42,8 +42,7 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: 'This invoice is already fully paid' }, { status: 400 });
             }
             remainingAmount = parseFloat(invoice.total_amount) - parseFloat(invoice.paid_amount || '0');
-            dbInsertCol = 'invoice_id';
-            dbInsertVal = invoiceId;
+            orderInvoiceId = invoiceId;
         } else {
             const structure = await queryOne<any>(
                 `SELECT * FROM fee_structures WHERE id = $1 AND school_id = $2 AND is_active = true`,
@@ -58,15 +57,14 @@ export async function POST(request: NextRequest) {
             );
             const totalPaid = parseFloat(paidResult?.total_paid || '0');
             remainingAmount = parseFloat(structure.amount) - totalPaid;
-            dbInsertCol = 'fee_structure_id';
-            dbInsertVal = feeStructureId;
+            orderFeeStructureId = feeStructureId;
         }
 
         if (remainingAmount <= 0) {
             return NextResponse.json({ error: 'This fee is already fully paid' }, { status: 400 });
         }
 
-        // 4. Fetch school's payment gateway configuration
+        // 3. Fetch school's payment gateway configuration
         const pgConfig = await queryOne<any>(
             `SELECT key_id, key_secret, is_active FROM payment_gateway_config WHERE school_id = $1 AND gateway_type = 'razorpay'`,
             [schoolId]
@@ -76,7 +74,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Online payments are currently not configured for this school' }, { status: 400 });
         }
 
-        // 5. Initialize Razorpay and create order
+        // 4. Initialize Razorpay and create order
         const razorpay = new Razorpay({
             key_id: pgConfig.key_id,
             key_secret: pgConfig.key_secret
@@ -88,12 +86,12 @@ export async function POST(request: NextRequest) {
             receipt: `rcpt_${student.id.slice(0, 8)}_${Date.now()}`
         });
 
-        // 6. Record order in fee_payment_orders
+        // 5. Record order in fee_payment_orders (with correct nullable columns)
         await query(
             `INSERT INTO fee_payment_orders
-                (student_id, ${dbInsertCol}, school_id, razorpay_order_id, amount, status)
-            VALUES ($1, $2, $3, $4, $5, 'created')`,
-            [student.id, dbInsertVal, schoolId, order.id, remainingAmount]
+                (student_id, fee_structure_id, invoice_id, school_id, razorpay_order_id, amount, status)
+            VALUES ($1, $2, $3, $4, $5, $6, 'created')`,
+            [student.id, orderFeeStructureId, orderInvoiceId, schoolId, order.id, remainingAmount]
         );
 
         return NextResponse.json({

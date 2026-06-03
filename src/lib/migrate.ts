@@ -1229,6 +1229,28 @@ const MIGRATIONS: { name: string; sql: string }[] = [
             ALTER TABLE platform_charges ADD COLUMN IF NOT EXISTS description TEXT;
         `
     },
+    {
+        name: '018_fix_payment_orders_schema',
+        sql: `
+            -- Fix fee_payment_orders: add invoice_id and make fee_structure_id nullable
+            ALTER TABLE fee_payment_orders ADD COLUMN IF NOT EXISTS invoice_id UUID REFERENCES invoices(id) ON DELETE SET NULL;
+
+            -- Make fee_structure_id nullable (it was NOT NULL but invoice payments don't have one)
+            DO $$ BEGIN
+                ALTER TABLE fee_payment_orders ALTER COLUMN fee_structure_id DROP NOT NULL;
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END $$;
+
+            -- Make fee_payments.fee_structure_id nullable (invoice payments use invoice_id instead)
+            DO $$ BEGIN
+                ALTER TABLE fee_payments ALTER COLUMN fee_structure_id DROP NOT NULL;
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END $$;
+
+            -- Index for invoice lookups on orders
+            CREATE INDEX IF NOT EXISTS idx_fpo_invoice ON fee_payment_orders(invoice_id);
+        `
+    },
 ];
 
 

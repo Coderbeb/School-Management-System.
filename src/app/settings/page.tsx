@@ -36,6 +36,7 @@ export default function SettingsPage() {
     const [bankAccountName, setBankAccountName] = useState('');
     const [loadingGateway, setLoadingGateway] = useState(false);
     const [savingGateway, setSavingGateway] = useState(false);
+    const [testingGateway, setTestingGateway] = useState(false);
     const [gatewayMessage, setGatewayMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
 
     // ── School Profile State ──
@@ -320,6 +321,39 @@ export default function SettingsPage() {
             setGatewayMessage({ type: 'error', text: error.message });
         } finally {
             setSavingGateway(false);
+        }
+    };
+
+    // ── Test Razorpay Connection ──
+    const handleTestGateway = async () => {
+        if (!keyId || !keySecret) {
+            setGatewayMessage({ type: 'error', text: 'Please enter both Key ID and Key Secret to test the connection.' });
+            return;
+        }
+        setTestingGateway(true);
+        setGatewayMessage(null);
+        try {
+            const res = await fetch('/api/settings/payment-gateway/test', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ keyId, keySecret })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setGatewayMessage({
+                    type: 'success',
+                    text: `✅ ${data.message} (Mode: ${data.keyType === 'test' ? 'Test/Sandbox' : 'Live/Production'})`
+                });
+            } else {
+                throw new Error(data.error || 'Connection test failed');
+            }
+        } catch (error: any) {
+            setGatewayMessage({ type: 'error', text: error.message });
+        } finally {
+            setTestingGateway(false);
         }
     };
 
@@ -651,8 +685,11 @@ export default function SettingsPage() {
                                         </div>
                                     </div>
 
-                                    <div className="flex justify-end pt-2">
-                                        <button onClick={handleSaveGateway} disabled={savingGateway || !keyId || !keySecret} className="px-6 py-3 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 transition-colors flex items-center gap-2 disabled:bg-gray-300 shadow-md shadow-amber-600/10 cursor-pointer">
+                                    <div className="flex flex-col sm:flex-row justify-end gap-3 pt-2">
+                                        <button onClick={handleTestGateway} disabled={testingGateway || !keyId || !keySecret} className="px-5 py-3 bg-white border-2 border-amber-300 text-amber-700 font-bold rounded-xl hover:bg-amber-50 transition-colors flex items-center justify-center gap-2 disabled:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 cursor-pointer">
+                                            {testingGateway ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />} Test Connection
+                                        </button>
+                                        <button onClick={handleSaveGateway} disabled={savingGateway || !keyId} className="px-6 py-3 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 transition-colors flex items-center justify-center gap-2 disabled:bg-gray-300 shadow-md shadow-amber-600/10 cursor-pointer">
                                             {savingGateway ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />} Save Gateway Config
                                         </button>
                                     </div>
