@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { 
@@ -18,14 +19,23 @@ interface User {
     role: string;
 }
 
-export default function SettingsPage() {
+export function SettingsPageContent() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'automation' | 'payment-gateway'>('profile');
 
+    useEffect(() => {
+        const tab = searchParams?.get('tab');
+        if (tab === 'payment-gateway' || tab === 'security' || tab === 'automation') {
+            setActiveTab(tab);
+        }
+    }, [searchParams]);
+
     // ── Payment Gateway State ──
+    const [savedKeyId, setSavedKeyId] = useState('');
     const [keyId, setKeyId] = useState('');
     const [keySecret, setKeySecret] = useState('');
     const [webhookSecret, setWebhookSecret] = useState('');
@@ -150,7 +160,7 @@ export default function SettingsPage() {
                 if (response.ok) {
                     const data = await response.json();
                     if (data.config) {
-                        setKeyId(data.config.key_id || '');
+                        setSavedKeyId(data.config.key_id || '');
                         setGatewayActive(data.config.is_active || false);
                         setBankName(data.config.bank_name || '');
                         setBankAccountNumber(data.config.bank_account_number || '');
@@ -300,7 +310,7 @@ export default function SettingsPage() {
                     'Authorization': `Bearer ${localStorage.getItem('token')}` 
                 },
                 body: JSON.stringify({
-                    keyId,
+                    keyId: keyId || '',
                     keySecret,
                     webhookSecret,
                     isActive: gatewayActive,
@@ -314,9 +324,18 @@ export default function SettingsPage() {
             if (!res.ok) throw new Error(data.error || 'Failed to save payment gateway settings');
             
             setGatewayMessage({ type: 'success', text: 'Payment gateway configuration saved successfully!' });
-            // clear secrets so they show masked or empty
+            // clear secrets and keys so they show masked or empty
+            setKeyId('');
             setKeySecret('');
             setWebhookSecret('');
+            // Optional: re-fetch to update the masked ID
+            if (user) {
+                const token = localStorage.getItem('token');
+                fetch('/api/settings/payment-gateway', { headers: { 'Authorization': `Bearer ${token}` } })
+                    .then(res => res.json())
+                    .then(d => { if (d.config) setSavedKeyId(d.config.key_id || ''); })
+                    .catch(() => {});
+            }
         } catch (error: any) {
             setGatewayMessage({ type: 'error', text: error.message });
         } finally {
@@ -647,7 +666,8 @@ export default function SettingsPage() {
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
                                                 <label className="block text-xs font-semibold text-gray-600 mb-2">Key ID</label>
-                                                <input type="text" value={keyId} onChange={(e) => setKeyId(e.target.value)} placeholder="rzp_live_xxxxxxxxxxxxxx" className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 transition-colors font-mono" />
+                                                <input type="text" value={keyId} onChange={(e) => setKeyId(e.target.value)} placeholder={savedKeyId || "rzp_live_xxxxxxxxxxxxxx"} className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 transition-colors font-mono" />
+                                                {savedKeyId && <p className="text-xs text-gray-400 mt-1">Current: {savedKeyId}</p>}
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-semibold text-gray-600 mb-2">Key Secret</label>
@@ -689,7 +709,7 @@ export default function SettingsPage() {
                                         <button onClick={handleTestGateway} disabled={testingGateway || !keyId || !keySecret} className="px-5 py-3 bg-white border-2 border-amber-300 text-amber-700 font-bold rounded-xl hover:bg-amber-50 transition-colors flex items-center justify-center gap-2 disabled:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 cursor-pointer">
                                             {testingGateway ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />} Test Connection
                                         </button>
-                                        <button onClick={handleSaveGateway} disabled={savingGateway || !keyId} className="px-6 py-3 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 transition-colors flex items-center justify-center gap-2 disabled:bg-gray-300 shadow-md shadow-amber-600/10 cursor-pointer">
+                                        <button onClick={handleSaveGateway} disabled={savingGateway || (!savedKeyId && !keyId)} className="px-6 py-3 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 transition-colors flex items-center justify-center gap-2 disabled:bg-gray-300 shadow-md shadow-amber-600/10 cursor-pointer">
                                             {savingGateway ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />} Save Gateway Config
                                         </button>
                                     </div>
@@ -701,5 +721,13 @@ export default function SettingsPage() {
 
             </main>
         </div>
+    );
+}
+
+export default function SettingsPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>}>
+            <SettingsPageContent />
+        </Suspense>
     );
 }

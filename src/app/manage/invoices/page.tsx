@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import {
-    Receipt, ArrowLeft, Plus, X, Calendar, Loader2, CheckCircle, AlertTriangle, Search, Info
+    Receipt, ArrowLeft, Plus, X, Calendar, Loader2, CheckCircle, AlertTriangle, Search, Info, Trash2
 } from 'lucide-react';
 
 interface User { id: string; email: string; firstName: string; lastName: string; role: string; }
@@ -172,6 +172,26 @@ export default function InvoicesPage() {
                 fetchInvoices(getToken(), selectedSession, selectedClass, selectedStatus);
             }
         } catch { /* silent */ }
+    };
+
+    const handleDeleteInvoice = async (invoiceId: string) => {
+        if (!confirm('Are you sure you want to permanently delete this invoice? This action cannot be undone.')) return;
+        try {
+            const res = await fetch(`/api/fees/invoices?id=${invoiceId}`, {
+                method: 'DELETE',
+                headers: headers()
+            });
+            if (res.ok) {
+                setMessage({ type: 'success', text: 'Invoice deleted successfully' });
+                setViewInvoice(null);
+                fetchInvoices(getToken(), selectedSession, selectedClass, selectedStatus);
+            } else {
+                const err = await res.json();
+                setMessage({ type: 'error', text: err.error || 'Failed to delete' });
+            }
+        } catch {
+            setMessage({ type: 'error', text: 'Network error' });
+        }
     };
 
     const handleLogout = () => { localStorage.removeItem('token'); localStorage.removeItem('user'); router.replace('/login'); };
@@ -465,6 +485,10 @@ export default function InvoicesPage() {
                                     <button onClick={() => handleUpdateStatus(viewInvoice.id, 'void')}
                                         className="flex-1 py-2.5 bg-gray-100 text-gray-500 font-bold rounded-xl text-xs hover:bg-gray-200 transition-all cursor-pointer">
                                         Void Invoice
+                                    </button>
+                                    <button onClick={() => handleDeleteInvoice(viewInvoice.id)}
+                                        className="py-2.5 px-4 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 transition-all cursor-pointer border border-red-100" title="Delete Invoice">
+                                        <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
                             )}

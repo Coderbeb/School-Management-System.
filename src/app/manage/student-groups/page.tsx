@@ -6,7 +6,7 @@ import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import {
     Users, ArrowLeft, Loader2, CheckCircle, AlertTriangle, X,
-    Zap, IndianRupee, Filter, ChevronDown
+    Zap, IndianRupee, Filter, ChevronDown, Pencil, Save
 } from 'lucide-react';
 
 interface UserData { id: string; email: string; firstName: string; lastName: string; role: string; }
@@ -68,6 +68,10 @@ export default function StudentGroupsPage() {
 
     // Bulk class assign panel
     const [showBulkPanel, setShowBulkPanel] = useState(false);
+
+    // Edit single student
+    const [editStudent, setEditStudent] = useState<StudentAssignment | null>(null);
+    const [editStudentGroups, setEditStudentGroups] = useState<string[]>([]);
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -228,6 +232,45 @@ export default function StudentGroupsPage() {
                 setMessage({ type: 'error', text: err.error || 'Failed to remove' });
             }
         } catch { setMessage({ type: 'error', text: 'Network error' }); }
+        setUpdating(false);
+    };
+
+    const openEditStudent = (student: StudentAssignment) => {
+        setEditStudent(student);
+        setEditStudentGroups(student.assigned_groups?.map(g => g.fee_group_id) || []);
+    };
+
+    const toggleEditStudentGroup = (groupId: string) => {
+        setEditStudentGroups(prev =>
+            prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]
+        );
+    };
+
+    const handleSaveStudentEdit = async () => {
+        if (!editStudent) return;
+        setUpdating(true);
+        setMessage(null);
+        try {
+            const res = await fetch('/api/fees/student-groups', {
+                method: 'PUT',
+                headers: hdrs(),
+                body: JSON.stringify({
+                    studentId: editStudent.student_id,
+                    feeGroupIds: editStudentGroups,
+                    sessionId: selectedSession
+                })
+            });
+            if (res.ok) {
+                setMessage({ type: 'success', text: `Updated groups for ${editStudent.first_name}` });
+                setEditStudent(null);
+                fetchAssignments(getToken(), selectedSession, selectedClass);
+            } else {
+                const err = await res.json();
+                setMessage({ type: 'error', text: err.error || 'Failed to update student groups' });
+            }
+        } catch {
+            setMessage({ type: 'error', text: 'Network error' });
+        }
         setUpdating(false);
     };
 
@@ -445,6 +488,43 @@ export default function StudentGroupsPage() {
                     </div>
                 )}
 
+                {/* ═══════ Edit Student Modal ═══════ */}
+                {editStudent && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl">
+                            <div className="flex items-center justify-between mb-5">
+                                <div>
+                                    <h2 className="text-lg font-bold text-gray-900">Edit Student Groups</h2>
+                                    <p className="text-xs text-gray-500 mt-0.5">{editStudent.first_name} {editStudent.last_name} ({editStudent.admission_number})</p>
+                                </div>
+                                <button onClick={() => setEditStudent(null)} className="p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer"><X className="w-5 h-5 text-gray-400" /></button>
+                            </div>
+
+                            <div className="space-y-3 mb-6 max-h-[50vh] overflow-y-auto pr-2">
+                                {groups.map(g => {
+                                    const isSelected = editStudentGroups.includes(g.id);
+                                    return (
+                                        <div key={g.id} onClick={() => toggleEditStudentGroup(g.id)} className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer select-none ${isSelected ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
+                                            <input type="checkbox" checked={isSelected} readOnly className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-gray-300 pointer-events-none" />
+                                            <div>
+                                                <p className={`font-bold text-sm ${isSelected ? 'text-emerald-900' : 'text-gray-900'}`}>{g.name}</p>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            <div className="flex gap-2 pt-4 border-t border-gray-100">
+                                <button onClick={() => setEditStudent(null)} className="flex-1 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-200 transition-colors cursor-pointer">Cancel</button>
+                                <button onClick={handleSaveStudentEdit} disabled={updating} className="flex-1 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold rounded-xl text-sm shadow-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer">
+                                    {updating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                    {updating ? 'Saving...' : 'Save Changes'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* ═══════ Assignments Table ═══════ */}
                 {loading ? (
                     <div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 text-emerald-500 animate-spin" /></div>
@@ -467,6 +547,7 @@ export default function StudentGroupsPage() {
                                     <th className="p-4">Class</th>
                                     <th className="p-4">Assigned Fee Groups</th>
                                     <th className="p-4 text-right">Est. Yearly</th>
+                                    <th className="p-4 text-center w-16">Action</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -508,6 +589,11 @@ export default function StudentGroupsPage() {
                                             ) : (
                                                 <span className="text-xs text-gray-300">—</span>
                                             )}
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <button onClick={() => openEditStudent(a)} className="p-2 bg-gray-100 hover:bg-emerald-100 text-gray-500 hover:text-emerald-700 rounded-xl transition-colors cursor-pointer" title="Edit Groups">
+                                                <Pencil className="w-4 h-4" />
+                                            </button>
                                         </td>
                                     </tr>
                                 ))}

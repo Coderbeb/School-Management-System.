@@ -218,6 +218,7 @@ export default function FeeManagementPage() {
                 const options = {
                     key: data.keyId, amount: data.amount, currency: data.currency || 'INR',
                     name: 'Platform System Charge', description: 'Platform charge payment', order_id: data.orderId,
+                    prefill: { contact: '+919999999999' },
                     handler: async function (response: any) {
                         await fetch('/api/platform-billing/verify', { method: 'POST', headers: headers(), body: JSON.stringify({ razorpay_order_id: response.razorpay_order_id, razorpay_payment_id: response.razorpay_payment_id, razorpay_signature: response.razorpay_signature }) });
                         fetchPlatformCharges();

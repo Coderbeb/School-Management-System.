@@ -155,6 +155,7 @@ export default function StudentFeesPage() {
                 prefill: {
                     name: `${user?.firstName || ''} ${user?.lastName || ''}`,
                     email: user?.email || '',
+                    contact: '+919999999999', // Fallback to skip contact screen
                 },
                 theme: {
                     color: '#059669', // Emerald 600
@@ -238,6 +239,7 @@ export default function StudentFeesPage() {
                 prefill: {
                     name: `${user?.firstName || ''} ${user?.lastName || ''}`,
                     email: user?.email || '',
+                    contact: '+919999999999', // Fallback to skip contact screen
                 },
                 theme: {
                     color: '#059669', // Emerald 600
@@ -271,8 +273,97 @@ export default function StudentFeesPage() {
         });
     };
 
+    const pendingInvoices = invoices.filter(inv => inv.status !== 'paid' && inv.status !== 'void');
+
+    // Enrich feeStructures based on invoices if invoices exist
+    const enrichedFeeStructures = feeStructures.map(fs => {
+        if (invoices.length === 0) {
+            return fs;
+        }
+
+        let matchedTotalBase = 0;
+        let matchedTotalDiscount = 0;
+        let matchedTotalTax = 0;
+        let matchedTotalItem = 0;
+        let matchedPaidAmount = 0;
+        let hasMatch = false;
+        let isMatchedOverdue = false;
+        let matchedDueDate = fs.due_date;
+
+        invoices.forEach(inv => {
+            if (inv.status === 'void') return;
+
+            const matchingItem = inv.items?.find(
+                (item: any) => item.name.trim().toLowerCase() === fs.name.trim().toLowerCase()
+            );
+
+            if (matchingItem) {
+                hasMatch = true;
+                const itemBase = parseFloat(matchingItem.amount || '0');
+                const itemDiscount = parseFloat(matchingItem.discount_amount || '0');
+                const itemTax = parseFloat(matchingItem.tax_amount || '0');
+                const itemTotal = parseFloat(matchingItem.total_amount || '0');
+                
+                matchedTotalBase += itemBase;
+                matchedTotalDiscount += itemDiscount;
+                matchedTotalTax += itemTax;
+                matchedTotalItem += itemTotal;
+
+                const invoiceTotal = parseFloat(inv.total_amount || '0');
+                const invoicePaid = parseFloat(inv.paid_amount || '0');
+                
+                if (invoiceTotal > 0) {
+                    const ratio = invoicePaid / invoiceTotal;
+                    matchedPaidAmount += itemTotal * ratio;
+                }
+
+                const todayStr = new Date().toISOString().split('T')[0];
+                const isOverdue = inv.status === 'overdue' || (inv.status !== 'paid' && inv.due_date && inv.due_date < todayStr);
+                if (isOverdue) {
+                    isMatchedOverdue = true;
+                }
+                
+                if (inv.due_date) {
+                    matchedDueDate = inv.due_date;
+                }
+            }
+        });
+
+        if (!hasMatch) {
+            // No matching invoice found. Since invoices exist, this fee structure is not active / deleted
+            return {
+                ...fs,
+                amount: '0',
+                totalPaid: 0,
+                remaining: 0,
+                isOverdue: false,
+                invoiceConcessionDiscount: 0,
+                invoiceEffectiveAmount: 0,
+                invoiceOriginalAmount: 0,
+                invoiceLateFee: 0
+            } as any;
+        }
+
+        const remaining = Math.max(0, matchedTotalItem - matchedPaidAmount);
+
+        return {
+            ...fs,
+            amount: (matchedTotalBase + matchedTotalTax).toString(),
+            totalPaid: matchedPaidAmount,
+            remaining,
+            isOverdue: isMatchedOverdue && remaining > 0,
+            due_date: matchedDueDate,
+            invoiceConcessionDiscount: matchedTotalDiscount,
+            invoiceEffectiveAmount: matchedTotalItem,
+            invoiceLateFee: 0
+        } as any;
+    });
+
     // Calculate concession discount for a fee
     const getConcessionDiscount = (fee: FeeItem): number => {
+        if (invoices.length > 0 && 'invoiceConcessionDiscount' in fee) {
+            return (fee as any).invoiceConcessionDiscount;
+        }
         if (!schoolConfig.concession_enabled || !fee.concession) return 0;
         const originalAmount = parseFloat(fee.amount);
         if (fee.concession.discount_type === 'percentage') {
@@ -283,6 +374,9 @@ export default function StudentFeesPage() {
 
     // Calculate late fee for a fee item
     const getLateFee = (fee: FeeItem): number => {
+        if (invoices.length > 0 && 'invoiceLateFee' in fee) {
+            return (fee as any).invoiceLateFee;
+        }
         if (!schoolConfig.late_fee_enabled || !fee.isOverdue || !fee.due_date || fee.remaining <= 0) return 0;
         const gracePeriod = fee.grace_period_days || 0;
         const lateFeePerDay = fee.late_fee_per_day || 0;
@@ -297,20 +391,46 @@ export default function StudentFeesPage() {
     };
 
     const getEffectiveAmount = (fee: FeeItem): number => {
+        if (invoices.length > 0 && 'invoiceEffectiveAmount' in fee) {
+            return (fee as any).invoiceEffectiveAmount;
+        }
         const original = parseFloat(fee.amount);
         const discount = getConcessionDiscount(fee);
         return original - discount;
     };
 
-    const totalFee = feeStructures.reduce((s, f) => s + getEffectiveAmount(f), 0);
-    const totalLateFees = feeStructures.reduce((s, f) => s + getLateFee(f), 0);
-    const totalPaid = feeStructures.reduce((s, f) => s + f.totalPaid, 0);
-    const totalRemaining = feeStructures.reduce((s, f) => {
-        const effective = getEffectiveAmount(f);
-        const remaining = Math.max(0, effective - f.totalPaid);
-        return s + remaining + getLateFee(f);
-    }, 0);
-    const overdueCount = feeStructures.filter(f => f.isOverdue && f.remaining > 0).length;
+    let totalFee = 0;
+    let totalLateFees = 0;
+    let totalPaid = 0;
+    let totalRemaining = 0;
+    let overdueCount = 0;
+
+    if (invoices.length > 0) {
+        invoices.forEach(inv => {
+            if (inv.status === 'void') return;
+            const total = parseFloat(inv.total_amount || '0');
+            const paid = parseFloat(inv.paid_amount || '0');
+            totalFee += total;
+            totalPaid += paid;
+            
+            const todayStr = new Date().toISOString().split('T')[0];
+            const isOverdue = inv.status === 'overdue' || (inv.status !== 'paid' && inv.due_date && inv.due_date < todayStr);
+            if (isOverdue && (total - paid) > 0) {
+                overdueCount++;
+            }
+        });
+        totalRemaining = Math.max(0, totalFee - totalPaid);
+    } else {
+        totalFee = feeStructures.reduce((s, f) => s + getEffectiveAmount(f), 0);
+        totalLateFees = feeStructures.reduce((s, f) => s + getLateFee(f), 0);
+        totalPaid = feeStructures.reduce((s, f) => s + f.totalPaid, 0);
+        totalRemaining = feeStructures.reduce((s, f) => {
+            const effective = getEffectiveAmount(f);
+            const remaining = Math.max(0, effective - f.totalPaid);
+            return s + remaining + getLateFee(f);
+        }, 0);
+        overdueCount = feeStructures.filter(f => f.isOverdue && f.remaining > 0).length;
+    }
 
     const modeLabel = (mode: string) => {
         const labels: Record<string, string> = { cash: '💵 Cash', upi: '📱 UPI', bank_transfer: '🏦 Bank Transfer', cheque: '📝 Cheque', card: '💳 Card', online: '🌐 Online' };
@@ -404,7 +524,7 @@ export default function StudentFeesPage() {
                         <div className="flex gap-1.5 bg-gray-100 p-1 rounded-xl mb-6">
                             {invoices.length > 0 && (
                                 <button onClick={() => setActiveTab('invoices')} className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'invoices' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
-                                    🧾 My Invoices ({invoices.length})
+                                    🧾 My Invoices ({pendingInvoices.length})
                                 </button>
                             )}
                             <button onClick={() => setActiveTab('overview')} className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'overview' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
@@ -418,64 +538,72 @@ export default function StudentFeesPage() {
                         {/* Invoices List */}
                         {activeTab === 'invoices' && invoices.length > 0 && (
                             <div className="space-y-3">
-                                {invoices.map(inv => {
-                                    const total = parseFloat(inv.total_amount);
-                                    const paid = parseFloat(inv.paid_amount || '0');
-                                    const balance = total - paid;
+                                {pendingInvoices.length === 0 ? (
+                                    <div className="text-center py-12 bg-emerald-50 border border-emerald-100 rounded-3xl p-6">
+                                        <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto mb-3 animate-pulse" />
+                                        <p className="text-emerald-800 font-bold text-lg">All Invoices Paid! 🎉</p>
+                                        <p className="text-emerald-600 text-sm mt-1">You have no pending or unpaid invoices. Great job!</p>
+                                    </div>
+                                ) : (
+                                    pendingInvoices.map(inv => {
+                                        const total = parseFloat(inv.total_amount);
+                                        const paid = parseFloat(inv.paid_amount || '0');
+                                        const balance = total - paid;
 
-                                    return (
-                                        <div key={inv.id} className={`bg-white border rounded-2xl p-4 transition-all ${inv.status === 'overdue' ? 'border-red-200' : 'border-gray-200'}`}>
-                                            <div className="flex items-start justify-between mb-3 border-b border-gray-100 pb-3">
-                                                <div>
-                                                    <h3 className="font-bold text-gray-900 text-sm">{inv.invoice_number}</h3>
-                                                    <p className="text-xs text-gray-500 mt-0.5">
-                                                        Due Date: {new Date(inv.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                                    </p>
-                                                </div>
-                                                <span className={`px-2.5 py-1 rounded-full border text-xs font-semibold ${getStatusStyle(inv.status)}`}>
-                                                    {inv.status.replace('_', ' ').toUpperCase()}
-                                                </span>
-                                            </div>
-
-                                            <div className="space-y-2 mb-4">
-                                                {inv.items && inv.items.map((item: any, idx: number) => (
-                                                    <div key={idx} className="flex justify-between text-xs text-gray-600">
-                                                        <span>{item.name}</span>
-                                                        <span>₹{parseFloat(item.total_amount).toLocaleString('en-IN')}</span>
+                                        return (
+                                            <div key={inv.id} className={`bg-white border rounded-2xl p-4 transition-all ${inv.status === 'overdue' ? 'border-red-200' : 'border-gray-200'}`}>
+                                                <div className="flex items-start justify-between mb-3 border-b border-gray-100 pb-3">
+                                                    <div>
+                                                        <h3 className="font-bold text-gray-900 text-sm">{inv.invoice_number}</h3>
+                                                        <p className="text-xs text-gray-500 mt-0.5">
+                                                            Due Date: {new Date(inv.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                        </p>
                                                     </div>
-                                                ))}
-                                            </div>
-
-                                            <div className="flex items-center justify-between border-t border-dashed border-gray-100 pt-3">
-                                                <div className="text-left">
-                                                    <p className="text-xs text-gray-400 font-bold uppercase">Balance Due</p>
-                                                    <p className="text-lg font-black text-red-600">₹{balance.toLocaleString('en-IN')}</p>
+                                                    <span className={`px-2.5 py-1 rounded-full border text-xs font-semibold ${getStatusStyle(inv.status)}`}>
+                                                        {inv.status.replace('_', ' ').toUpperCase()}
+                                                    </span>
                                                 </div>
-                                                {balance > 0 && onlinePaymentsEnabled && (
-                                                    <button
-                                                        onClick={() => handlePayInvoiceOnline(inv.id)}
-                                                        disabled={payingId === inv.id}
-                                                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
-                                                    >
-                                                        {payingId === inv.id ? (
-                                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                        ) : (
-                                                            <CreditCard className="w-3.5 h-3.5" />
-                                                        )}
-                                                        Pay Invoice
-                                                    </button>
-                                                )}
+
+                                                <div className="space-y-2 mb-4">
+                                                    {inv.items && inv.items.map((item: any, idx: number) => (
+                                                        <div key={idx} className="flex justify-between text-xs text-gray-600">
+                                                            <span>{item.name}</span>
+                                                            <span>₹{parseFloat(item.total_amount).toLocaleString('en-IN')}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                <div className="flex items-center justify-between border-t border-dashed border-gray-100 pt-3">
+                                                    <div className="text-left">
+                                                        <p className="text-xs text-gray-400 font-bold uppercase">Balance Due</p>
+                                                        <p className="text-lg font-black text-red-600">₹{balance.toLocaleString('en-IN')}</p>
+                                                    </div>
+                                                    {balance > 0 && onlinePaymentsEnabled && (
+                                                        <button
+                                                            onClick={() => handlePayInvoiceOnline(inv.id)}
+                                                            disabled={payingId === inv.id}
+                                                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                                                        >
+                                                            {payingId === inv.id ? (
+                                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                            ) : (
+                                                                <CreditCard className="w-3.5 h-3.5" />
+                                                            )}
+                                                            Pay Invoice
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    );
-                                })}
+                                        );
+                                    })
+                                )}
                             </div>
                         )}
 
                         {/* Fee Breakdown */}
                         {activeTab === 'overview' && (
                             <div className="space-y-3">
-                                {feeStructures.map(fee => {
+                                {enrichedFeeStructures.map(fee => {
                                     const concessionDiscount = getConcessionDiscount(fee);
                                     const hasConcession = schoolConfig.concession_enabled && concessionDiscount > 0;
                                     const effectiveAmount = getEffectiveAmount(fee);
@@ -495,7 +623,7 @@ export default function StudentFeesPage() {
                                                         )}
                                                     </div>
                                                     <p className="text-xs text-gray-500 mt-0.5">
-                                                        {fee.fee_type.charAt(0).toUpperCase() + fee.fee_type.slice(1)} · {fee.frequency?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Yearly'}
+                                                        {fee.fee_type.charAt(0).toUpperCase() + fee.fee_type.slice(1)} · {fee.frequency?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Yearly'}
                                                         {fee.due_date && ` · Due: ${new Date(fee.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}
                                                     </p>
                                                 </div>

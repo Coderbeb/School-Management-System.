@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
         }
 
         const config = await queryOne<any>(
-            `SELECT late_fee_enabled, concession_enabled FROM schools WHERE id = $1`,
+            `SELECT late_fee_enabled, concession_enabled, auto_invoice_enabled, auto_invoice_day FROM schools WHERE id = $1`,
             [schoolId]
         );
 
@@ -45,16 +45,18 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'schoolId is required' }, { status: 400 });
         }
 
-        const { lateFeeEnabled, concessionEnabled } = await request.json();
+        const { lateFeeEnabled, concessionEnabled, autoInvoiceEnabled, autoInvoiceDay } = await request.json();
 
         const updated = await queryOne<any>(
             `UPDATE schools SET
                 late_fee_enabled = COALESCE($2, late_fee_enabled),
                 concession_enabled = COALESCE($3, concession_enabled),
+                auto_invoice_enabled = COALESCE($4, auto_invoice_enabled),
+                auto_invoice_day = COALESCE($5, auto_invoice_day),
                 updated_at = CURRENT_TIMESTAMP
              WHERE id = $1
-             RETURNING late_fee_enabled, concession_enabled`,
-            [schoolId, lateFeeEnabled, concessionEnabled]
+             RETURNING late_fee_enabled, concession_enabled, auto_invoice_enabled, auto_invoice_day`,
+            [schoolId, lateFeeEnabled, concessionEnabled, autoInvoiceEnabled, autoInvoiceDay]
         );
 
         return NextResponse.json({ config: updated });

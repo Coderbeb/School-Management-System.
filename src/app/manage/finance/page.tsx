@@ -94,7 +94,7 @@ function FinanceDashboardContent() {
     const [payModeFilter, setPayModeFilter] = useState('');
 
     // ── Fee Setup (wizard) ──
-    const [setupStep, setSetupStep] = useState<1 | 2 | 3>(1);
+    const [setupStep, setSetupStep] = useState<1 | 2 | 3 | 4>(1);
     const [setupMsg, setSetupMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     // Head form
     const [showHeadForm, setShowHeadForm] = useState(false);
@@ -148,6 +148,8 @@ function FinanceDashboardContent() {
     const [payrollRoleFilter, setPayrollRoleFilter] = useState<'all' | 'teacher' | 'accountant' | 'super_admin'>('all');
     const [showPlatformOfflineModal, setPlatformOfflineModal] = useState(false);
     const [selectedPlatformCharge, setSelectedPlatformCharge] = useState<PlatformCharge | null>(null);
+    const [editStudent, setEditStudent] = useState<any>(null);
+    const [editStudentGroups, setEditStudentGroups] = useState<string[]>([]);
     const [platformOfflinePaymentMode, setPlatformOfflinePaymentMode] = useState('cash');
     const [platformOfflineReference, setPlatformOfflineReference] = useState('');
     const [platformOfflinePaymentDate, setPlatformOfflinePaymentDate] = useState(new Date().toISOString().split('T')[0]);
@@ -157,9 +159,23 @@ function FinanceDashboardContent() {
     // ── Settings ──
     const [lateFeeEnabled, setLateFeeEnabled] = useState(false);
     const [concessionEnabled, setConcessionEnabled] = useState(false);
+    const [autoInvoiceEnabled, setAutoInvoiceEnabled] = useState(false);
+    const [autoInvoiceDay, setAutoInvoiceDay] = useState(1);
     const [gatewayStatus, setGatewayStatus] = useState('');
     const [savingSettings, setSavingSettings] = useState(false);
     const [settingsMsg, setSettingsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+    // ── Step 4: Invoices ──
+    const [unpaidInvoices, setUnpaidInvoices] = useState<any[]>([]);
+    const [unpaidInvoicesLoading, setUnpaidInvoicesLoading] = useState(false);
+    const [bulkDeleting, setBulkDeleting] = useState(false);
+    const [bulkDeleteTarget, setBulkDeleteTarget] = useState<'all' | 'class' | 'student'>('all');
+    const [bulkDeleteClassId, setBulkDeleteClassId] = useState('');
+    const [bulkDeleteStudentId, setBulkDeleteStudentId] = useState('');
+    const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
+    const [invoiceTypeFilter, setInvoiceTypeFilter] = useState('');
+    const [selectedStudentForInvoices, setSelectedStudentForInvoices] = useState<any | null>(null);
+    const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
 
     // ─── Auth ────────────────────────────────────────────────────
     useEffect(() => {
@@ -216,11 +232,19 @@ function FinanceDashboardContent() {
     }, [hdrs]);
 
     const loadAssignments = useCallback(async (sessId: string, classId: string) => {
-        if (!sessId) return;
         setAssignLoading(true);
-        try { const r = await fetch(`/api/fees/student-groups?sessionId=${sessId}${classId ? `&classId=${classId}` : ''}`, { headers: hdrs() }); if (r.ok) setAssignments((await r.json()).assignments || []); } catch { }
+        try { const r = await fetch(`/api/fees/student-groups?sessionId=${sessId}${classId ? `&classId=${classId}` : ''}`, { headers: hdrs() }); if (r.ok) { const d = await r.json(); setAssignments(d.students || []); setSelectedStudents([]); } } catch { }
         setAssignLoading(false);
     }, [hdrs]);
+
+    const loadUnpaidInvoices = useCallback(async () => {
+        setUnpaidInvoicesLoading(true);
+        try {
+            const r = await fetch(`/api/fees/invoices?status=unpaid&sessionId=${assignSession}`, { headers: hdrs() });
+            if (r.ok) { const d = await r.json(); setUnpaidInvoices(d.invoices || []); }
+        } catch {}
+        setUnpaidInvoicesLoading(false);
+    }, [hdrs, assignSession]);
 
     const loadSalaryData = useCallback(async () => {
         setSalaryLoading(true);
@@ -245,14 +269,15 @@ function FinanceDashboardContent() {
                 fetch('/api/schools/fee-config', { headers: hdrs() }),
                 fetch('/api/settings/payment-gateway', { headers: hdrs() }),
             ]);
-            if (cfgRes.ok) { const d = await cfgRes.json(); setLateFeeEnabled(d.lateFeeEnabled || false); setConcessionEnabled(d.concessionEnabled || false); }
+            if (cfgRes.ok) { const d = await cfgRes.json(); setLateFeeEnabled(d.config?.late_fee_enabled || false); setConcessionEnabled(d.config?.concession_enabled || false); setAutoInvoiceEnabled(d.config?.auto_invoice_enabled || false); setAutoInvoiceDay(d.config?.auto_invoice_day || 1); }
             if (gwRes.ok) { const d = await gwRes.json(); setGatewayStatus(d.status || 'not_configured'); }
         } catch { }
     }, [hdrs]);
 
     useEffect(() => { if (user) loadCore(); }, [user, loadCore]);
     useEffect(() => { if (user && activeSection === 'reports' && reportView === 'defaulters') loadDefaulters(); }, [user, activeSection, reportView, loadDefaulters]);
-    useEffect(() => { if (user && activeSection === 'fee-setup' && setupStep === 3) loadAssignments(assignSession, assignClass); }, [user, activeSection, setupStep, assignSession, assignClass, loadAssignments]);
+    useEffect(() => { if (user && activeSection === 'fee-setup' && (setupStep === 3 || setupStep === 4)) loadAssignments(assignSession, assignClass); }, [user, activeSection, setupStep, assignSession, assignClass, loadAssignments]);
+    useEffect(() => { if (user && activeSection === 'fee-setup' && setupStep === 4) loadUnpaidInvoices(); }, [user, activeSection, setupStep, loadUnpaidInvoices]);
     useEffect(() => { if (user && activeSection === 'salary') loadSalaryData(); }, [user, activeSection, loadSalaryData]);
     useEffect(() => { if (user && activeSection === 'settings') loadSettings(); }, [user, activeSection, loadSettings]);
 
@@ -395,6 +420,27 @@ function FinanceDashboardContent() {
         try { const r = await fetch('/api/fees/student-groups', { method: 'POST', headers: hdrs(), body: JSON.stringify({ studentIds: selectedStudents, feeGroupId: assignGroupId, sessionId: assignSession }) }); if (r.ok) { setSetupMsg({ type: 'success', text: `Assigned to ${selectedStudents.length} students` }); setSelectedStudents([]); setAssignGroupId(''); loadAssignments(assignSession, assignClass); } } catch { }
         setAssigning(false);
     };
+
+    const openEditStudent = (student: any) => {
+        setEditStudent(student);
+        setEditStudentGroups(student.assigned_groups?.map((g: any) => g.fee_group_id) || []);
+    };
+    const toggleEditStudentGroup = (groupId: string) => {
+        setEditStudentGroups(prev => prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]);
+    };
+    const handleSaveStudentEdit = async () => {
+        if (!editStudent) return;
+        setAssigning(true);
+        try {
+            const r = await fetch('/api/fees/student-groups', {
+                method: 'PUT', headers: hdrs(),
+                body: JSON.stringify({ studentId: editStudent.student_id, feeGroupIds: editStudentGroups, sessionId: assignSession })
+            });
+            if (r.ok) { setSetupMsg({ type: 'success', text: `Updated groups for ${editStudent.first_name}` }); setEditStudent(null); loadAssignments(assignSession, assignClass); }
+            else { const e = await r.json(); setSetupMsg({ type: 'error', text: e.error || 'Failed' }); }
+        } catch { setSetupMsg({ type: 'error', text: 'Network error' }); }
+        setAssigning(false);
+    };
     const handleAutoAssign = async () => {
         if (!confirm('Auto-assign default fee groups to all unassigned students?')) return;
         setAssigning(true);
@@ -421,6 +467,81 @@ function FinanceDashboardContent() {
             }
         } catch { setInvoiceMsg({ type: 'error', text: 'Network error' }); }
         setGeneratingInvoices(false);
+    };
+
+    const handleBulkDelete = async () => {
+        if (!assignSession) return;
+        let confirmMsg = 'Are you sure you want to delete all unpaid invoices in this session?';
+        if (bulkDeleteTarget === 'class') {
+            if (!bulkDeleteClassId) {
+                alert('Please select a class first');
+                return;
+            }
+            const className = classes.find(c => c.id === bulkDeleteClassId)?.name || 'selected class';
+            confirmMsg = `Are you sure you want to delete all unpaid invoices for ${className}?`;
+        } else if (bulkDeleteTarget === 'student') {
+            if (!bulkDeleteStudentId) {
+                alert('Please select a student first');
+                return;
+            }
+            const student = assignments.find(a => a.student_id === bulkDeleteStudentId);
+            const studentName = student ? `${student.first_name} ${student.last_name}` : 'selected student';
+            confirmMsg = `Are you sure you want to delete all unpaid invoices for ${studentName}?`;
+        }
+
+        if (!confirm(confirmMsg)) return;
+
+        setBulkDeleting(true);
+        try {
+            let url = `/api/fees/invoices/bulk?sessionId=${assignSession}&target=${bulkDeleteTarget}`;
+            if (bulkDeleteTarget === 'class') url += `&classId=${bulkDeleteClassId}`;
+            if (bulkDeleteTarget === 'student') url += `&studentId=${bulkDeleteStudentId}`;
+
+            const r = await fetch(url, { method: 'DELETE', headers: hdrs() });
+            const data = await r.json();
+            if (r.ok) {
+                setSetupMsg({ type: 'success', text: data.message || 'Successfully deleted unpaid invoices.' });
+                loadUnpaidInvoices();
+            } else {
+                setSetupMsg({ type: 'error', text: data.error || 'Failed to delete invoices' });
+            }
+        } catch {
+            setSetupMsg({ type: 'error', text: 'Network error occurred' });
+        }
+        setBulkDeleting(false);
+    };
+
+    const handleDeleteSingleInvoice = async (invoiceId: string) => {
+        if (!confirm('Are you sure you want to delete this invoice? This action is permanent.')) return;
+        setDeletingInvoiceId(invoiceId);
+        try {
+            const r = await fetch(`/api/fees/invoices?id=${invoiceId}`, { method: 'DELETE', headers: hdrs() });
+            const data = await r.json();
+            if (r.ok) {
+                setSetupMsg({ type: 'success', text: 'Invoice deleted successfully.' });
+                
+                // Update selectedStudentForInvoices state
+                if (selectedStudentForInvoices) {
+                    const updatedInvoices = selectedStudentForInvoices.invoices.filter((inv: any) => inv.id !== invoiceId);
+                    if (updatedInvoices.length === 0) {
+                        setSelectedStudentForInvoices(null);
+                    } else {
+                        const newTotal = updatedInvoices.reduce((s: number, inv: any) => s + parseFloat(inv.total_amount || '0'), 0);
+                        setSelectedStudentForInvoices({
+                            ...selectedStudentForInvoices,
+                            invoices: updatedInvoices,
+                            total_due: newTotal
+                        });
+                    }
+                }
+                loadUnpaidInvoices();
+            } else {
+                setSetupMsg({ type: 'error', text: data.error || 'Failed to delete invoice' });
+            }
+        } catch {
+            setSetupMsg({ type: 'error', text: 'Network error occurred' });
+        }
+        setDeletingInvoiceId(null);
     };
 
     // ─── Salary CRUD ─────────────────────────────────────────────
@@ -517,6 +638,9 @@ function FinanceDashboardContent() {
                 name: 'YSM Developer Platform',
                 description: `System Charges (${charge.billing_month})`,
                 order_id: orderData.orderId,
+                prefill: {
+                    contact: '+919999999999'
+                },
                 handler: async function (response: any) {
                     try {
                         const verifyRes = await fetch('/api/platform-billing/verify', {
@@ -554,7 +678,7 @@ function FinanceDashboardContent() {
     // ─── Settings ────────────────────────────────────────────────
     const saveSettings = async () => {
         setSavingSettings(true); setSettingsMsg(null);
-        try { const r = await fetch('/api/schools/fee-config', { method: 'PUT', headers: hdrs(), body: JSON.stringify({ lateFeeEnabled, concessionEnabled }) }); if (r.ok) setSettingsMsg({ type: 'success', text: 'Saved!' }); else setSettingsMsg({ type: 'error', text: 'Failed' }); } catch { setSettingsMsg({ type: 'error', text: 'Network error' }); }
+        try { const r = await fetch('/api/schools/fee-config', { method: 'PUT', headers: hdrs(), body: JSON.stringify({ lateFeeEnabled, concessionEnabled, autoInvoiceEnabled, autoInvoiceDay: parseInt(autoInvoiceDay.toString()) }) }); if (r.ok) setSettingsMsg({ type: 'success', text: 'Saved!' }); else setSettingsMsg({ type: 'error', text: 'Failed' }); } catch { setSettingsMsg({ type: 'error', text: 'Network error' }); }
         setSavingSettings(false);
     };
 
@@ -964,11 +1088,11 @@ function FinanceDashboardContent() {
 
                         {/* Steps */}
                         <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-2xl p-4">
-                            {([1, 2, 3] as const).map(n => (
-                                <button key={n} onClick={() => setSetupStep(n)}
+                            {([1, 2, 3, 4] as const).map(n => (
+                                <button key={n} onClick={() => { setSetupStep(n); if(n===4) loadUnpaidInvoices(); }}
                                     className={`flex-1 flex items-center gap-2 p-3 rounded-xl text-sm font-semibold cursor-pointer transition-all ${setupStep === n ? 'bg-emerald-600 text-white shadow-md' : setupStep > n ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-50 text-gray-400'}`}>
                                     <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${setupStep === n ? 'bg-white text-emerald-600' : setupStep > n ? 'bg-emerald-200 text-emerald-800' : 'bg-gray-200 text-gray-500'}`}>{n}</span>
-                                    <span className="hidden sm:inline">{n === 1 ? 'Fee Heads' : n === 2 ? 'Fee Groups' : 'Assign Students'}</span>
+                                    <span className="hidden sm:inline">{n === 1 ? 'Fee Heads' : n === 2 ? 'Fee Groups' : n === 3 ? 'Assign Students' : 'Invoices'}</span>
                                 </button>
                             ))}
                         </div>
@@ -1062,7 +1186,7 @@ function FinanceDashboardContent() {
                                 {assignLoading ? <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 text-emerald-500 animate-spin" /></div>
                                 : assignments.length === 0 ? <div className="text-center py-10 border border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">No enrollments found.</div>
                                 : <div className="overflow-x-auto border border-gray-200 rounded-xl"><table className="w-full text-sm text-left">
-                                    <thead><tr className="bg-gray-50 border-b text-gray-500 font-bold text-xs uppercase"><th className="px-4 py-2.5 w-10"><input type="checkbox" checked={selectedStudents.length === assignments.length && assignments.length > 0} onChange={() => setSelectedStudents(selectedStudents.length === assignments.length ? [] : assignments.map(a => a.student_id))} className="accent-emerald-600 cursor-pointer" /></th><th className="px-4 py-2.5">Student</th><th className="px-4 py-2.5">Class</th><th className="px-4 py-2.5">Groups</th><th className="px-4 py-2.5 text-right">Est. Yearly</th></tr></thead>
+                                    <thead><tr className="bg-gray-50 border-b text-gray-500 font-bold text-xs uppercase"><th className="px-4 py-2.5 w-10"><input type="checkbox" checked={selectedStudents.length === assignments.length && assignments.length > 0} onChange={() => setSelectedStudents(selectedStudents.length === assignments.length ? [] : assignments.map(a => a.student_id))} className="accent-emerald-600 cursor-pointer" /></th><th className="px-4 py-2.5">Student</th><th className="px-4 py-2.5">Class</th><th className="px-4 py-2.5">Groups</th><th className="px-4 py-2.5 text-right">Est. Yearly</th><th className="px-4 py-2.5 text-center w-16">Action</th></tr></thead>
                                     <tbody className="divide-y divide-gray-50">{assignments.map(a => (
                                         <tr key={a.student_id} className="hover:bg-gray-50/50">
                                             <td className="px-4 py-2.5"><input type="checkbox" checked={selectedStudents.includes(a.student_id)} onChange={() => setSelectedStudents(prev => prev.includes(a.student_id) ? prev.filter(id => id !== a.student_id) : [...prev, a.student_id])} className="accent-emerald-600 cursor-pointer" /></td>
@@ -1070,60 +1194,426 @@ function FinanceDashboardContent() {
                                             <td className="px-4 py-2.5 text-xs text-gray-600">{a.class_name}</td>
                                             <td className="px-4 py-2.5">{a.assigned_groups?.length > 0 ? <div className="flex flex-wrap gap-1">{a.assigned_groups.map(g => <span key={g.fee_group_id} className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 text-[10px] font-semibold">{g.fee_group_name}</span>)}</div> : <span className="text-xs text-gray-400 italic">None</span>}</td>
                                             <td className="px-4 py-2.5 text-right font-bold text-gray-900">₹{a.estimated_yearly.toLocaleString('en-IN')}</td>
+                                            <td className="px-4 py-2.5 text-center">
+                                                <button onClick={() => openEditStudent(a)} className="p-1.5 bg-gray-100 hover:bg-emerald-100 text-gray-500 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer" title="Edit Groups">
+                                                    <Pencil className="w-4 h-4" />
+                                                </button>
+                                            </td>
                                         </tr>
                                     ))}</tbody>
                                 </table></div>}
                                 <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
                                     <button onClick={() => setSetupStep(2)} className="px-5 py-2 text-gray-500 font-semibold text-sm cursor-pointer">← Back to Groups</button>
-                                    <button onClick={() => setShowInvoiceForm(f => !f)} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-bold rounded-xl text-sm cursor-pointer hover:bg-blue-700 transition-colors">
-                                        <FileCheck className="w-4 h-4" />{showInvoiceForm ? 'Hide' : 'Generate Invoices'}
-                                    </button>
+                                    <button onClick={() => { setSetupStep(4); loadUnpaidInvoices(); }} className="px-6 py-2.5 bg-emerald-600 text-white font-bold rounded-xl text-sm cursor-pointer hover:bg-emerald-700">Next: Invoices →</button>
                                 </div>
                             </div>
                         )}
 
-                        {/* Generate Invoices Card */}
-                        {showInvoiceForm && (
-                            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl p-5">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="p-2.5 bg-blue-600 text-white rounded-xl"><FileCheck className="w-5 h-5" /></div>
-                                    <div><h3 className="font-bold text-gray-900">Generate Invoices</h3><p className="text-xs text-gray-500">Create billing invoices for students who have fee groups assigned</p></div>
-                                </div>
-                                {invoiceMsg && (
-                                    <div className={`p-3 rounded-xl flex items-center gap-2 text-sm mb-4 ${invoiceMsg.type === 'error' ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-emerald-50 border border-emerald-200 text-emerald-700'}`}>
-                                        {invoiceMsg.type === 'error' ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />} {invoiceMsg.text}
-                                        <button onClick={() => setInvoiceMsg(null)} className="ml-auto cursor-pointer"><X className="w-4 h-4" /></button>
+                        {/* Edit Student Modal */}
+                        {editStudent && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                                <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl">
+                                    <div className="flex items-center justify-between mb-5">
+                                        <div>
+                                            <h2 className="text-lg font-bold text-gray-900">Edit Student Groups</h2>
+                                            <p className="text-xs text-gray-500 mt-0.5">{editStudent.first_name} {editStudent.last_name} ({editStudent.admission_number})</p>
+                                        </div>
+                                        <button onClick={() => setEditStudent(null)} className="p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer"><X className="w-5 h-5 text-gray-400" /></button>
                                     </div>
-                                )}
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1.5">Session</label>
-                                        <select value={assignSession} onChange={e => setAssignSession(e.target.value)} className="w-full px-3 py-2.5 border border-blue-200 rounded-xl text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500">
-                                            {sessions.map(s => <option key={s.id} value={s.id}>{s.name}{s.is_current ? ' (Current)' : ''}</option>)}
-                                        </select>
+
+                                    <div className="space-y-3 mb-6 max-h-[50vh] overflow-y-auto pr-2">
+                                        {feeGroups.map(g => {
+                                            const isSelected = editStudentGroups.includes(g.id);
+                                            return (
+                                                <div key={g.id} onClick={() => toggleEditStudentGroup(g.id)} className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer select-none ${isSelected ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
+                                                    <input type="checkbox" checked={isSelected} readOnly className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-gray-300 pointer-events-none" />
+                                                    <div>
+                                                        <p className={`font-bold text-sm ${isSelected ? 'text-emerald-900' : 'text-gray-900'}`}>{g.name}</p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1.5">Class (optional)</label>
-                                        <select value={invoiceClassFilter} onChange={e => setInvoiceClassFilter(e.target.value)} className="w-full px-3 py-2.5 border border-blue-200 rounded-xl text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500">
-                                            <option value="">All Classes</option>
-                                            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                        </select>
+
+                                    <div className="flex gap-2 pt-4 border-t border-gray-100">
+                                        <button onClick={() => setEditStudent(null)} className="flex-1 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-200 transition-colors cursor-pointer">Cancel</button>
+                                        <button onClick={handleSaveStudentEdit} disabled={assigning} className="flex-1 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold rounded-xl text-sm shadow-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer">
+                                            {assigning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                            {assigning ? 'Saving...' : 'Save Changes'}
+                                        </button>
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1.5">Due Date *</label>
-                                        <input type="date" value={invoiceDueDate} onChange={e => setInvoiceDueDate(e.target.value)}
-                                            className="w-full px-3 py-2.5 border border-blue-200 rounded-xl text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500" />
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <button onClick={handleGenerateInvoices} disabled={generatingInvoices || !assignSession || !invoiceDueDate}
-                                        className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-bold rounded-xl text-sm cursor-pointer hover:bg-blue-700 disabled:opacity-50 transition-all">
-                                        {generatingInvoices ? <><Loader2 className="w-4 h-4 animate-spin" />Generating...</> : <><FileCheck className="w-4 h-4" />Generate Invoices</>}
-                                    </button>
-                                    <p className="text-xs text-gray-500">This creates unpaid invoices based on assigned fee groups. Students can then pay online or you can collect manually.</p>
                                 </div>
                             </div>
                         )}
+
+                        {/* Step 4: Invoice Management & Automation */}
+                        {setupStep === 4 && (() => {
+                            // Helper to group invoices by student
+                            const groupedInvoicesMap: Record<string, {
+                                student_id: string;
+                                student_name: string;
+                                admission_number: string;
+                                class_name: string;
+                                section_name: string;
+                                invoices: any[];
+                                total_due: number;
+                            }> = {};
+
+                            unpaidInvoices.forEach(inv => {
+                                const sid = inv.student_id;
+                                if (!groupedInvoicesMap[sid]) {
+                                    groupedInvoicesMap[sid] = {
+                                        student_id: sid,
+                                        student_name: inv.student_name || 'Unknown Student',
+                                        admission_number: inv.admission_number || '—',
+                                        class_name: inv.class_name || '—',
+                                        section_name: inv.section_name || '—',
+                                        invoices: [],
+                                        total_due: 0
+                                    };
+                                }
+                                groupedInvoicesMap[sid].invoices.push(inv);
+                                groupedInvoicesMap[sid].total_due += parseFloat(inv.total_amount || '0');
+                            });
+
+                            let groupedList = Object.values(groupedInvoicesMap);
+
+                            // Dynamically collect unique fee head items present in the unpaid invoices for filters
+                            const feeHeadFilterOptionsMap: Record<string, string> = {};
+                            unpaidInvoices.forEach(inv => {
+                                inv.items?.forEach((item: any) => {
+                                    if (item.fee_head_id) {
+                                        feeHeadFilterOptionsMap[item.fee_head_id] = item.head_name || item.name || 'Unnamed Item';
+                                    }
+                                });
+                            });
+                            const feeHeadFilterOptions = Object.entries(feeHeadFilterOptionsMap).map(([id, name]) => ({ id, name }));
+
+                            // Apply search filter
+                            if (invoiceSearchQuery) {
+                                const q = invoiceSearchQuery.toLowerCase();
+                                groupedList = groupedList.filter(s =>
+                                    s.student_name.toLowerCase().includes(q) ||
+                                    s.admission_number.toLowerCase().includes(q)
+                                );
+                            }
+
+                            // Apply fee head filter
+                            if (invoiceTypeFilter) {
+                                groupedList = groupedList.filter(s =>
+                                    s.invoices.some(inv =>
+                                        inv.items?.some((item: any) => item.fee_head_id === invoiceTypeFilter)
+                                    )
+                                );
+                            }
+
+                            return (
+                                <div className="space-y-6 animate-fadeIn">
+                                    {/* Top Control Grid: Automation & Manual Gen */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                        {/* Generate Invoices Card */}
+                                        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
+                                            <div>
+                                                <div className="flex items-center gap-3 mb-4">
+                                                    <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><FileCheck className="w-5 h-5" /></div>
+                                                    <div>
+                                                        <h3 className="font-extrabold text-slate-800 text-base">Generate Invoices</h3>
+                                                        <p className="text-xs text-slate-500 mt-0.5">Create billing invoices for students based on assigned fee groups</p>
+                                                    </div>
+                                                </div>
+                                                {invoiceMsg && (
+                                                    <div className={`p-3.5 rounded-2xl flex items-center gap-2.5 text-xs mb-4 ${invoiceMsg.type === 'error' ? 'bg-rose-50 border border-rose-200 text-rose-700' : 'bg-emerald-50 border border-emerald-200 text-emerald-700'}`}>
+                                                        {invoiceMsg.type === 'error' ? <AlertTriangle className="w-4 h-4 shrink-0" /> : <CheckCircle className="w-4 h-4 shrink-0" />}
+                                                        <span className="flex-1 font-semibold">{invoiceMsg.text}</span>
+                                                        <button onClick={() => setInvoiceMsg(null)} className="cursor-pointer text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+                                                    </div>
+                                                )}
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                                                    <div>
+                                                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Session</label>
+                                                        <select value={assignSession} onChange={e => { setAssignSession(e.target.value); loadUnpaidInvoices(); }} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50 font-semibold outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all">
+                                                            {sessions.map(s => <option key={s.id} value={s.id}>{s.name}{s.is_current ? ' (Current)' : ''}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Class (Optional)</label>
+                                                        <select value={invoiceClassFilter} onChange={e => setInvoiceClassFilter(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50 font-semibold outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all">
+                                                            <option value="">All Classes</option>
+                                                            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Due Date *</label>
+                                                        <input type="date" value={invoiceDueDate} onChange={e => setInvoiceDueDate(e.target.value)}
+                                                            className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50 font-semibold outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col sm:flex-row items-center gap-3 pt-3 border-t border-slate-100 mt-2">
+                                                <button onClick={() => { handleGenerateInvoices().then(() => loadUnpaidInvoices()); }} disabled={generatingInvoices || !assignSession || !invoiceDueDate}
+                                                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs disabled:opacity-50 cursor-pointer transition-all shadow-md shadow-blue-500/10">
+                                                    {generatingInvoices ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Generating...</> : <><FileCheck className="w-3.5 h-3.5" />Generate Invoices</>}
+                                                </button>
+                                                <p className="text-[10px] text-slate-400">Generates monthly invoices based on assigned fee packages.</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Invoice Automation Card */}
+                                        {isAdmin && (
+                                            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between border-l-4 border-l-emerald-500">
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl"><Clock className="w-5 h-5" /></div>
+                                                            <div>
+                                                                <h3 className="font-extrabold text-slate-800 text-base">Invoice Automation</h3>
+                                                                <p className="text-xs text-slate-500 mt-0.5">Automatically generate invoices every month on a set day</p>
+                                                            </div>
+                                                        </div>
+                                                        <button onClick={() => setAutoInvoiceEnabled(v => !v)} className="cursor-pointer transition-transform hover:scale-105 active:scale-95">{autoInvoiceEnabled ? <ToggleRight className="w-9 h-9 text-emerald-500" /> : <ToggleLeft className="w-9 h-9 text-slate-300" />}</button>
+                                                    </div>
+
+                                                    <div className="space-y-3 mt-4">
+                                                        {autoInvoiceEnabled ? (
+                                                            <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
+                                                                <span className="text-xs font-semibold text-slate-700">Billing Day of the Month</span>
+                                                                <select value={autoInvoiceDay} onChange={e => setAutoInvoiceDay(parseInt(e.target.value))} className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs bg-white font-bold outline-none focus:ring-2 focus:ring-emerald-500 font-semibold">
+                                                                    {Array.from({ length: 28 }, (_, i) => i + 1).map(day => (
+                                                                        <option key={day} value={day}>{day}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-center text-xs text-slate-400 font-medium">
+                                                                Auto-generation is disabled. Enable it to run monthly billing automatically.
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="pt-3 border-t border-slate-100 mt-4">
+                                                    <button onClick={saveSettings} disabled={savingSettings} className="w-full py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2 shadow-sm transition-all">
+                                                        {savingSettings ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                                                        {savingSettings ? 'Saving...' : 'Save Automation Config'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Grouped Balances Dashboard Table */}
+                                    <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+                                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-100">
+                                            <div>
+                                                <h3 className="font-extrabold text-slate-800 text-base flex items-center gap-2">
+                                                    <Users className="w-5 h-5 text-slate-400" /> Grouped Unpaid Balances ({groupedList.length} Students)
+                                                </h3>
+                                                <p className="text-xs text-slate-500 mt-0.5">Summary of outstanding fees grouped by student</p>
+                                            </div>
+                                            {/* Filters and search */}
+                                            <div className="flex flex-wrap items-center gap-3">
+                                                <div className="relative min-w-[200px] flex-1 sm:flex-initial">
+                                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                                    <input type="text" placeholder="Search student name..." value={invoiceSearchQuery} onChange={e => setInvoiceSearchQuery(e.target.value)}
+                                                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/50 hover:bg-slate-50 focus:bg-white font-semibold transition-all" />
+                                                </div>
+                                                
+                                                <select value={invoiceTypeFilter} onChange={e => setInvoiceTypeFilter(e.target.value)}
+                                                    className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50/50 hover:bg-slate-50 focus:bg-white font-semibold outline-none focus:ring-2 focus:ring-blue-500 min-w-[150px] transition-all">
+                                                    <option value="">All Invoice Types</option>
+                                                    {feeHeadFilterOptions.map(h => (
+                                                        <option key={h.id} value={h.id}>{h.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="overflow-x-auto border border-slate-100 rounded-2xl">
+                                            {unpaidInvoicesLoading ? (
+                                                <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>
+                                            ) : groupedList.length === 0 ? (
+                                                <div className="text-center py-12 text-slate-400 font-medium text-xs">No unpaid balances found matching filters.</div>
+                                            ) : (
+                                                <table className="w-full text-sm text-left">
+                                                    <thead>
+                                                        <tr className="bg-slate-50 border-b border-slate-100 text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">
+                                                            <th className="px-5 py-3">Student Details</th>
+                                                            <th className="px-5 py-3">Class</th>
+                                                            <th className="px-5 py-3">Pending Invoices</th>
+                                                            <th className="px-5 py-3 text-right">Total Outstanding</th>
+                                                            <th className="px-5 py-3 text-center w-24">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-50">
+                                                        {groupedList.map(s => {
+                                                            const initials = s.student_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+                                                            // Generate a stable aesthetic color for the initials avatar based on student id
+                                                            const hue = s.student_id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
+                                                            const avatarBg = `hsl(${hue}, 65%, 90%)`;
+                                                            const avatarText = `hsl(${hue}, 70%, 35%)`;
+
+                                                            return (
+                                                                <tr key={s.student_id} className="hover:bg-slate-50/40 transition-colors">
+                                                                    <td className="px-5 py-3.5">
+                                                                        <div className="flex items-center gap-3">
+                                                                            <div className="w-9 h-9 rounded-2xl flex items-center justify-center font-bold text-xs shrink-0 shadow-sm font-semibold" style={{ backgroundColor: avatarBg, color: avatarText }}>
+                                                                                {initials}
+                                                                            </div>
+                                                                            <div>
+                                                                                <p className="font-bold text-slate-800 text-sm">{s.student_name}</p>
+                                                                                <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Adm: {s.admission_number}</p>
+                                                                            </div>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-5 py-3.5">
+                                                                        <span className="px-2.5 py-1 bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold">
+                                                                            {s.class_name} {s.section_name && `· ${s.section_name}`}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-5 py-3.5">
+                                                                        <div className="flex flex-wrap gap-1.5 max-w-[300px]">
+                                                                            {s.invoices.map(inv => (
+                                                                                <span key={inv.id} className="px-2 py-0.5 bg-rose-50 border border-rose-100 text-rose-700 text-[10px] font-bold rounded-md shrink-0">
+                                                                                    {inv.invoice_number} (₹{parseFloat(inv.total_amount).toLocaleString('en-IN')})
+                                                                                </span>
+                                                                            ))}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-5 py-3.5 text-right font-extrabold text-rose-600 text-sm">
+                                                                        ₹{s.total_due.toLocaleString('en-IN')}
+                                                                    </td>
+                                                                    <td className="px-5 py-3.5 text-center">
+                                                                        <button onClick={() => setSelectedStudentForInvoices(s)}
+                                                                            className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold rounded-lg text-xs cursor-pointer transition-all flex items-center gap-1 mx-auto hover:shadow-sm">
+                                                                            <Pencil className="w-3 h-3" /> Manage
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Danger Zone: Bulk Delete Section */}
+                                    <div className="bg-rose-50/50 border border-rose-200 rounded-3xl p-6 border-l-4 border-l-rose-500">
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="p-2.5 bg-rose-100 text-rose-600 rounded-2xl"><AlertTriangle className="w-5 h-5" /></div>
+                                            <div>
+                                                <h3 className="font-extrabold text-slate-800 text-base">Danger Zone: Bulk Delete Invoices</h3>
+                                                <p className="text-xs text-slate-500 mt-0.5">Mass delete mistakenly generated invoices. Only unpaid invoices without completed payments will be deleted.</p>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                                            <div>
+                                                <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Delete Target</label>
+                                                <select value={bulkDeleteTarget} onChange={e => setBulkDeleteTarget(e.target.value as any)} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs bg-white font-semibold outline-none focus:ring-2 focus:ring-rose-500 transition-all">
+                                                    <option value="all">All Unpaid Invoices in Session</option>
+                                                    <option value="class">Specific Class</option>
+                                                    <option value="student">Specific Student</option>
+                                                </select>
+                                            </div>
+                                            
+                                            {bulkDeleteTarget === 'class' && (
+                                                <div>
+                                                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Select Class</label>
+                                                    <select value={bulkDeleteClassId} onChange={e => setBulkDeleteClassId(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs bg-white font-semibold outline-none focus:ring-2 focus:ring-rose-500 transition-all">
+                                                        <option value="">-- Choose Class --</option>
+                                                        {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                    </select>
+                                                </div>
+                                            )}
+                                            
+                                            {bulkDeleteTarget === 'student' && (
+                                                <div>
+                                                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Select Student</label>
+                                                    <select value={bulkDeleteStudentId} onChange={e => setBulkDeleteStudentId(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs bg-white font-semibold outline-none focus:ring-2 focus:ring-rose-500 transition-all">
+                                                        <option value="">-- Choose Student --</option>
+                                                        {assignments.map(a => <option key={a.student_id} value={a.student_id}>{a.first_name} {a.last_name} ({a.admission_number})</option>)}
+                                                    </select>
+                                                </div>
+                                            )}
+
+                                            <div>
+                                                <button onClick={handleBulkDelete} disabled={bulkDeleting || unpaidInvoices.length === 0}
+                                                    className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold rounded-xl text-xs cursor-pointer shadow-md shadow-rose-500/10 disabled:opacity-50 flex items-center justify-center gap-2 transition-all">
+                                                    {bulkDeleting ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Deleting...</> : <><Trash2 className="w-3.5 h-3.5" />Delete Selected</>}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Return back button */}
+                                    <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-start">
+                                        <button onClick={() => setSetupStep(3)} className="px-5 py-2 text-slate-500 hover:text-slate-800 font-semibold text-xs cursor-pointer transition-colors">← Back to Assign</button>
+                                    </div>
+
+                                    {/* Student Invoices Manage Detail Modal */}
+                                    {selectedStudentForInvoices && (
+                                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                                            <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl animate-scaleIn max-h-[90vh] flex flex-col">
+                                                <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                                                    <div>
+                                                        <h2 className="text-lg font-bold text-slate-800">Manage Unpaid Invoices</h2>
+                                                        <p className="text-xs text-slate-500 mt-0.5">
+                                                            {selectedStudentForInvoices.student_name} (Adm: {selectedStudentForInvoices.admission_number}) · {selectedStudentForInvoices.class_name}
+                                                        </p>
+                                                    </div>
+                                                    <button onClick={() => setSelectedStudentForInvoices(null)} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer text-slate-400 hover:text-slate-600 transition-colors"><X className="w-5 h-5" /></button>
+                                                </div>
+
+                                                <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
+                                                    <div className="p-3.5 bg-rose-50/50 border border-rose-100 rounded-2xl flex items-center justify-between">
+                                                        <span className="text-xs font-bold text-rose-700">Total Outstanding Balance</span>
+                                                        <span className="text-base font-extrabold text-rose-600">₹{selectedStudentForInvoices.total_due.toLocaleString('en-IN')}</span>
+                                                    </div>
+
+                                                    <div className="space-y-3">
+                                                        <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Unpaid Invoice List</h4>
+                                                        {selectedStudentForInvoices.invoices.map((inv: any) => (
+                                                            <div key={inv.id} className="border border-slate-200 hover:border-slate-300 bg-white rounded-2xl p-4 transition-all">
+                                                                <div className="flex items-start justify-between mb-3">
+                                                                    <div>
+                                                                        <p className="font-extrabold text-slate-800 text-sm">{inv.invoice_number}</p>
+                                                                        <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Due: {new Date(inv.due_date).toLocaleDateString('en-IN')}</p>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-sm font-extrabold text-rose-600">₹{parseFloat(inv.total_amount).toLocaleString('en-IN')}</span>
+                                                                        <button onClick={() => handleDeleteSingleInvoice(inv.id)} disabled={deletingInvoiceId === inv.id}
+                                                                            className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 rounded-xl cursor-pointer transition-all disabled:opacity-50" title="Delete this invoice">
+                                                                            {deletingInvoiceId === inv.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                                {/* Invoice Items details */}
+                                                                {inv.items && inv.items.length > 0 && (
+                                                                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 space-y-1.5">
+                                                                        {inv.items.map((item: any, idx: number) => (
+                                                                            <div key={idx} className="flex justify-between text-xs text-slate-600 font-medium">
+                                                                                <span>{item.head_name || item.name}</span>
+                                                                                <span className="font-bold text-slate-700">₹{parseFloat(item.total_amount).toLocaleString('en-IN')}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="pt-4 border-t border-slate-100 flex gap-3">
+                                                    <button onClick={() => setSelectedStudentForInvoices(null)} className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer font-semibold">
+                                                        Close
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
 
                         {/* Head Form Modal */}
                         {showHeadForm && (
@@ -1785,7 +2275,8 @@ function FinanceDashboardContent() {
                                 <div><p className="font-bold text-gray-800">Fee Concessions</p><p className="text-xs text-gray-500 mt-0.5">Allow discounts for specific students</p></div>
                                 <button onClick={() => setConcessionEnabled(v => !v)} className="cursor-pointer">{concessionEnabled ? <ToggleRight className="w-9 h-9 text-emerald-500" /> : <ToggleLeft className="w-9 h-9 text-gray-300" />}</button>
                             </div>
-                            <button onClick={saveSettings} disabled={savingSettings} className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl text-sm disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2 hover:bg-emerald-700">
+                            
+                            <button onClick={saveSettings} disabled={savingSettings} className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl text-sm disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2 hover:bg-emerald-700 mt-4">
                                 {savingSettings ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : <><Save className="w-4 h-4" />Save Settings</>}
                             </button>
                         </div>
@@ -1794,7 +2285,7 @@ function FinanceDashboardContent() {
                             <h2 className="font-bold text-gray-900 text-lg mb-4">Payment Gateway</h2>
                             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
                                 <div><p className="font-bold text-gray-800">Razorpay</p><p className="text-xs text-gray-500 mt-0.5">Status: <span className={`font-bold ${gatewayStatus === 'configured' ? 'text-emerald-600' : 'text-amber-600'}`}>{gatewayStatus || 'Checking...'}</span></p></div>
-                                <button onClick={() => router.push('/settings/payment-gateway')} className="px-4 py-2 border border-gray-200 text-gray-600 font-semibold rounded-xl text-sm hover:bg-gray-50 cursor-pointer">Configure →</button>
+                                <button onClick={() => router.push('/settings?tab=payment-gateway')} className="px-4 py-2 border border-gray-200 text-gray-600 font-semibold rounded-xl text-sm hover:bg-gray-50 cursor-pointer">Configure →</button>
                             </div>
                         </div>
                     </div>

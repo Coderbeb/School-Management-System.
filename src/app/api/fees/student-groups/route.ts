@@ -209,3 +209,39 @@ export async function DELETE(request: NextRequest) {
         return NextResponse.json({ error: 'Failed to unassign group' }, { status: 500 });
     }
 }
+
+// PUT: Bulk update a single student's fee groups (sync)
+export async function PUT(request: NextRequest) {
+    const auth = requireSchoolAuth(request, ['super_admin', 'developer']);
+    if (auth.error) return auth.error;
+
+    try {
+        const { studentId, feeGroupIds, sessionId } = await request.json();
+
+        if (!studentId || !sessionId || !Array.isArray(feeGroupIds)) {
+            return NextResponse.json({ error: 'studentId, feeGroupIds (array), and sessionId required' }, { status: 400 });
+        }
+
+        // Remove all existing
+        await query(
+            `DELETE FROM student_fee_groups WHERE student_id = $1 AND session_id = $2`,
+            [studentId, sessionId]
+        );
+
+        // Insert new ones
+        let assignedCount = 0;
+        for (const feeGroupId of feeGroupIds) {
+            await query(
+                `INSERT INTO student_fee_groups (student_id, fee_group_id, session_id)
+                 VALUES ($1, $2, $3)`,
+                [studentId, feeGroupId, sessionId]
+            );
+            assignedCount++;
+        }
+
+        return NextResponse.json({ success: true, assigned: assignedCount });
+    } catch (error) {
+        console.error('Error syncing student groups:', error);
+        return NextResponse.json({ error: 'Failed to sync student groups' }, { status: 500 });
+    }
+}

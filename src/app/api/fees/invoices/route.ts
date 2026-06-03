@@ -268,3 +268,50 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'Failed to update invoice' }, { status: 500 });
     }
 }
+
+// DELETE: Delete an invoice
+export async function DELETE(request: NextRequest) {
+    const auth = requireSchoolAuth(request, ['super_admin', 'developer']);
+    if (auth.error) return auth.error;
+    const schoolId = resolveSchoolId(auth.user, request);
+
+    try {
+        const { searchParams } = new URL(request.url);
+        const id = searchParams.get('id');
+
+        if (!id) {
+            return NextResponse.json({ error: 'id is required' }, { status: 400 });
+        }
+
+        // Verify school ownership if not developer
+        if (schoolId) {
+            const check = await queryOne<any>(
+                `SELECT school_id FROM invoices WHERE id = $1`, [id]
+            );
+            if (!check || check.school_id !== schoolId) {
+                return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+            }
+        }
+
+        // Check if there are any completed payments associated with this invoice via fee_payment_orders
+        // Since invoices are linked to payments via orders in the new schema:
+        const payments = await queryOne<any>(
+            `SELECT count(*) as cnt FROM fee_payment_orders WHERE invoice_id = $1 AND status = 'paid'`,
+            [id]
+        );
+        if (payments && parseInt(payments.cnt) > 0) {
+            return NextResponse.json({ error: 'Cannot delete an invoice that has completed payments' }, { status: 400 });
+        }
+
+        // Delete items first (if no CASCADE)
+        await query(`DELETE FROM invoice_items WHERE invoice_id = $1`, [id]);
+        
+        // Delete invoice
+        await query(`DELETE FROM invoices WHERE id = $1`, [id]);
+
+        return NextResponse.json({ success: true, message: 'Invoice deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting invoice:', error);
+        return NextResponse.json({ error: 'Failed to delete invoice' }, { status: 500 });
+    }
+}

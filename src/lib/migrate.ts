@@ -983,7 +983,8 @@ const MIGRATIONS: { name: string; sql: string }[] = [
             CREATE TABLE IF NOT EXISTS fee_payment_orders (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                 student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-                fee_structure_id UUID NOT NULL REFERENCES fee_structures(id) ON DELETE CASCADE,
+                fee_structure_id UUID REFERENCES fee_structures(id) ON DELETE CASCADE,
+                invoice_id UUID REFERENCES invoices(id) ON DELETE CASCADE,
                 school_id UUID REFERENCES schools(id) ON DELETE CASCADE,
                 razorpay_order_id TEXT UNIQUE,
                 razorpay_payment_id TEXT,
