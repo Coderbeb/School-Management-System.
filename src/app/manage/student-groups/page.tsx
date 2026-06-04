@@ -90,8 +90,8 @@ export default function StudentGroupsPage() {
         setLoading(true);
         try {
             const [sessRes, classRes, groupRes] = await Promise.all([
-                fetch('/api/sms/sessions', { headers: { Authorization: `Bearer ${token}` } }),
-                fetch('/api/sms/classes', { headers: { Authorization: `Bearer ${token}` } }),
+                fetch('/api/manage/sessions', { headers: { Authorization: `Bearer ${token}` } }),
+                fetch('/api/manage/classes', { headers: { Authorization: `Bearer ${token}` } }),
                 fetch('/api/fees/groups', { headers: { Authorization: `Bearer ${token}` } }),
             ]);
 

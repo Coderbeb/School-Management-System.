@@ -63,7 +63,7 @@ export default function FeeStructuresPage() {
         try {
             const [structRes, classRes] = await Promise.all([
                 fetch('/api/fees/structures', { headers: { Authorization: `Bearer ${token}` } }),
-                fetch('/api/sms/classes', { headers: { Authorization: `Bearer ${token}` } }),
+                fetch('/api/manage/classes', { headers: { Authorization: `Bearer ${token}` } }),
             ]);
             if (structRes.ok) setStructures((await structRes.json()).structures || []);
             if (classRes.ok) setClasses((await classRes.json()).classes || []);

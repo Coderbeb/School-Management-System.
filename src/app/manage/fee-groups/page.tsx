@@ -93,7 +93,7 @@ export default function FeeGroupsPage() {
             const [groupRes, headRes, classRes] = await Promise.all([
                 fetch('/api/fees/groups', { headers: { Authorization: `Bearer ${token}` } }),
                 fetch('/api/fees/heads', { headers: { Authorization: `Bearer ${token}` } }),
-                fetch('/api/sms/classes', { headers: { Authorization: `Bearer ${token}` } }),
+                fetch('/api/manage/classes', { headers: { Authorization: `Bearer ${token}` } }),
             ]);
             if (groupRes.ok) setGroups((await groupRes.json()).groups || []);
             if (headRes.ok) setHeads((await headRes.json()).heads || []);

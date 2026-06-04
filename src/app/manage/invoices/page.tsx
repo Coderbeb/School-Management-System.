@@ -82,8 +82,8 @@ export default function InvoicesPage() {
         setLoading(true);
         try {
             const [sessRes, classRes] = await Promise.all([
-                fetch('/api/sms/sessions', { headers: { Authorization: `Bearer ${token}` } }),
-                fetch('/api/sms/classes', { headers: { Authorization: `Bearer ${token}` } }),
+                fetch('/api/manage/sessions', { headers: { Authorization: `Bearer ${token}` } }),
+                fetch('/api/manage/classes', { headers: { Authorization: `Bearer ${token}` } }),
             ]);
             
             const sessionsData = sessRes.ok ? (await sessRes.json()).sessions || [] : [];

@@ -170,6 +170,46 @@ export async function POST(request: NextRequest) {
                      VALUES ($1, $2, $3, $4)`,
                     [student.id, classSectionId, sessionId, rollNumber || null]
                 );
+
+                // Auto-assign default fee groups for this class on enrollment
+                const classSectionInfo = await client.query<{ class_id: string }>(
+                    `SELECT class_id FROM class_sections WHERE id = $1`,
+                    [classSectionId]
+                );
+                const classId = classSectionInfo.rows[0]?.class_id;
+
+                if (classId) {
+                    const defaultGroupsRes = await client.query<{ id: string; apply_to: string; target_class_ids: any }>(
+                        `SELECT id, apply_to, target_class_ids 
+                         FROM fee_groups 
+                         WHERE school_id = $1 AND is_default = true AND is_active = true`,
+                        [schoolId]
+                    );
+
+                    for (const group of defaultGroupsRes.rows) {
+                        let shouldAssign = false;
+                        if (group.apply_to === 'all') {
+                            shouldAssign = true;
+                        } else if (group.apply_to === 'specific_classes') {
+                            let targetIds: string[] = [];
+                            if (Array.isArray(group.target_class_ids)) {
+                                targetIds = group.target_class_ids;
+                            } else if (typeof group.target_class_ids === 'string') {
+                                targetIds = group.target_class_ids.replace(/[{}]/g, '').split(',').filter(Boolean);
+                            }
+                            shouldAssign = targetIds.includes(classId);
+                        }
+
+                        if (shouldAssign) {
+                            await client.query(
+                                `INSERT INTO student_fee_groups (student_id, fee_group_id, session_id)
+                                 VALUES ($1, $2, $3)
+                                 ON CONFLICT (student_id, fee_group_id, session_id) DO NOTHING`,
+                                [student.id, group.id, sessionId]
+                            );
+                        }
+                    }
+                }
             }
 
             await client.query('COMMIT');

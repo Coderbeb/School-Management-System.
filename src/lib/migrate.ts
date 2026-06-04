@@ -1261,6 +1261,114 @@ const MIGRATIONS: { name: string; sql: string }[] = [
             CREATE UNIQUE INDEX IF NOT EXISTS platform_config_singleton ON platform_config ((true));
         `
     },
+    {
+        name: '020_fee_system_v3',
+        sql: `
+            -- ============================================================
+            -- FEE SYSTEM V3 — Phase 1 Migration
+            -- Billing periods, frequency-aware invoicing, enhanced concessions
+            -- ============================================================
+
+            -- 1. Add billing_month to invoices (e.g. '2026-06')
+            ALTER TABLE invoices ADD COLUMN IF NOT EXISTS billing_month VARCHAR(7);
+
+            -- 2. Add billing_type to invoices
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'invoices' AND column_name = 'billing_type'
+                ) THEN
+                    ALTER TABLE invoices ADD COLUMN billing_type VARCHAR(20) DEFAULT 'regular';
+                    ALTER TABLE invoices ADD CONSTRAINT invoices_billing_type_check
+                        CHECK (billing_type IN ('regular', 'adhoc', 'arrear'));
+                END IF;
+            END $$;
+
+            -- 3. Unique index to prevent duplicate invoices per student+session+billing_month
+            --    (only for regular invoices with a billing_month set, excludes voided invoices)
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_unique_billing
+                ON invoices(student_id, session_id, billing_month)
+                WHERE billing_month IS NOT NULL AND status != 'void' AND billing_type = 'regular';
+
+            -- 4. Index for billing_month lookups
+            CREATE INDEX IF NOT EXISTS idx_invoices_billing_month ON invoices(billing_month);
+            CREATE INDEX IF NOT EXISTS idx_invoices_billing_type ON invoices(billing_type);
+
+            -- 5. Enhanced concessions: add category and optional fee_head_id targeting
+            ALTER TABLE fee_concessions ADD COLUMN IF NOT EXISTS category VARCHAR(50)
+                DEFAULT 'other';
+            ALTER TABLE fee_concessions ADD COLUMN IF NOT EXISTS fee_head_id UUID REFERENCES fee_heads(id) ON DELETE SET NULL;
+
+            -- Update the category constraint (safe to re-run)
+            DO $$ BEGIN
+                ALTER TABLE fee_concessions DROP CONSTRAINT IF EXISTS fee_concessions_category_check;
+                ALTER TABLE fee_concessions ADD CONSTRAINT fee_concessions_category_check
+                    CHECK (category IN ('scholarship', 'sibling', 'rte', 'staff_child', 'merit', 'financial_need', 'other'));
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END $$;
+
+            -- 6. Fee schedule table (when each group gets billed during the year)
+            CREATE TABLE IF NOT EXISTS fee_schedule (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                fee_group_id UUID NOT NULL REFERENCES fee_groups(id) ON DELETE CASCADE,
+                session_id UUID NOT NULL REFERENCES academic_sessions(id) ON DELETE CASCADE,
+                billing_months TEXT[] NOT NULL DEFAULT '{}',
+                due_day INTEGER DEFAULT 10,
+                grace_days INTEGER DEFAULT 7,
+                late_fee_per_day DECIMAL(10, 2) DEFAULT 0,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, fee_group_id, session_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_fee_schedule_school ON fee_schedule(school_id);
+            CREATE INDEX IF NOT EXISTS idx_fee_schedule_group ON fee_schedule(fee_group_id);
+
+            -- 7. Auto-invoice log table (tracks automatic invoice generation runs)
+            CREATE TABLE IF NOT EXISTS auto_invoice_log (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                billing_month VARCHAR(7) NOT NULL,
+                students_processed INTEGER DEFAULT 0,
+                invoices_generated INTEGER DEFAULT 0,
+                invoices_skipped INTEGER DEFAULT 0,
+                errors INTEGER DEFAULT 0,
+                error_details TEXT,
+                triggered_by VARCHAR(20) DEFAULT 'cron' CHECK (triggered_by IN ('cron', 'manual')),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_auto_invoice_log_school ON auto_invoice_log(school_id);
+
+            -- 8. Add auto_invoice_enabled and auto_invoice_day to schools
+            ALTER TABLE schools ADD COLUMN IF NOT EXISTS auto_invoice_enabled BOOLEAN DEFAULT false;
+            ALTER TABLE schools ADD COLUMN IF NOT EXISTS auto_invoice_day INTEGER DEFAULT 1;
+        `
+    },
+    {
+        name: '021_fee_refunds',
+        sql: `
+            -- Fee refunds table for tracking refund records
+            CREATE TABLE IF NOT EXISTS fee_refunds (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                payment_id UUID REFERENCES fee_payments(id) ON DELETE SET NULL,
+                invoice_id UUID REFERENCES invoices(id) ON DELETE SET NULL,
+                amount DECIMAL(10, 2) NOT NULL CHECK (amount > 0),
+                reason TEXT,
+                refund_mode VARCHAR(30) DEFAULT 'cash'
+                    CHECK (refund_mode IN ('cash', 'upi', 'bank_transfer', 'cheque', 'adjustment')),
+                refund_date DATE DEFAULT CURRENT_DATE,
+                approved_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                status VARCHAR(20) DEFAULT 'completed'
+                    CHECK (status IN ('pending', 'completed', 'cancelled')),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_fee_refunds_school ON fee_refunds(school_id);
+            CREATE INDEX IF NOT EXISTS idx_fee_refunds_student ON fee_refunds(student_id);
+        `
+    },
 ];
 
 
