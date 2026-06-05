@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { Button } from '@/components/ui/button';
-import { PenLine, Save, Send, ChevronDown, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
+import { PenLine, Save, Send, ChevronDown, AlertCircle, CheckCircle, Loader2, Plus } from 'lucide-react';
 
 interface User { id: string; email: string; firstName: string; lastName: string; role: string; }
 interface ExamOption { id: string; name: string; is_entry_open: boolean; is_locked: boolean; }
@@ -47,6 +47,9 @@ export default function MarksEntryPage() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [showQuickTest, setShowQuickTest] = useState(false);
+    const [quickTestName, setQuickTestName] = useState('');
+    const [quickTestMaxMarks, setQuickTestMaxMarks] = useState('25');
 
     // Local edits tracking
     const [localMarks, setLocalMarks] = useState<Record<string, Record<string, { value: string; status: string }>>>({});
@@ -253,9 +256,70 @@ export default function MarksEntryPage() {
                         <h1 className="text-2xl font-bold mt-1 mb-2 flex items-center gap-3">
                             Marks Entry <PenLine className="w-6 h-6 text-emerald-400" />
                         </h1>
-                        <p className="text-emerald-100 text-sm max-w-xl">Select an exam, class, and subject to start entering marks. Use Enter/Arrow keys for fast navigation.</p>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                            <p className="text-emerald-100 text-sm max-w-xl">Select an exam, class, and subject to start entering marks. Use Enter/Arrow keys for fast navigation.</p>
+                            {user?.role === 'teacher' && (
+                                <button onClick={() => setShowQuickTest(!showQuickTest)}
+                                    className="px-3 py-1.5 bg-emerald-500/20 border border-emerald-400/30 rounded-lg text-emerald-300 text-xs font-bold hover:bg-emerald-500/30 transition-colors flex items-center gap-1.5 whitespace-nowrap">
+                                    <Plus className="w-3.5 h-3.5" /> Quick Class Test
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
+
+                {/* Quick Test Form (Teachers) */}
+                {showQuickTest && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 mb-6 space-y-3">
+                        <h3 className="font-bold text-emerald-900 text-sm">⚡ Quick Class Test</h3>
+                        <p className="text-xs text-emerald-600">Create an informal test — it will be immediately available for marks entry. Not included in formal results.</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Test Name *</label>
+                                <input value={quickTestName} onChange={e => setQuickTestName(e.target.value)} placeholder="e.g., Weekly Quiz 3"
+                                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Max Marks</label>
+                                <input type="number" min="1" value={quickTestMaxMarks} onChange={e => setQuickTestMaxMarks(e.target.value)}
+                                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                            </div>
+                            <div className="flex items-end gap-2">
+                                <Button onClick={async () => {
+                                    if (!quickTestName.trim()) return;
+                                    const token = localStorage.getItem('token');
+                                    if (!token) return;
+                                    setSaving(true); setError('');
+                                    try {
+                                        const sessRes = await fetch('/api/sessions', { headers: { Authorization: `Bearer ${token}` } });
+                                        const sessData = await sessRes.json();
+                                        const currentSession = (sessData.sessions || []).find((s: any) => s.is_current);
+                                        if (!currentSession) { setError('No active session'); setSaving(false); return; }
+                                        const res = await fetch('/api/exams', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                            body: JSON.stringify({
+                                                name: quickTestName, examCategory: 'class_test',
+                                                sessionId: currentSession.id, isTeacherTest: true,
+                                                generatesReportCard: false, weightage: parseInt(quickTestMaxMarks) || 25,
+                                            }),
+                                        });
+                                        const data = await res.json();
+                                        if (!res.ok) { setError(data.error || 'Failed'); } else {
+                                            setSuccess('Test created! Select it from the exam dropdown to enter marks.');
+                                            setShowQuickTest(false); setQuickTestName('');
+                                            fetchExams(token, user?.role || '');
+                                        }
+                                    } catch { setError('Network error'); }
+                                    setSaving(false);
+                                }} disabled={saving || !quickTestName.trim()} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-[38px] gap-1.5">
+                                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />} Create Test
+                                </Button>
+                                <Button onClick={() => setShowQuickTest(false)} variant="outline" className="text-xs h-[38px]">Cancel</Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Selection Bar */}
                 <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-6 shadow-sm">

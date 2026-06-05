@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
         const userId = searchParams.get('userId');
 
         let sql = `SELECT lr.*,
-                       u.first_name, u.last_name,
+                       u.first_name, u.last_name, u.role,
                        r.first_name as reviewer_first_name, r.last_name as reviewer_last_name
                    FROM leave_requests lr
                    JOIN users u ON lr.user_id = u.id
@@ -119,7 +119,19 @@ export async function GET(request: NextRequest) {
         sql += ` ORDER BY lr.created_at DESC`;
 
         const requests = await query<LeaveRequestRow>(sql, params);
-        return NextResponse.json({ requests });
+
+        // Apply roleFilter client-side (role comes from JOIN on users, not from leave_requests)
+        const roleFilter = searchParams.get('roleFilter');
+        const filtered = roleFilter
+            ? requests.filter((r: any) => r.role === roleFilter)
+            : requests;
+
+        return NextResponse.json({
+            requests: filtered.map((r: any) => ({
+                ...r,
+                reviewed_by_name: r.reviewer_first_name ? `${r.reviewer_first_name} ${r.reviewer_last_name}` : null,
+            }))
+        });
     } catch (error) {
         console.error('GET leave-requests error:', error);
         return NextResponse.json({ error: 'Server error' }, { status: 500 });
@@ -163,22 +175,30 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'Leave request not found' }, { status: 404 });
         }
 
-        // If approved, upsert staff_attendance records for each day of the leave range
+        // If approved, upsert attendance records for each day of the leave range
+        // Only for staff — students don't have staff_attendance records
         if (action === 'approved') {
-            const start = new Date(updated.from_date);
-            const end = new Date(updated.to_date);
+            // Check role of the leave requester
+            const requester = await queryOne<{ role: string }>(
+                `SELECT role FROM users WHERE id = $1`, [updated.user_id]
+            );
 
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                const dateStr = d.toISOString().split('T')[0];
-                await queryOne(
-                    `INSERT INTO staff_attendance (user_id, school_id, date, status, auto_status, remarks)
-                     VALUES ($1, $2, $3, 'on_leave', 'on_leave', 'Approved leave')
-                     ON CONFLICT (user_id, date) DO UPDATE SET
-                         status = 'on_leave',
-                         auto_status = 'on_leave',
-                         remarks = 'Approved leave'`,
-                    [updated.user_id, schoolId, dateStr]
-                );
+            if (requester && requester.role !== 'student') {
+                const start = new Date(updated.from_date);
+                const end = new Date(updated.to_date);
+
+                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                    const dateStr = d.toISOString().split('T')[0];
+                    await queryOne(
+                        `INSERT INTO staff_attendance (user_id, school_id, date, status, auto_status, remarks)
+                         VALUES ($1, $2, $3, 'on_leave', 'on_leave', 'Approved leave')
+                         ON CONFLICT (user_id, date) DO UPDATE SET
+                             status = 'on_leave',
+                             auto_status = 'on_leave',
+                             remarks = 'Approved leave'`,
+                        [updated.user_id, schoolId, dateStr]
+                    );
+                }
             }
         }
 

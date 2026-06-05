@@ -23,6 +23,7 @@ import {
     FileText,
     Trophy,
     Award,
+    Bell,
 } from 'lucide-react';
 
 interface User {
@@ -104,7 +105,7 @@ export default function DashboardPage() {
     if (!user) return null;
 
     // ----------------------------------------------------------------
-    // Teacher & Staff Attendance Hub Cards
+    // Teacher & Staff Management Hub
     // ----------------------------------------------------------------
     const teacherHubCards: HubCard[] = [
         {
@@ -130,23 +131,39 @@ export default function DashboardPage() {
     ];
 
     // ----------------------------------------------------------------
-    // Student & Academic Attendance Hub Cards
+    // Student Management Hub
     // ----------------------------------------------------------------
     const studentHubCards: HubCard[] = [
-        {
-            id: 'school-setup', title: 'School Setup', description: 'Sessions, Classes, Subjects & Bulk Import',
-            href: '/manage/school-setup', iconComponent: <School className="w-6 h-6" />,
-            gradient: 'from-blue-100 to-indigo-100', textColor: 'text-blue-700', borderColor: 'border-blue-200'
-        },
         {
             id: 'students', title: 'Students Directory', description: 'Student enrollment & profiles',
             href: '/manage/students', iconComponent: <GraduationCap className="w-6 h-6" />,
             gradient: 'from-indigo-100 to-violet-100', textColor: 'text-indigo-700', borderColor: 'border-indigo-200'
         },
         {
-            id: 'student-attendance', title: 'Student Attendance', description: 'Mark daily attendance & view records',
-            href: '/attendance', iconComponent: <ClipboardCheck className="w-6 h-6" />,
-            gradient: 'from-blue-100 to-sky-100', textColor: 'text-blue-700', borderColor: 'border-blue-200'
+            id: 'student-leaves', title: 'Student Leaves', description: 'Approve & manage student leave requests',
+            href: '/manage/student-leaves', iconComponent: <Send className="w-6 h-6" />,
+            gradient: 'from-indigo-100 to-blue-100', textColor: 'text-indigo-700', borderColor: 'border-indigo-200'
+        },
+        {
+            id: 'student-reports', title: 'Student Reports', description: 'Analytics & attendance reports',
+            href: '/reports/students', iconComponent: <BarChart3 className="w-6 h-6" />,
+            gradient: 'from-sky-100 to-blue-100', textColor: 'text-sky-700', borderColor: 'border-sky-200'
+        },
+    ];
+
+    // ----------------------------------------------------------------
+    // Core Operations Hub (Exams, Finance, Holidays)
+    // ----------------------------------------------------------------
+    const coreHubCards: HubCard[] = [
+        {
+            id: 'exams-marks', title: 'Exams & Marks', description: 'Exam schedules, grading & results',
+            href: '/manage/exams-marks', iconComponent: <ClipboardList className="w-6 h-6" />,
+            gradient: 'from-orange-100 to-amber-100', textColor: 'text-orange-700', borderColor: 'border-orange-200'
+        },
+        {
+            id: 'finance', title: 'Finance & Fees', description: 'Fee collection, salary, reports & setup',
+            href: '/manage/finance', iconComponent: <IndianRupee className="w-6 h-6" />,
+            gradient: 'from-green-100 to-emerald-100', textColor: 'text-green-700', borderColor: 'border-green-200'
         },
         {
             id: 'holidays', title: 'Holidays Calendar', description: 'Manage school holidays & events',
@@ -154,19 +171,35 @@ export default function DashboardPage() {
             gradient: 'from-rose-100 to-pink-100', textColor: 'text-rose-700', borderColor: 'border-rose-200'
         },
         {
-            id: 'exams-marks', title: 'Exams & Marks', description: 'Exam schedules, grading & results',
-            href: '/manage/exams-marks', iconComponent: <ClipboardList className="w-6 h-6" />,
-            gradient: 'from-orange-100 to-amber-100', textColor: 'text-orange-700', borderColor: 'border-orange-200'
+            id: 'notifications', title: 'Notifications', description: 'WhatsApp & Email automation',
+            href: '/manage/notifications', iconComponent: <Bell className="w-6 h-6" />,
+            gradient: 'from-violet-100 to-purple-100', textColor: 'text-violet-700', borderColor: 'border-violet-200'
+        },
+    ];
+
+    // ----------------------------------------------------------------
+    // Simple Configuration Hub
+    // ----------------------------------------------------------------
+    const configHubCards: HubCard[] = [
+        {
+            id: 'school-setup', title: 'School Setup', description: 'Sessions, Classes, Subjects & Configuration',
+            href: '/manage/school-setup', iconComponent: <School className="w-6 h-6" />,
+            gradient: 'from-gray-100 to-slate-100', textColor: 'text-gray-700', borderColor: 'border-gray-200'
         },
         {
-            id: 'finance', title: 'Finance', description: 'Fee collection, salary, reports & setup',
-            href: '/manage/finance', iconComponent: <IndianRupee className="w-6 h-6" />,
-            gradient: 'from-green-100 to-emerald-100', textColor: 'text-green-700', borderColor: 'border-green-200'
+            id: 'accounts', title: 'User Accounts', description: 'Manage user logins and roles',
+            href: '/manage/accounts', iconComponent: <UserCog className="w-6 h-6" />,
+            gradient: 'from-gray-100 to-slate-100', textColor: 'text-gray-700', borderColor: 'border-gray-200'
         },
         {
-            id: 'student-reports', title: 'Student Reports', description: 'Analytics & attendance reports',
-            href: '/reports/students', iconComponent: <BarChart3 className="w-6 h-6" />,
-            gradient: 'from-sky-100 to-blue-100', textColor: 'text-sky-700', borderColor: 'border-sky-200'
+            id: 'bulk-import', title: 'Bulk Configurator', description: 'Import students & staff via Excel',
+            href: '/manage/bulk-import', iconComponent: <Sparkles className="w-6 h-6" />,
+            gradient: 'from-gray-100 to-slate-100', textColor: 'text-gray-700', borderColor: 'border-gray-200'
+        },
+        {
+            id: 'settings', title: 'Settings & Config', description: 'System-wide preferences and branding',
+            href: '/settings', iconComponent: <Settings className="w-6 h-6" />,
+            gradient: 'from-gray-100 to-slate-100', textColor: 'text-gray-700', borderColor: 'border-gray-200'
         },
     ];
 
@@ -216,68 +249,76 @@ export default function DashboardPage() {
                     </div>
                 </div>
 
-                {/* ===== HUB 1: Teacher & Staff Attendance ===== */}
+                {/* ===== HUB 1: Core Operations (Exams, Finance, Holidays) ===== */}
                 <div className="mb-10">
                     <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 rounded-xl bg-emerald-100">
-                            <UserCog className="w-5 h-5 text-emerald-700" />
+                        <div className="p-2 rounded-xl bg-orange-100">
+                            <Award className="w-5 h-5 text-orange-700" />
                         </div>
                         <div>
-                            <h2 className="text-lg font-bold text-gray-800">Teacher & Staff Attendance</h2>
-                            <p className="text-xs text-gray-500">GPS check-in, leave management & staff reports</p>
+                            <h2 className="text-lg font-bold text-gray-800">Core Operations</h2>
+                            <p className="text-xs text-gray-500">Exams, Finance, Holidays & Notifications</p>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                        {teacherHubCards.map((card) => (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                        {coreHubCards.map((card) => (
                             <HubCardComponent key={card.id} card={card} onClick={() => router.push(card.href)} />
                         ))}
                     </div>
                 </div>
 
-                {/* ===== HUB 2: Student & Academic Attendance ===== */}
+                {/* ===== HUB 2: Student Management ===== */}
                 <div className="mb-10">
                     <div className="flex items-center gap-3 mb-4">
                         <div className="p-2 rounded-xl bg-blue-100">
                             <GraduationCap className="w-5 h-5 text-blue-700" />
                         </div>
                         <div>
-                            <h2 className="text-lg font-bold text-gray-800">Student & Academic System</h2>
-                            <p className="text-xs text-gray-500">Attendance, holidays, exams, marks & report cards</p>
+                            <h2 className="text-lg font-bold text-gray-800">Student Management</h2>
+                            <p className="text-xs text-gray-500">Directory, leaves & reports</p>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                         {studentHubCards.map((card) => (
                             <HubCardComponent key={card.id} card={card} onClick={() => router.push(card.href)} />
                         ))}
                     </div>
                 </div>
 
-                {/* Quick Admin Row */}
-                <div className="flex flex-wrap gap-3">
-                    <button
-                        onClick={() => router.push('/manage/accounts')}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 font-semibold text-sm rounded-xl hover:border-blue-300 hover:text-blue-700 transition-all shadow-sm"
-                    >
-                        <Users className="w-4 h-4" /> User Accounts
-                    </button>
-                    <button
-                        onClick={() => router.push('/manage/bulk-import')}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 font-semibold text-sm rounded-xl hover:border-violet-300 hover:text-violet-700 transition-all shadow-sm"
-                    >
-                        <Sparkles className="w-4 h-4" /> Bulk Configurator
-                    </button>
-                    <button
-                        onClick={() => router.push('/settings')}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 font-semibold text-sm rounded-xl hover:border-gray-400 hover:text-gray-900 transition-all shadow-sm"
-                    >
-                        <Settings className="w-4 h-4" /> Settings & Config
-                    </button>
-                    <button
-                        onClick={() => router.push('/reports')}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 font-semibold text-sm rounded-xl hover:border-blue-300 hover:text-blue-700 transition-all shadow-sm"
-                    >
-                        <BarChart3 className="w-4 h-4" /> All Reports
-                    </button>
+                {/* ===== HUB 3: Teacher & Staff Management ===== */}
+                <div className="mb-10">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 rounded-xl bg-emerald-100">
+                            <UserCog className="w-5 h-5 text-emerald-700" />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-800">Staff & Teacher Management</h2>
+                            <p className="text-xs text-gray-500">Directory, GPS check-in, leaves & staff reports</p>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                        {teacherHubCards.map((card) => (
+                            <HubCardComponent key={card.id} card={card} onClick={() => router.push(card.href)} />
+                        ))}
+                    </div>
+                </div>
+
+                {/* ===== HUB 4: Simple Configuration ===== */}
+                <div className="mb-10">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 rounded-xl bg-gray-100">
+                            <Settings className="w-5 h-5 text-gray-700" />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-800">Simple Configuration</h2>
+                            <p className="text-xs text-gray-500">Easily manage school setup, users, and general settings</p>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                        {configHubCards.map((card) => (
+                            <HubCardComponent key={card.id} card={card} onClick={() => router.push(card.href)} />
+                        ))}
+                    </div>
                 </div>
 
             </main>

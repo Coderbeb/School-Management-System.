@@ -8,7 +8,7 @@ import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { 
     Save, Mail, Eye, EyeOff, ToggleLeft, ToggleRight, CheckCircle, 
     Shield, AlertTriangle, Loader2, Settings, Building2, Key, Upload, Camera,
-    CreditCard
+    CreditCard, Bell
 } from 'lucide-react';
 import { AccessDenied } from '@/components/ui/access-denied';
 
@@ -25,12 +25,12 @@ export function SettingsPageContent() {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'automation' | 'payment-gateway'>('profile');
+    const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'automation' | 'payment-gateway' | 'notifications'>('profile');
 
     useEffect(() => {
         const tab = searchParams?.get('tab');
-        if (tab === 'payment-gateway' || tab === 'security' || tab === 'automation') {
-            setActiveTab(tab);
+        if (tab === 'payment-gateway' || tab === 'security' || tab === 'automation' || tab === 'notifications') {
+            setActiveTab(tab as any);
         }
     }, [searchParams]);
 
@@ -78,6 +78,31 @@ export function SettingsPageContent() {
     const [savingEmail, setSavingEmail] = useState(false);
     const [emailMessage, setEmailMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
 
+    // ── Notifications State ──
+    const [notificationConfig, setNotificationConfig] = useState({
+        notification_email_enabled: false,
+        notification_whatsapp_enabled: false,
+        smtp_host: '',
+        smtp_port: '587',
+        smtp_user: '',
+        smtp_password: '',
+        smtp_from_email: '',
+        smtp_from_name: '',
+        whatsapp_provider: 'meta',
+        whatsapp_api_key: '',
+        whatsapp_phone_number_id: '',
+    });
+    const [smtpPasswordSet, setSmtpPasswordSet] = useState(false);
+    const [smtpPasswordHint, setSmtpPasswordHint] = useState('');
+    const [whatsappApiKeySet, setWhatsappApiKeySet] = useState(false);
+    const [loadingNotifications, setLoadingNotifications] = useState(false);
+    const [savingNotifications, setSavingNotifications] = useState(false);
+    const [testingNotificationsEmail, setTestingNotificationsEmail] = useState(false);
+    const [testingNotificationsWA, setTestingNotificationsWA] = useState(false);
+    const [notificationsMessage, setNotificationsMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
+    const [testEmailAddress, setTestEmailAddress] = useState('');
+    const [testPhoneNumber, setTestPhoneNumber] = useState('');
+
     useEffect(() => {
         const token = localStorage.getItem('token');
         const userData = localStorage.getItem('user');
@@ -98,8 +123,8 @@ export function SettingsPageContent() {
         // Check for active tab in URL query params
         const params = new URLSearchParams(window.location.search);
         const tab = params.get('tab');
-        if (tab === 'payment-gateway') {
-            setActiveTab('payment-gateway');
+        if (tab === 'payment-gateway' || tab === 'notifications') {
+            setActiveTab(tab as any);
         }
     }, [router]);
 
@@ -150,6 +175,36 @@ export function SettingsPageContent() {
                 }
             } catch (err) { console.error(err); }
             finally { setLoadingEmail(false); }
+
+            // Fetch Notification Config
+            setLoadingNotifications(true);
+            try {
+                const response = await fetch('/api/settings/notifications', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.config) {
+                        setNotificationConfig({
+                            notification_email_enabled: data.config.notification_email_enabled,
+                            notification_whatsapp_enabled: data.config.notification_whatsapp_enabled,
+                            smtp_host: data.config.smtp_host || '',
+                            smtp_port: data.config.smtp_port || '587',
+                            smtp_user: data.config.smtp_user || '',
+                            smtp_password: '',
+                            smtp_from_email: data.config.smtp_from_email || '',
+                            smtp_from_name: data.config.smtp_from_name || '',
+                            whatsapp_provider: data.config.whatsapp_provider || 'meta',
+                            whatsapp_api_key: '',
+                            whatsapp_phone_number_id: data.config.whatsapp_phone_number_id || '',
+                        });
+                        setSmtpPasswordSet(data.config.smtp_passwordSet);
+                        setSmtpPasswordHint(data.config.smtp_passwordHint);
+                        setWhatsappApiKeySet(data.config.whatsapp_api_key_set);
+                    }
+                }
+            } catch (err) { console.error(err); }
+            finally { setLoadingNotifications(false); }
 
             // Fetch Payment Gateway Config
             setLoadingGateway(true);
@@ -376,6 +431,81 @@ export function SettingsPageContent() {
         }
     };
 
+    // ── Save Notifications Config ──
+    const handleSaveNotifications = async () => {
+        setSavingNotifications(true);
+        setNotificationsMessage(null);
+        try {
+            const res = await fetch('/api/settings/notifications', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify(notificationConfig)
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to save notifications settings');
+
+            setNotificationsMessage({ type: 'success', text: 'Notification settings saved successfully!' });
+            // Clear passwords so placeholders show they are set
+            setNotificationConfig(prev => ({ ...prev, smtp_password: '', whatsapp_api_key: '' }));
+            
+            // Re-fetch to update state hints
+            const response = await fetch('/api/settings/notifications', {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.config) {
+                    setSmtpPasswordSet(data.config.smtp_passwordSet);
+                    setSmtpPasswordHint(data.config.smtp_passwordHint);
+                    setWhatsappApiKeySet(data.config.whatsapp_api_key_set);
+                }
+            }
+        } catch (error: any) {
+            setNotificationsMessage({ type: 'error', text: error.message });
+        } finally {
+            setSavingNotifications(false);
+        }
+    };
+
+    // ── Test Notifications ──
+    const handleTestNotification = async (type: 'email' | 'whatsapp') => {
+        const target = type === 'email' ? testEmailAddress : testPhoneNumber;
+        if (!target) {
+            setNotificationsMessage({ type: 'error', text: `Please enter a test ${type} address/number.` });
+            return;
+        }
+
+        if (type === 'email') setTestingNotificationsEmail(true);
+        else setTestingNotificationsWA(true);
+        setNotificationsMessage(null);
+
+        try {
+            const res = await fetch('/api/settings/notifications/test', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ type, target })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Test failed');
+
+            setNotificationsMessage({
+                type: 'success',
+                text: `✅ Test successful: ${data.message}`
+            });
+        } catch (error: any) {
+            setNotificationsMessage({ type: 'error', text: error.message });
+        } finally {
+            if (type === 'email') setTestingNotificationsEmail(false);
+            else setTestingNotificationsWA(false);
+        }
+    };
+
 
     if (loading || !user) {
         return (
@@ -425,6 +555,9 @@ export function SettingsPageContent() {
                     </button>
                     <button onClick={() => setActiveTab('automation')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'automation' ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
                         <Mail className="w-4 h-4" /> Automations
+                    </button>
+                    <button onClick={() => setActiveTab('notifications')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'notifications' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
+                        <Bell className="w-4 h-4" /> Notifications
                     </button>
                     <button onClick={() => setActiveTab('payment-gateway')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'payment-gateway' ? 'bg-amber-50 text-amber-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
                         <CreditCard className="w-4 h-4" /> Payment Gateway
@@ -620,6 +753,158 @@ export function SettingsPageContent() {
                                         </button>
                                     </div>
                                 </>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* TAB: NOTIFICATIONS */}
+                {activeTab === 'notifications' && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="p-4 sm:p-6 border-b border-gray-100 bg-gradient-to-r from-blue-50/80 to-indigo-50/50">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-100 text-blue-700 rounded-lg shrink-0">
+                                    <Bell className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg sm:text-xl font-bold text-gray-900">WhatsApp & Email Notifications</h2>
+                                    <p className="text-xs sm:text-sm text-gray-500 mt-1">Configure your SMTP and WhatsApp credentials to automate parent/student alerts.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-4 sm:p-6">
+                            {notificationsMessage && (
+                                <div className={`p-4 rounded-xl mb-6 text-sm flex items-start gap-3 ${notificationsMessage.type === 'error' ? 'bg-red-50 text-red-800' : 'bg-green-50 text-green-800'}`}>
+                                    {notificationsMessage.type === 'error' ? <AlertTriangle className="w-5 h-5 flex-shrink-0" /> : <CheckCircle className="w-5 h-5 flex-shrink-0" />}
+                                    <p className="font-medium mt-0.5">{notificationsMessage.text}</p>
+                                </div>
+                            )}
+
+                            {loadingNotifications ? (
+                                <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>
+                            ) : (
+                                <div className="space-y-8">
+                                    {/* Channels Enable/Disable */}
+                                    <div className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
+                                        <h3 className="text-sm font-bold text-gray-800 mb-4">Notification Channels</h3>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200">
+                                                <div>
+                                                    <span className="block font-bold text-gray-900 text-sm">Email Channel</span>
+                                                    <span className="text-xs text-gray-500">Send fee receipts, results, alerts via email</span>
+                                                </div>
+                                                <button onClick={() => setNotificationConfig({...notificationConfig, notification_email_enabled: !notificationConfig.notification_email_enabled})} className="transition-transform active:scale-95">
+                                                    {notificationConfig.notification_email_enabled ? <ToggleRight className="w-10 h-10 text-green-500" /> : <ToggleLeft className="w-10 h-10 text-gray-300" />}
+                                                </button>
+                                            </div>
+                                            <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200">
+                                                <div>
+                                                    <span className="block font-bold text-gray-900 text-sm">WhatsApp Channel</span>
+                                                    <span className="text-xs text-gray-500">Send instant alerts directly to guardian's WhatsApp</span>
+                                                </div>
+                                                <button onClick={() => setNotificationConfig({...notificationConfig, notification_whatsapp_enabled: !notificationConfig.notification_whatsapp_enabled})} className="transition-transform active:scale-95">
+                                                    {notificationConfig.notification_whatsapp_enabled ? <ToggleRight className="w-10 h-10 text-green-500" /> : <ToggleLeft className="w-10 h-10 text-gray-300" />}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Email SMTP Configuration */}
+                                    <div className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
+                                        <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                            <Mail className="w-4 h-4 text-blue-600" /> Custom SMTP Configuration
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">SMTP Host</label>
+                                                <input type="text" value={notificationConfig.smtp_host} onChange={(e) => setNotificationConfig({...notificationConfig, smtp_host: e.target.value})} placeholder="smtp.gmail.com" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">SMTP Port</label>
+                                                <input type="text" value={notificationConfig.smtp_port} onChange={(e) => setNotificationConfig({...notificationConfig, smtp_port: e.target.value})} placeholder="587" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">SMTP Username/Email</label>
+                                                <input type="text" value={notificationConfig.smtp_user} onChange={(e) => setNotificationConfig({...notificationConfig, smtp_user: e.target.value})} placeholder="school@gmail.com" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">
+                                                    SMTP Password / App Password
+                                                    {smtpPasswordSet && !notificationConfig.smtp_password && <span className="ml-2 text-xs font-normal text-green-600">✓ Saved ({smtpPasswordHint})</span>}
+                                                </label>
+                                                <input type="password" value={notificationConfig.smtp_password} onChange={(e) => setNotificationConfig({...notificationConfig, smtp_password: e.target.value})} placeholder={smtpPasswordSet ? "Leave empty to keep existing password" : "••••••••••••••••"} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">Sender Email (From Email)</label>
+                                                <input type="text" value={notificationConfig.smtp_from_email} onChange={(e) => setNotificationConfig({...notificationConfig, smtp_from_email: e.target.value})} placeholder="noreply@school.com" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">Sender Name (From Name)</label>
+                                                <input type="text" value={notificationConfig.smtp_from_name} onChange={(e) => setNotificationConfig({...notificationConfig, smtp_from_name: e.target.value})} placeholder="St. Mary School" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors" />
+                                            </div>
+                                        </div>
+
+                                        {/* Test SMTP connection */}
+                                        <div className="mt-4 pt-4 border-t border-gray-200 flex flex-col sm:flex-row items-end gap-3">
+                                            <div className="flex-1 w-full">
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">Test Email Address</label>
+                                                <input type="email" value={testEmailAddress} onChange={(e) => setTestEmailAddress(e.target.value)} placeholder="recipient@example.com" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 transition-colors" />
+                                            </div>
+                                            <button onClick={() => handleTestNotification('email')} disabled={testingNotificationsEmail || !testEmailAddress} className="px-5 py-2.5 bg-white border-2 border-blue-200 text-blue-700 font-bold rounded-xl hover:bg-blue-50 transition-colors flex items-center justify-center gap-2 disabled:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 cursor-pointer">
+                                                {testingNotificationsEmail ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} Send Test Email
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* WhatsApp Configuration */}
+                                    <div className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
+                                        <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                            <Bell className="w-4 h-4 text-indigo-600" /> WhatsApp Integration Config
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">WhatsApp Provider</label>
+                                                <select value={notificationConfig.whatsapp_provider} onChange={(e) => setNotificationConfig({...notificationConfig, whatsapp_provider: e.target.value})} className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 transition-colors">
+                                                    <option value="meta">Meta Cloud API (Recommended)</option>
+                                                    <option value="twilio">Twilio</option>
+                                                    <option value="mock">Mock/Test Mode (No API keys needed)</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">
+                                                    Phone Number ID / Twilio Account SID
+                                                </label>
+                                                <input type="text" value={notificationConfig.whatsapp_phone_number_id} onChange={(e) => setNotificationConfig({...notificationConfig, whatsapp_phone_number_id: e.target.value})} placeholder={notificationConfig.whatsapp_provider === 'twilio' ? "ACxxxxxxxxxxxxxxxxxxxxxxxx" : "10928374928172"} className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors font-mono" />
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">
+                                                    API Key / Twilio Auth Token
+                                                    {whatsappApiKeySet && !notificationConfig.whatsapp_api_key && <span className="ml-2 text-xs font-normal text-green-600">✓ Token is saved</span>}
+                                                </label>
+                                                <input type="password" value={notificationConfig.whatsapp_api_key} onChange={(e) => setNotificationConfig({...notificationConfig, whatsapp_api_key: e.target.value})} placeholder={whatsappApiKeySet ? "Leave empty to keep existing token" : "EAAGxxxxxxxxxxxxxxxxxxxxxxxxxxx"} className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors font-mono" />
+                                            </div>
+                                        </div>
+
+                                        {/* Test WhatsApp Connection */}
+                                        <div className="mt-4 pt-4 border-t border-gray-200 flex flex-col sm:flex-row items-end gap-3">
+                                            <div className="flex-1 w-full">
+                                                <label className="block text-xs font-semibold text-gray-600 mb-2">Test Phone Number (With Country Code, e.g., 919876543210)</label>
+                                                <input type="text" value={testPhoneNumber} onChange={(e) => setTestPhoneNumber(e.target.value)} placeholder="919876543210" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors font-mono" />
+                                            </div>
+                                            <button onClick={() => handleTestNotification('whatsapp')} disabled={testingNotificationsWA || !testPhoneNumber} className="px-5 py-2.5 bg-white border-2 border-indigo-200 text-indigo-700 font-bold rounded-xl hover:bg-indigo-50 transition-colors flex items-center justify-center gap-2 disabled:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 cursor-pointer">
+                                                {testingNotificationsWA ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />} Send Test WhatsApp
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex justify-end gap-3 pt-2">
+                                        <button onClick={handleSaveNotifications} disabled={savingNotifications} className="px-6 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:bg-gray-300 shadow-md shadow-blue-600/10 cursor-pointer">
+                                            {savingNotifications ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />} Save Settings
+                                        </button>
+                                    </div>
+                                </div>
                             )}
                         </div>
                     </div>

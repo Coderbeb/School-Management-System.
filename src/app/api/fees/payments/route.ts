@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { requireSchoolAuth, resolveSchoolId } from '@/lib/auth';
+import { sendNotification } from '@/lib/notifications';
 
 /**
  * GET /api/fees/payments — List fee payments (with filters)
@@ -116,6 +117,21 @@ export async function POST(request: NextRequest) {
                  finalReceipt, 'completed', remarks || null, auth.user.userId]
             );
 
+            // Send fee receipt notification (fire-and-forget)
+            const schoolId = resolveSchoolId(auth.user, request);
+            if (schoolId) {
+                sendNotification({
+                    schoolId, studentId,
+                    event: 'fee_receipt',
+                    variables: {
+                        amount: parsedAmountPaid.toFixed(2),
+                        receiptNo: finalReceipt,
+                        paymentMode: paymentMode || 'cash',
+                        date: paymentDate || new Date().toISOString().split('T')[0],
+                    },
+                }).catch(err => console.error('[Notification] Fee receipt error:', err));
+            }
+
             return NextResponse.json({
                 payment,
                 summary: {
@@ -155,6 +171,21 @@ export async function POST(request: NextRequest) {
             [studentId, feeStructureId, parsedAmountPaid, paymentMode || 'cash', paymentDate || new Date().toISOString().split('T')[0],
              finalReceipt, paymentStatus, remarks || null, auth.user.userId]
         );
+
+        // Send fee receipt notification (fire-and-forget)
+        const schoolId2 = resolveSchoolId(auth.user, request);
+        if (schoolId2) {
+            sendNotification({
+                schoolId: schoolId2, studentId,
+                event: 'fee_receipt',
+                variables: {
+                    amount: parsedAmountPaid.toFixed(2),
+                    receiptNo: finalReceipt,
+                    paymentMode: paymentMode || 'cash',
+                    date: paymentDate || new Date().toISOString().split('T')[0],
+                },
+            }).catch(err => console.error('[Notification] Fee receipt error:', err));
+        }
 
         return NextResponse.json({
             payment,

@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { Button } from '@/components/ui/button';
-import { FileText, Download, ChevronDown, Loader2, AlertCircle, Printer, ArrowLeft } from 'lucide-react';
+import { FileText, Download, ChevronDown, Loader2, AlertCircle, Printer, ArrowLeft, Layers } from 'lucide-react';
 
 interface User { id: string; email: string; firstName: string; lastName: string; role: string; }
-interface ExamOption { id: string; name: string; is_published: boolean; }
+interface ExamOption { id: string; name: string; is_published: boolean; generates_report_card: boolean; is_teacher_test: boolean; }
+interface ExamGroupOption { id: string; name: string; exam_count: number; total_weightage: number; }
 interface ClassSectionOption { id: string; class_name: string; section_name: string; }
 
 interface SubjectResult { subjectName: string; subjectCode: string; maxMarks: number; obtained: number; percentage: number; grade: string; gradePoint: number; isPassed: boolean; isAbsent: boolean; componentMarks: { name: string; shortName: string; maxMarks: number; obtained: number; }[]; }
@@ -25,9 +26,12 @@ export default function ReportCardPage() {
     const [user, setUser] = useState<User | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [exams, setExams] = useState<ExamOption[]>([]);
+    const [examGroups, setExamGroups] = useState<ExamGroupOption[]>([]);
     const [classSections, setClassSections] = useState<ClassSectionOption[]>([]);
     const [selectedExam, setSelectedExam] = useState('');
+    const [selectedGroup, setSelectedGroup] = useState('');
     const [selectedClassSection, setSelectedClassSection] = useState('');
+    const [reportMode, setReportMode] = useState<'exam' | 'group'>('exam');
     const [reportCards, setReportCards] = useState<ReportCard[]>([]);
     const [examInfo, setExamInfo] = useState<{ name: string; sessionName: string } | null>(null);
     const [schoolSettings, setSchoolSettings] = useState<Record<string, string>>({});
@@ -45,21 +49,29 @@ export default function ReportCardPage() {
     }, [router]);
 
     const fetchInitial = async (token: string) => {
-        const [examsRes, csRes] = await Promise.all([
-            fetch('/api/exams', { headers: { Authorization: `Bearer ${token}` } }),
+        const [examsRes, csRes, groupsRes] = await Promise.all([
+            fetch('/api/exams?onlyFormal=true', { headers: { Authorization: `Bearer ${token}` } }),
             fetch('/api/manage/class-sections?withEnrollments=true', { headers: { Authorization: `Bearer ${token}` } }),
+            fetch('/api/exam-groups', { headers: { Authorization: `Bearer ${token}` } }),
         ]);
-        const [examsData, csData] = await Promise.all([examsRes.json(), csRes.json()]);
-        setExams(examsData.exams || []);
+        const [examsData, csData, groupsData] = await Promise.all([examsRes.json(), csRes.json(), groupsRes.json()]);
+        const allExams = examsData.exams || [];
+        setExams(allExams.filter((e: ExamOption) => e.generates_report_card));
         setClassSections(csData.classSections || []);
+        setExamGroups(groupsData.groups || []);
     };
 
     const generateReportCards = async () => {
-        if (!selectedExam || !selectedClassSection) return;
+        if (!selectedClassSection) return;
+        if (reportMode === 'exam' && !selectedExam) return;
+        if (reportMode === 'group' && !selectedGroup) return;
         setLoading(true); setError(''); setReportCards([]);
         const token = localStorage.getItem('token')!;
         try {
-            const res = await fetch(`/api/marks/report-card?examId=${selectedExam}&classSectionId=${selectedClassSection}`, { headers: { Authorization: `Bearer ${token}` } });
+            const param = reportMode === 'group'
+                ? `examGroupId=${selectedGroup}&classSectionId=${selectedClassSection}`
+                : `examId=${selectedExam}&classSectionId=${selectedClassSection}`;
+            const res = await fetch(`/api/marks/report-card?${param}`, { headers: { Authorization: `Bearer ${token}` } });
             const data = await res.json();
             if (!res.ok) { setError(data.error || 'Failed to generate'); setLoading(false); return; }
             setReportCards(data.reportCards || []);
@@ -187,16 +199,39 @@ ${card.coScholastic.length > 0 ? `
                 </div>
 
                 {/* Selection */}
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-6 shadow-sm">
+                <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-6 shadow-sm space-y-4">
+                    {/* Mode Toggle */}
+                    {examGroups.length > 0 && (
+                        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+                            <button onClick={() => { setReportMode('exam'); setReportCards([]); }}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${reportMode === 'exam' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+                                📝 Individual Exam
+                            </button>
+                            <button onClick={() => { setReportMode('group'); setReportCards([]); }}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${reportMode === 'group' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+                                <Layers className="w-3.5 h-3.5" /> Consolidated
+                            </button>
+                        </div>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
                         <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Exam</label>
+                            <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">
+                                {reportMode === 'group' ? 'Exam Group' : 'Exam'}
+                            </label>
                             <div className="relative">
-                                <select value={selectedExam} onChange={e => setSelectedExam(e.target.value)}
-                                    className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-rose-500 outline-none appearance-none">
-                                    <option value="">Select exam</option>
-                                    {exams.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                                </select>
+                                {reportMode === 'exam' ? (
+                                    <select value={selectedExam} onChange={e => setSelectedExam(e.target.value)}
+                                        className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-rose-500 outline-none appearance-none">
+                                        <option value="">Select exam</option>
+                                        {exams.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                                    </select>
+                                ) : (
+                                    <select value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)}
+                                        className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-rose-500 outline-none appearance-none">
+                                        <option value="">Select exam group</option>
+                                        {examGroups.map(g => <option key={g.id} value={g.id}>{g.name} ({g.exam_count} exams)</option>)}
+                                    </select>
+                                )}
                                 <ChevronDown className="w-4 h-4 text-gray-400 absolute right-2.5 top-3 pointer-events-none" />
                             </div>
                         </div>
@@ -211,7 +246,9 @@ ${card.coScholastic.length > 0 ? `
                                 <ChevronDown className="w-4 h-4 text-gray-400 absolute right-2.5 top-3 pointer-events-none" />
                             </div>
                         </div>
-                        <Button onClick={generateReportCards} disabled={loading || !selectedExam || !selectedClassSection} className="bg-rose-600 hover:bg-rose-700 text-white gap-2 h-[42px]">
+                        <Button onClick={generateReportCards}
+                            disabled={loading || !selectedClassSection || (reportMode === 'exam' ? !selectedExam : !selectedGroup)}
+                            className="bg-rose-600 hover:bg-rose-700 text-white gap-2 h-[42px]">
                             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Generate
                         </Button>
                     </div>

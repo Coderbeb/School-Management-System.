@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/ui/Navbar';
 import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { Button } from '@/components/ui/button';
-import { BarChart3, ChevronDown, Loader2, AlertCircle, Trophy, Medal, TrendingUp, Users, Target, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { BarChart3, ChevronDown, Loader2, AlertCircle, Trophy, Medal, TrendingUp, Users, Target, ArrowUpRight, ArrowDownRight, Layers } from 'lucide-react';
 
 interface User { id: string; email: string; firstName: string; lastName: string; role: string; }
-interface ExamOption { id: string; name: string; }
+interface ExamOption { id: string; name: string; generates_report_card: boolean; is_teacher_test: boolean; }
+interface ExamGroupOption { id: string; name: string; exam_count: number; total_weightage: number; aggregation_method: string; }
 interface ClassSectionOption { id: string; class_name: string; section_name: string; }
 interface StudentResult {
     student_id: string; student_name: string; roll_number: number | null;
@@ -31,9 +32,12 @@ export default function ClassResultsPage() {
     const [user, setUser] = useState<User | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [exams, setExams] = useState<ExamOption[]>([]);
+    const [examGroups, setExamGroups] = useState<ExamGroupOption[]>([]);
     const [classSections, setClassSections] = useState<ClassSectionOption[]>([]);
     const [selectedExam, setSelectedExam] = useState('');
+    const [selectedGroup, setSelectedGroup] = useState('');
     const [selectedClassSection, setSelectedClassSection] = useState('');
+    const [resultMode, setResultMode] = useState<'exam' | 'group'>('exam');
 
     const [studentResults, setStudentResults] = useState<StudentResult[]>([]);
     const [subjectStats, setSubjectStats] = useState<SubjectStat[]>([]);
@@ -53,21 +57,28 @@ export default function ClassResultsPage() {
     }, [router]);
 
     const fetchInitial = async (token: string) => {
-        const [examsRes, csRes] = await Promise.all([
-            fetch('/api/exams', { headers: { Authorization: `Bearer ${token}` } }),
+        const [examsRes, csRes, groupsRes] = await Promise.all([
+            fetch('/api/exams?onlyFormal=true', { headers: { Authorization: `Bearer ${token}` } }),
             fetch('/api/manage/class-sections?withEnrollments=true', { headers: { Authorization: `Bearer ${token}` } }),
+            fetch('/api/exam-groups', { headers: { Authorization: `Bearer ${token}` } }),
         ]);
-        const [examsData, csData] = await Promise.all([examsRes.json(), csRes.json()]);
+        const [examsData, csData, groupsData] = await Promise.all([examsRes.json(), csRes.json(), groupsRes.json()]);
         setExams(examsData.exams || []);
         setClassSections(csData.classSections || []);
+        setExamGroups(groupsData.groups || []);
     };
 
     const loadResults = useCallback(async () => {
-        if (!selectedExam || !selectedClassSection) return;
+        if (!selectedClassSection) return;
+        if (resultMode === 'exam' && !selectedExam) return;
+        if (resultMode === 'group' && !selectedGroup) return;
         setLoading(true); setError('');
         const token = localStorage.getItem('token')!;
         try {
-            const res = await fetch(`/api/marks/class-results?examId=${selectedExam}&classSectionId=${selectedClassSection}`, { headers: { Authorization: `Bearer ${token}` } });
+            const param = resultMode === 'group'
+                ? `examGroupId=${selectedGroup}&classSectionId=${selectedClassSection}`
+                : `examId=${selectedExam}&classSectionId=${selectedClassSection}`;
+            const res = await fetch(`/api/marks/class-results?${param}`, { headers: { Authorization: `Bearer ${token}` } });
             const data = await res.json();
             if (!res.ok) { setError(data.error || 'Failed to load'); setLoading(false); return; }
             setStudentResults(data.studentResults || []);
@@ -75,7 +86,7 @@ export default function ClassResultsPage() {
             setSummary(data.summary || null);
         } catch { setError('Network error'); }
         setLoading(false);
-    }, [selectedExam, selectedClassSection]);
+    }, [selectedExam, selectedGroup, selectedClassSection, resultMode]);
 
     useEffect(() => { loadResults(); }, [loadResults]);
 
@@ -111,23 +122,48 @@ export default function ClassResultsPage() {
                 </div>
 
                 {/* Selectors */}
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-6 shadow-sm">
+                <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-6 shadow-sm space-y-4">
+                    {/* Mode Toggle */}
+                    {examGroups.length > 0 && (
+                        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+                            <button onClick={() => { setResultMode('exam'); setStudentResults([]); }}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${resultMode === 'exam' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+                                📝 Individual Exam
+                            </button>
+                            <button onClick={() => { setResultMode('group'); setStudentResults([]); }}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${resultMode === 'group' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+                                <Layers className="w-3.5 h-3.5" /> Consolidated Group
+                            </button>
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Exam</label>
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">
+                                {resultMode === 'group' ? 'Exam Group' : 'Exam'}
+                            </label>
                             <div className="relative">
-                                <select value={selectedExam} onChange={e => { setSelectedExam(e.target.value); setStudentResults([]); }}
-                                    className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-amber-500 outline-none appearance-none">
-                                    <option value="">Select exam</option>
-                                    {exams.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                                </select>
+                                {resultMode === 'exam' ? (
+                                    <select value={selectedExam} onChange={e => { setSelectedExam(e.target.value); setStudentResults([]); }}
+                                        className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-amber-500 outline-none appearance-none">
+                                        <option value="">Select exam</option>
+                                        {exams.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                                    </select>
+                                ) : (
+                                    <select value={selectedGroup} onChange={e => { setSelectedGroup(e.target.value); setStudentResults([]); }}
+                                        className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-amber-500 outline-none appearance-none">
+                                        <option value="">Select exam group</option>
+                                        {examGroups.map(g => <option key={g.id} value={g.id}>{g.name} ({g.exam_count} exams)</option>)}
+                                    </select>
+                                )}
                                 <ChevronDown className="w-4 h-4 text-gray-400 absolute right-2.5 top-3 pointer-events-none" />
                             </div>
                         </div>
                         <div>
                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Class</label>
                             <div className="relative">
-                                <select value={selectedClassSection} onChange={e => setSelectedClassSection(e.target.value)} disabled={!selectedExam}
+                                <select value={selectedClassSection} onChange={e => setSelectedClassSection(e.target.value)}
+                                    disabled={resultMode === 'exam' ? !selectedExam : !selectedGroup}
                                     className="w-full pl-3 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-amber-500 outline-none appearance-none disabled:opacity-50">
                                     <option value="">Select class</option>
                                     {classSections.map(cs => <option key={cs.id} value={cs.id}>{cs.class_name} - {cs.section_name}</option>)}

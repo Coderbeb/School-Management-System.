@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import crypto from 'crypto';
+import { sendNotification } from '@/lib/notifications';
 
 /**
  * POST /api/webhooks/razorpay
@@ -142,6 +143,19 @@ export async function POST(request: NextRequest) {
                         );
                     }
                 }
+
+                // Send fee receipt notification (fire-and-forget)
+                sendNotification({
+                    schoolId: order.school_id,
+                    studentId: order.student_id,
+                    event: 'fee_receipt',
+                    variables: {
+                        amount: paymentAmount.toFixed(2),
+                        receiptNo: existingPayment ? 'Online Payment' : receiptNumber,
+                        paymentMode: 'online',
+                        date: new Date().toISOString().split('T')[0],
+                    },
+                }).catch(err => console.error('[Webhook Notification] Error:', err));
 
                 console.log(`[Webhook] ✅ Payment captured for order ${razorpayOrderId}`);
                 return NextResponse.json({ status: 'ok' });

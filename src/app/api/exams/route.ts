@@ -7,22 +7,28 @@ export async function GET(request: NextRequest) {
     const auth = requireSchoolAuth(request);
     if (auth.error) return auth.error;
     const schoolId = resolveSchoolId(auth.user, request);
+    const user = auth.user;
 
     try {
         const { searchParams } = new URL(request.url);
         const sessionId = searchParams.get('sessionId');
+        const includeTeacherTests = searchParams.get('includeTeacherTests');
+        const onlyTeacherTests = searchParams.get('onlyTeacherTests');
+        const onlyFormal = searchParams.get('onlyFormal');
 
         let sql = `
             SELECT 
                 e.*,
                 gs.name as grading_scale_name,
                 s.name as session_name,
+                u.first_name || ' ' || u.last_name as created_by_name,
                 (SELECT COUNT(*) FROM exam_subjects es WHERE es.exam_id = e.id) as subject_count,
                 (SELECT COUNT(*) FROM marks_submissions ms WHERE ms.exam_id = e.id AND ms.status = 'submitted') as submitted_count,
                 (SELECT COUNT(*) FROM marks_submissions ms WHERE ms.exam_id = e.id) as total_submissions
             FROM exams e
             LEFT JOIN grading_scales gs ON e.grading_scale_id = gs.id
             LEFT JOIN academic_sessions s ON e.session_id = s.id
+            LEFT JOIN users u ON e.created_by = u.id
             WHERE 1=1
         `;
         const params: unknown[] = [];
@@ -39,7 +45,23 @@ export async function GET(request: NextRequest) {
             params.push(sessionId);
         }
 
-        sql += ' ORDER BY e.start_date DESC NULLS LAST, e.created_at DESC';
+        // Filter teacher tests
+        if (onlyTeacherTests === 'true') {
+            sql += ` AND e.is_teacher_test = true`;
+            // Teachers only see their own tests
+            if (user.role === 'teacher') {
+                sql += ` AND e.created_by = $${idx++}`;
+                params.push(user.userId);
+            }
+        } else if (onlyFormal === 'true') {
+            sql += ` AND e.is_teacher_test = false`;
+        } else if (includeTeacherTests !== 'true' && user.role === 'teacher') {
+            // By default, teachers see formal exams + their own tests
+            sql += ` AND (e.is_teacher_test = false OR e.created_by = $${idx++})`;
+            params.push(user.userId);
+        }
+
+        sql += ' ORDER BY e.display_order ASC, e.start_date DESC NULLS LAST, e.created_at DESC';
 
         const result = await query(sql, params);
         return NextResponse.json({ exams: result });
@@ -49,11 +71,12 @@ export async function GET(request: NextRequest) {
     }
 }
 
-// POST: Create a new exam
+// POST: Create a new exam (admin creates formal exams, teachers can create informal tests)
 export async function POST(request: NextRequest) {
-    const auth = requireSchoolAuth(request, ['super_admin', 'developer']);
+    const auth = requireSchoolAuth(request, ['super_admin', 'developer', 'teacher']);
     if (auth.error) return auth.error;
     const schoolId = resolveSchoolId(auth.user, request);
+    const user = auth.user;
 
     try {
         const body = await request.json();
@@ -66,6 +89,8 @@ export async function POST(request: NextRequest) {
             endDate,
             weightage = 100,
             description,
+            generatesReportCard = true,
+            isTeacherTest = false,
         } = body;
 
         if (!name || !sessionId) {
@@ -78,11 +103,21 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'School context required' }, { status: 400 });
         }
 
+        // Teachers can only create informal tests
+        const teacherTest = user.role === 'teacher' ? true : isTeacherTest;
+        const reportsEnabled = user.role === 'teacher' ? false : generatesReportCard;
+
         const result = await queryOne(
-            `INSERT INTO exams (name, exam_category, session_id, grading_scale_id, start_date, end_date, weightage, description, school_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            `INSERT INTO exams (name, exam_category, session_id, grading_scale_id, start_date, end_date, weightage, description, school_id, generates_report_card, is_teacher_test, created_by, is_entry_open)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
              RETURNING *`,
-            [name, examCategory, sessionId, gradingScaleId || null, startDate || null, endDate || null, weightage, description || null, schoolId]
+            [
+                name, examCategory, sessionId, gradingScaleId || null,
+                startDate || null, endDate || null, weightage,
+                description || null, schoolId, reportsEnabled, teacherTest,
+                user.userId,
+                teacherTest ? true : false, // Teacher tests are immediately open for entry
+            ]
         );
 
         return NextResponse.json({ exam: result }, { status: 201 });
@@ -104,7 +139,7 @@ export async function PUT(request: NextRequest) {
 
     try {
         const body = await request.json();
-        const { id, name, examCategory, gradingScaleId, startDate, endDate, weightage, description, isEntryOpen, isPublished, isLocked } = body;
+        const { id, name, examCategory, gradingScaleId, startDate, endDate, weightage, description, isEntryOpen, isPublished, isLocked, generatesReportCard, displayOrder } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'Exam ID is required' }, { status: 400 });
@@ -121,12 +156,14 @@ export async function PUT(request: NextRequest) {
                 is_entry_open = COALESCE($9, is_entry_open),
                 is_published = COALESCE($10, is_published),
                 is_locked = COALESCE($11, is_locked),
+                generates_report_card = COALESCE($12, generates_report_card),
+                display_order = COALESCE($13, display_order),
                 updated_at = CURRENT_TIMESTAMP
              WHERE id = $1`;
-        const params: unknown[] = [id, name, examCategory, gradingScaleId, startDate, endDate, weightage, description, isEntryOpen, isPublished, isLocked];
+        const params: unknown[] = [id, name, examCategory, gradingScaleId, startDate, endDate, weightage, description, isEntryOpen, isPublished, isLocked, generatesReportCard, displayOrder];
 
         if (schoolId) {
-            sql += ` AND school_id = $12`;
+            sql += ` AND school_id = $14`;
             params.push(schoolId);
         }
 

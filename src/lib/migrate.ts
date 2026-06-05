@@ -1369,6 +1369,144 @@ const MIGRATIONS: { name: string; sql: string }[] = [
             CREATE INDEX IF NOT EXISTS idx_fee_refunds_student ON fee_refunds(student_id);
         `
     },
+    {
+        name: '022_flexible_exam_system',
+        sql: `
+            -- ============================================================
+            -- FLEXIBLE EXAMINATION SYSTEM
+            -- Supports any exam pattern: standalone, grouped, consolidated,
+            -- teacher tests, configurable result rules.
+            -- ============================================================
+
+            -- 1. EXAM GROUPS (optional term/consolidation structure)
+            -- Schools that want consolidated results create groups.
+            -- Schools that don't simply skip this — no impact.
+            CREATE TABLE IF NOT EXISTS exam_groups (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                session_id UUID NOT NULL REFERENCES academic_sessions(id) ON DELETE CASCADE,
+                name VARCHAR(150) NOT NULL,
+                description TEXT,
+                aggregation_method VARCHAR(30) DEFAULT 'weighted_sum'
+                    CHECK (aggregation_method IN (
+                        'weighted_sum',
+                        'average',
+                        'best_of_n',
+                        'latest',
+                        'cumulative'
+                    )),
+                best_of_count INTEGER,
+                generates_report_card BOOLEAN DEFAULT true,
+                display_order INTEGER DEFAULT 0,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, session_id, name)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_exam_groups_school ON exam_groups(school_id);
+            CREATE INDEX IF NOT EXISTS idx_exam_groups_session ON exam_groups(session_id);
+
+            -- 2. EXAM GROUP MEMBERS (which exams belong to a group + their weightage)
+            CREATE TABLE IF NOT EXISTS exam_group_members (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                exam_group_id UUID NOT NULL REFERENCES exam_groups(id) ON DELETE CASCADE,
+                exam_id UUID NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+                weightage NUMERIC(5,2) NOT NULL DEFAULT 100,
+                display_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(exam_group_id, exam_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_egm_group ON exam_group_members(exam_group_id);
+            CREATE INDEX IF NOT EXISTS idx_egm_exam ON exam_group_members(exam_id);
+
+            -- 3. NEW COLUMNS ON EXAMS
+            -- generates_report_card: whether this individual exam produces a report card
+            ALTER TABLE exams ADD COLUMN IF NOT EXISTS generates_report_card BOOLEAN DEFAULT true;
+
+            -- is_teacher_test: informal test created by a teacher (not counted in formal results)
+            ALTER TABLE exams ADD COLUMN IF NOT EXISTS is_teacher_test BOOLEAN DEFAULT false;
+
+            -- created_by: who created this exam (admin or teacher)
+            ALTER TABLE exams ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;
+
+            -- display_order: for ordering in the UI
+            ALTER TABLE exams ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0;
+
+            -- Remove rigid exam_category CHECK constraint — allow any string
+            DO $$ BEGIN
+                ALTER TABLE exams DROP CONSTRAINT IF EXISTS exams_exam_category_check;
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END $$;
+            -- Widen the column and keep it free-text (no CHECK)
+            ALTER TABLE exams ALTER COLUMN exam_category TYPE VARCHAR(50);
+
+            -- 4. SCHOOL-SCOPED MARK COMPONENTS
+            DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='mark_components' AND column_name='school_id') THEN
+                    ALTER TABLE mark_components ADD COLUMN school_id UUID REFERENCES schools(id) ON DELETE CASCADE;
+                    -- Global defaults (school_id = NULL) remain available to all schools
+                END IF;
+            END $$;
+
+            -- 5. COMPONENT-LEVEL PASSING MARKS
+            ALTER TABLE exam_subject_components ADD COLUMN IF NOT EXISTS passing_marks NUMERIC(6,2) DEFAULT 0;
+
+            -- 6. RESULT PRESET ON SCHOOLS
+            -- standard: >2 fail = FAIL, 1-2 = COMPARTMENT
+            -- strict: any fail = FAIL
+            -- grade_only: no numeric pass/fail, only grades
+            -- percentage_only: no grades, just percentage
+            DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='schools' AND column_name='result_preset') THEN
+                    ALTER TABLE schools ADD COLUMN result_preset VARCHAR(30) DEFAULT 'standard';
+                END IF;
+            END $$;
+        `
+    },
+    {
+        name: '023_notification_system',
+        sql: `
+            -- Notification log table
+            CREATE TABLE IF NOT EXISTS notification_log (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID REFERENCES schools(id) ON DELETE CASCADE,
+                student_id UUID REFERENCES students(id) ON DELETE SET NULL,
+                event_type VARCHAR(50) NOT NULL,
+                channel VARCHAR(20) NOT NULL CHECK (channel IN ('whatsapp', 'email')),
+                recipient_phone VARCHAR(20),
+                recipient_email VARCHAR(255),
+                template_key VARCHAR(100),
+                variables JSONB DEFAULT '{}',
+                message_body TEXT,
+                status VARCHAR(20) DEFAULT 'queued' CHECK (status IN ('queued', 'sent', 'failed', 'mock')),
+                error_message TEXT,
+                sent_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_notification_log_school ON notification_log(school_id);
+            CREATE INDEX IF NOT EXISTS idx_notification_log_event ON notification_log(event_type);
+            CREATE INDEX IF NOT EXISTS idx_notification_log_student ON notification_log(student_id);
+            CREATE INDEX IF NOT EXISTS idx_notification_log_created ON notification_log(created_at DESC);
+
+            -- Seed notification settings
+            INSERT INTO school_settings (key, value) VALUES
+                ('notification_email_enabled', 'false'),
+                ('notification_whatsapp_enabled', 'false'),
+                ('smtp_host', '""'),
+                ('smtp_port', '"587"'),
+                ('smtp_user', '""'),
+                ('smtp_password', '""'),
+                ('smtp_from_email', '""'),
+                ('smtp_from_name', '""'),
+                ('whatsapp_provider', '"meta"'),
+                ('whatsapp_api_key', '""'),
+                ('whatsapp_phone_number_id', '""')
+            ON CONFLICT (key) DO NOTHING;
+        `
+    },
 ];
 
 
