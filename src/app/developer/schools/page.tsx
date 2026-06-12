@@ -7,7 +7,7 @@ import { MobileSidebar } from '@/components/ui/MobileSidebar';
 import { Button } from '@/components/ui/button';
 import {
     Building2, Plus, ChevronRight, Users, GraduationCap, ClipboardList,
-    Search, Shield, Loader2, CheckCircle, XCircle, ChevronDown, X
+    Search, Shield, Loader2, CheckCircle, XCircle, ChevronDown, X, Sliders, ToggleLeft
 } from 'lucide-react';
 
 interface User { id: string; email: string; firstName: string; lastName: string; role: string; }
@@ -19,6 +19,12 @@ interface School {
     created_at: string;
 }
 interface Template { board_type: string; name: string; description: string; grading_scale_name: string; }
+
+interface SchoolFeature {
+    feature_key: string;
+    is_enabled: boolean;
+    disabled_reason: string | null;
+}
 
 export default function SchoolsPage() {
     const router = useRouter();
@@ -32,6 +38,13 @@ export default function SchoolsPage() {
     const [creating, setCreating] = useState(false);
     const [success, setSuccess] = useState('');
     const [error, setError] = useState('');
+
+    // Feature Toggles modal state
+    const [showFeaturesModal, setShowFeaturesModal] = useState(false);
+    const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
+    const [schoolFeatures, setSchoolFeatures] = useState<SchoolFeature[]>([]);
+    const [loadingFeatures, setLoadingFeatures] = useState(false);
+    const [togglingKey, setTogglingKey] = useState('');
 
     // Form state
     const [form, setForm] = useState({
@@ -90,6 +103,55 @@ export default function SchoolsPage() {
             body: JSON.stringify({ id: schoolId, isActive: !isActive }),
         });
         fetchData(token);
+    };
+
+    // --- School Features Management ---
+    const openFeatures = async (school: School) => {
+        setSelectedSchool(school);
+        setShowFeaturesModal(true);
+        setLoadingFeatures(true);
+        const token = localStorage.getItem('token')!;
+        try {
+            const res = await fetch(`/api/developer/school-features?schoolId=${school.id}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setSchoolFeatures(data.features || []);
+            }
+        } catch (err) {
+            console.error('Failed to load features', err);
+        }
+        setLoadingFeatures(false);
+    };
+
+    const toggleFeatureFlag = async (featureKey: string, currentStatus: boolean) => {
+        if (!selectedSchool) return;
+        setTogglingKey(featureKey);
+        const token = localStorage.getItem('token')!;
+        try {
+            const reason = !currentStatus ? '' : 'Disabled by developer';
+            const res = await fetch('/api/developer/school-features', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                    schoolId: selectedSchool.id,
+                    featureKey,
+                    isEnabled: !currentStatus,
+                    disabledReason: reason
+                })
+            });
+
+            if (res.ok) {
+                // Refresh local state
+                setSchoolFeatures(prev =>
+                    prev.map(f => f.feature_key === featureKey ? { ...f, is_enabled: !currentStatus, disabled_reason: reason || null } : f)
+                );
+            }
+        } catch (err) {
+            console.error(err);
+        }
+        setTogglingKey('');
     };
 
     const handleLogout = () => { localStorage.removeItem('token'); localStorage.removeItem('user'); router.replace('/login'); };
@@ -168,10 +230,16 @@ export default function SchoolsPage() {
                                             <p className="text-xs text-gray-500 mt-0.5">{[school.city, school.state].filter(Boolean).join(', ') || 'No location set'}</p>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                                    <div className="flex items-center gap-3 text-xs text-gray-500">
                                         <div className="flex items-center gap-1"><GraduationCap className="w-3.5 h-3.5" /> {school.total_students}</div>
                                         <div className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {school.total_teachers}</div>
                                         <div className="flex items-center gap-1"><ClipboardList className="w-3.5 h-3.5" /> {school.total_exams}</div>
+                                        
+                                        <button onClick={() => openFeatures(school)}
+                                            className="px-3 py-1 bg-cyan-50 text-cyan-700 hover:bg-cyan-100 rounded-lg text-xs font-bold transition-colors flex items-center gap-1">
+                                            <Sliders className="w-3.5 h-3.5" /> Features
+                                        </button>
+
                                         <button onClick={() => toggleSchool(school.id, school.is_active)}
                                             className={`px-3 py-1 rounded-lg text-xs font-bold ${school.is_active ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'} transition-colors`}>
                                             {school.is_active ? 'Disable' : 'Enable'}
@@ -276,6 +344,68 @@ export default function SchoolsPage() {
                                 <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
                                 <Button onClick={createSchool} disabled={creating || !form.name} className="bg-cyan-600 hover:bg-cyan-700 text-white gap-2">
                                     {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Create School
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Developer Feature Toggle Panel Modal */}
+                {showFeaturesModal && selectedSchool && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowFeaturesModal(false)}>
+                        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                                <div>
+                                    <h2 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                                        <Sliders className="w-5 h-5 text-cyan-600" />
+                                        Module Feature Config
+                                    </h2>
+                                    <p className="text-xs text-gray-400 font-semibold mt-0.5">{selectedSchool.name}</p>
+                                </div>
+                                <button onClick={() => setShowFeaturesModal(false)} className="p-1.5 hover:bg-gray-100 rounded-full">
+                                    <X className="w-5 h-5 text-gray-400" />
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+                                {loadingFeatures ? (
+                                    <div className="flex flex-col items-center py-10 gap-2">
+                                        <Loader2 className="w-6 h-6 text-cyan-500 animate-spin" />
+                                        <p className="text-xs text-gray-400">Loading module configuration...</p>
+                                    </div>
+                                ) : schoolFeatures.length > 0 ? (
+                                    <div className="divide-y divide-gray-100">
+                                        {schoolFeatures.map(feat => {
+                                            const isToggling = togglingKey === feat.feature_key;
+                                            return (
+                                                <div key={feat.feature_key} className="py-3 flex items-center justify-between">
+                                                    <div>
+                                                        <span className="text-sm font-bold text-gray-850 capitalize">{feat.feature_key.replace('_', ' ')}</span>
+                                                        {feat.disabled_reason && (
+                                                            <p className="text-[10px] text-red-500 font-semibold">{feat.disabled_reason}</p>
+                                                        )}
+                                                    </div>
+                                                    <button onClick={() => toggleFeatureFlag(feat.feature_key, feat.is_enabled)}
+                                                        disabled={isToggling}
+                                                        className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${
+                                                            feat.is_enabled ? 'bg-emerald-500' : 'bg-gray-300'
+                                                        }`}>
+                                                        <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${
+                                                            feat.is_enabled ? 'right-0.5' : 'left-0.5'
+                                                        } flex items-center justify-center`}>
+                                                            {isToggling && <Loader2 className="w-3.5 h-3.5 text-cyan-500 animate-spin" />}
+                                                        </div>
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-450 italic text-center">No features registered.</p>
+                                )}
+                            </div>
+                            <div className="p-6 border-t border-gray-100 flex justify-end rounded-b-3xl">
+                                <Button onClick={() => setShowFeaturesModal(false)} className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs px-6">
+                                    Done
                                 </Button>
                             </div>
                         </div>

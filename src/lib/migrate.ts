@@ -1492,19 +1492,1007 @@ const MIGRATIONS: { name: string; sql: string }[] = [
             CREATE INDEX IF NOT EXISTS idx_notification_log_created ON notification_log(created_at DESC);
 
             -- Seed notification settings
-            INSERT INTO school_settings (key, value) VALUES
-                ('notification_email_enabled', 'false'),
-                ('notification_whatsapp_enabled', 'false'),
-                ('smtp_host', '""'),
-                ('smtp_port', '"587"'),
-                ('smtp_user', '""'),
-                ('smtp_password', '""'),
-                ('smtp_from_email', '""'),
-                ('smtp_from_name', '""'),
-                ('whatsapp_provider', '"meta"'),
-                ('whatsapp_api_key', '""'),
-                ('whatsapp_phone_number_id', '""')
-            ON CONFLICT (key) DO NOTHING;
+            INSERT INTO school_settings (key, value, school_id) VALUES
+                ('notification_email_enabled', 'false', '00000000-0000-0000-0000-000000000099'),
+                ('notification_whatsapp_enabled', 'false', '00000000-0000-0000-0000-000000000099'),
+                ('smtp_host', '""', '00000000-0000-0000-0000-000000000099'),
+                ('smtp_port', '"587"', '00000000-0000-0000-0000-000000000099'),
+                ('smtp_user', '""', '00000000-0000-0000-0000-000000000099'),
+                ('smtp_password', '""', '00000000-0000-0000-0000-000000000099'),
+                ('smtp_from_email', '""', '00000000-0000-0000-0000-000000000099'),
+                ('smtp_from_name', '""', '00000000-0000-0000-0000-000000000099'),
+                ('whatsapp_provider', '"meta"', '00000000-0000-0000-0000-000000000099'),
+                ('whatsapp_api_key', '""', '00000000-0000-0000-0000-000000000099'),
+                ('whatsapp_phone_number_id', '""', '00000000-0000-0000-0000-000000000099')
+            ON CONFLICT (key, school_id) DO NOTHING;
+        `
+    },
+    {
+        name: '024_admission_system',
+        sql: `
+            -- ============================================================
+            -- STUDENT ADMISSION SYSTEM
+            -- End-to-end pipeline: Enquiry → Application → Review → Enroll
+            -- ============================================================
+
+            -- 1. ADMISSION ENQUIRIES (first touchpoint)
+            CREATE TABLE IF NOT EXISTS admission_enquiries (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                session_id UUID NOT NULL REFERENCES academic_sessions(id) ON DELETE CASCADE,
+                student_name VARCHAR(150) NOT NULL,
+                guardian_name VARCHAR(150) NOT NULL,
+                guardian_phone VARCHAR(20) NOT NULL,
+                guardian_email VARCHAR(255),
+                class_id UUID NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+                date_of_birth DATE,
+                gender VARCHAR(10) CHECK (gender IN ('male', 'female', 'other')),
+                previous_school VARCHAR(255),
+                source VARCHAR(30) DEFAULT 'walk_in'
+                    CHECK (source IN ('walk_in', 'online', 'referral', 'advertisement', 'other')),
+                status VARCHAR(20) DEFAULT 'new'
+                    CHECK (status IN ('new', 'contacted', 'follow_up', 'converted', 'closed')),
+                notes TEXT,
+                follow_up_date DATE,
+                assigned_to UUID REFERENCES users(id) ON DELETE SET NULL,
+                created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_admission_enquiries_school ON admission_enquiries(school_id);
+            CREATE INDEX IF NOT EXISTS idx_admission_enquiries_session ON admission_enquiries(session_id);
+            CREATE INDEX IF NOT EXISTS idx_admission_enquiries_status ON admission_enquiries(status);
+            CREATE INDEX IF NOT EXISTS idx_admission_enquiries_class ON admission_enquiries(class_id);
+
+            -- 2. ADMISSION APPLICATIONS (full application form)
+            CREATE TABLE IF NOT EXISTS admission_applications (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                enquiry_id UUID REFERENCES admission_enquiries(id) ON DELETE SET NULL,
+                application_number VARCHAR(50) NOT NULL,
+                session_id UUID NOT NULL REFERENCES academic_sessions(id) ON DELETE CASCADE,
+                class_id UUID NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+
+                -- Student info
+                student_name VARCHAR(150) NOT NULL,
+                date_of_birth DATE NOT NULL,
+                gender VARCHAR(10) NOT NULL CHECK (gender IN ('male', 'female', 'other')),
+                blood_group VARCHAR(5),
+                nationality VARCHAR(50) DEFAULT 'Indian',
+                religion VARCHAR(50),
+                caste_category VARCHAR(30),
+                aadhar_number VARCHAR(20),
+                address TEXT,
+                city VARCHAR(100),
+                state VARCHAR(100),
+                pincode VARCHAR(10),
+                photo_url TEXT,
+
+                -- Previous school
+                previous_school VARCHAR(255),
+                previous_class VARCHAR(50),
+                previous_percentage NUMERIC(5,2),
+                tc_number VARCHAR(50),
+
+                -- Guardian info
+                father_name VARCHAR(150),
+                father_phone VARCHAR(20),
+                father_email VARCHAR(255),
+                father_occupation VARCHAR(100),
+                father_income VARCHAR(50),
+                mother_name VARCHAR(150),
+                mother_phone VARCHAR(20),
+                mother_email VARCHAR(255),
+                mother_occupation VARCHAR(100),
+                guardian_name VARCHAR(150),
+                guardian_relation VARCHAR(30),
+                guardian_phone VARCHAR(20) NOT NULL,
+                guardian_email VARCHAR(255),
+
+                -- Medical
+                medical_conditions TEXT,
+                allergies TEXT,
+                emergency_contact_name VARCHAR(150),
+                emergency_contact_phone VARCHAR(20),
+
+                -- Custom data
+                custom_fields JSONB DEFAULT '{}',
+
+                -- Status
+                status VARCHAR(20) DEFAULT 'submitted'
+                    CHECK (status IN ('draft', 'submitted', 'under_review', 'approved', 'rejected', 'waitlisted', 'enrolled')),
+                reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                review_remarks TEXT,
+                submitted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at TIMESTAMP WITH TIME ZONE,
+
+                -- Fees
+                registration_fee DECIMAL(10,2) DEFAULT 0,
+                registration_fee_paid BOOLEAN DEFAULT false,
+
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, application_number)
+            );
+            CREATE INDEX IF NOT EXISTS idx_admission_apps_school ON admission_applications(school_id);
+            CREATE INDEX IF NOT EXISTS idx_admission_apps_session ON admission_applications(session_id);
+            CREATE INDEX IF NOT EXISTS idx_admission_apps_status ON admission_applications(status);
+            CREATE INDEX IF NOT EXISTS idx_admission_apps_class ON admission_applications(class_id);
+            CREATE INDEX IF NOT EXISTS idx_admission_apps_guardian_phone ON admission_applications(guardian_phone);
+
+            -- 3. ADMISSION DOCUMENTS (uploaded files)
+            CREATE TABLE IF NOT EXISTS admission_documents (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                application_id UUID NOT NULL REFERENCES admission_applications(id) ON DELETE CASCADE,
+                document_type VARCHAR(50) NOT NULL
+                    CHECK (document_type IN ('birth_certificate', 'aadhar_card', 'transfer_certificate', 'marksheet', 'photo', 'address_proof', 'caste_certificate', 'medical_certificate', 'other')),
+                document_name VARCHAR(255) NOT NULL,
+                file_url TEXT NOT NULL,
+                is_verified BOOLEAN DEFAULT false,
+                verified_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_admission_docs_app ON admission_documents(application_id);
+
+            -- 4. ADMISSION SETTINGS (per school config)
+            INSERT INTO school_settings (key, value, school_id) VALUES
+                ('admission_open', 'false', '00000000-0000-0000-0000-000000000099'),
+                ('admission_registration_fee', '0', '00000000-0000-0000-0000-000000000099'),
+                ('admission_auto_number_prefix', '"ADM"', '00000000-0000-0000-0000-000000000099'),
+                ('admission_auto_number_counter', '0', '00000000-0000-0000-0000-000000000099'),
+                ('admission_required_documents', '["birth_certificate","photo","aadhar_card"]', '00000000-0000-0000-0000-000000000099')
+            ON CONFLICT (key, school_id) DO NOTHING;
+        `
+    },
+    {
+        name: '025_student_promotion',
+        sql: `
+            -- ============================================================
+            -- STUDENT PROMOTION & HISTORY SYSTEM
+            -- Track promotions, retentions, transfers, and full history
+            -- ============================================================
+
+            -- 1. STUDENT PROMOTIONS LOG
+            CREATE TABLE IF NOT EXISTS student_promotions (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                from_class_section_id UUID REFERENCES class_sections(id) ON DELETE SET NULL,
+                to_class_section_id UUID REFERENCES class_sections(id) ON DELETE SET NULL,
+                from_session_id UUID NOT NULL REFERENCES academic_sessions(id) ON DELETE CASCADE,
+                to_session_id UUID NOT NULL REFERENCES academic_sessions(id) ON DELETE CASCADE,
+                action VARCHAR(20) NOT NULL DEFAULT 'promoted'
+                    CHECK (action IN ('promoted', 'retained', 'transferred_out', 'withdrawn', 'graduated', 'tc_issued')),
+                remarks TEXT,
+                batch_id UUID,
+                promoted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                promoted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_promotions_school ON student_promotions(school_id);
+            CREATE INDEX IF NOT EXISTS idx_promotions_student ON student_promotions(student_id);
+            CREATE INDEX IF NOT EXISTS idx_promotions_batch ON student_promotions(batch_id);
+            CREATE INDEX IF NOT EXISTS idx_promotions_session ON student_promotions(from_session_id);
+
+            -- 2. STUDENT DOCUMENTS (general doc storage)
+            CREATE TABLE IF NOT EXISTS student_documents (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                document_type VARCHAR(50) NOT NULL,
+                document_name VARCHAR(255) NOT NULL,
+                file_url TEXT,
+                uploaded_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_student_docs_school ON student_documents(school_id);
+            CREATE INDEX IF NOT EXISTS idx_student_docs_student ON student_documents(student_id);
+        `
+    },
+    {
+        name: '026_certificate_system',
+        sql: `
+            -- ============================================================
+            -- CERTIFICATE GENERATION SYSTEM
+            -- TC, Bonafide, Character, and custom certificates
+            -- ============================================================
+
+            -- 1. CERTIFICATE TEMPLATES
+            CREATE TABLE IF NOT EXISTS certificate_templates (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                name VARCHAR(150) NOT NULL,
+                type VARCHAR(30) NOT NULL DEFAULT 'custom'
+                    CHECK (type IN ('transfer_certificate', 'bonafide', 'character', 'study', 'conduct', 'custom')),
+                html_template TEXT NOT NULL DEFAULT '',
+                css_styles TEXT DEFAULT '',
+                placeholders JSONB DEFAULT '[]',
+                is_default BOOLEAN DEFAULT false,
+                is_active BOOLEAN DEFAULT true,
+                created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_cert_templates_school ON certificate_templates(school_id);
+            CREATE INDEX IF NOT EXISTS idx_cert_templates_type ON certificate_templates(type);
+
+            -- 2. ISSUED CERTIFICATES
+            CREATE TABLE IF NOT EXISTS issued_certificates (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                template_id UUID NOT NULL REFERENCES certificate_templates(id) ON DELETE CASCADE,
+                certificate_number VARCHAR(50) NOT NULL,
+                data JSONB DEFAULT '{}',
+                issued_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                issued_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                revoked BOOLEAN DEFAULT false,
+                revoked_reason TEXT,
+                UNIQUE(school_id, certificate_number)
+            );
+            CREATE INDEX IF NOT EXISTS idx_issued_certs_school ON issued_certificates(school_id);
+            CREATE INDEX IF NOT EXISTS idx_issued_certs_student ON issued_certificates(student_id);
+            CREATE INDEX IF NOT EXISTS idx_issued_certs_template ON issued_certificates(template_id);
+
+            -- 3. Seed default templates
+            -- (will be populated per-school on first access)
+        `
+    },
+    {
+        name: '027_student_categories',
+        sql: `
+            -- ============================================================
+            -- STUDENT CATEGORIES
+            -- For fee concessions, government reporting, filtering
+            -- ============================================================
+
+            CREATE TABLE IF NOT EXISTS student_categories (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                name VARCHAR(100) NOT NULL,
+                description TEXT,
+                fee_discount_percentage NUMERIC(5,2) DEFAULT 0,
+                is_active BOOLEAN DEFAULT true,
+                display_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_student_cats_school ON student_categories(school_id);
+
+            -- Add category_id to students
+            ALTER TABLE students ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES student_categories(id) ON DELETE SET NULL;
+            CREATE INDEX IF NOT EXISTS idx_students_category ON students(category_id);
+
+            -- Add nationality and religion to students if missing
+            ALTER TABLE students ADD COLUMN IF NOT EXISTS nationality VARCHAR(50) DEFAULT 'Indian';
+            ALTER TABLE students ADD COLUMN IF NOT EXISTS religion VARCHAR(50);
+            ALTER TABLE students ADD COLUMN IF NOT EXISTS caste_category VARCHAR(30);
+            ALTER TABLE students ADD COLUMN IF NOT EXISTS aadhar_number VARCHAR(20);
+            ALTER TABLE students ADD COLUMN IF NOT EXISTS previous_school VARCHAR(255);
+        `
+    },
+    {
+        name: '028_transport_system',
+        sql: `
+            -- ============================================================
+            -- TRANSPORT MANAGEMENT SYSTEM
+            -- ============================================================
+
+            -- 1. VEHICLES
+            CREATE TABLE IF NOT EXISTS transport_vehicles (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                vehicle_number VARCHAR(50) NOT NULL,
+                vehicle_type VARCHAR(30) NOT NULL CHECK (vehicle_type IN ('bus', 'van', 'auto', 'other')),
+                capacity INTEGER NOT NULL,
+                driver_name VARCHAR(150),
+                driver_phone VARCHAR(20),
+                insurance_expiry DATE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, vehicle_number)
+            );
+            CREATE INDEX IF NOT EXISTS idx_trans_veh_school ON transport_vehicles(school_id);
+
+            -- 2. ROUTES
+            CREATE TABLE IF NOT EXISTS transport_routes (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                route_name VARCHAR(150) NOT NULL,
+                vehicle_id UUID REFERENCES transport_vehicles(id) ON DELETE SET NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, route_name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_trans_rt_school ON transport_routes(school_id);
+
+            -- 3. STOPS
+            CREATE TABLE IF NOT EXISTS transport_stops (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                route_id UUID NOT NULL REFERENCES transport_routes(id) ON DELETE CASCADE,
+                stop_name VARCHAR(150) NOT NULL,
+                pickup_time TIME,
+                drop_time TIME,
+                sequence_order INTEGER NOT NULL,
+                monthly_fare NUMERIC(10,2) DEFAULT 0,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_trans_st_school ON transport_stops(school_id);
+            CREATE INDEX IF NOT EXISTS idx_trans_st_route ON transport_stops(route_id);
+
+            -- 4. FEE SLABS
+            CREATE TABLE IF NOT EXISTS transport_fee_slabs (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                slab_name VARCHAR(100) NOT NULL,
+                min_stops INTEGER DEFAULT 0,
+                max_stops INTEGER DEFAULT 99,
+                monthly_fare NUMERIC(10,2) NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, slab_name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_trans_slab_school ON transport_fee_slabs(school_id);
+
+            -- 5. ASSIGNMENTS
+            CREATE TABLE IF NOT EXISTS transport_assignments (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                route_id UUID NOT NULL REFERENCES transport_routes(id) ON DELETE CASCADE,
+                stop_id UUID NOT NULL REFERENCES transport_stops(id) ON DELETE CASCADE,
+                from_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                to_date DATE,
+                monthly_fare NUMERIC(10,2) NOT NULL,
+                status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'cancelled')),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, student_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_trans_asgn_school ON transport_assignments(school_id);
+            CREATE INDEX IF NOT EXISTS idx_trans_asgn_student ON transport_assignments(student_id);
+        `
+    },
+    {
+        name: '029_timetable_system',
+        sql: `
+            -- ============================================================
+            -- TIMETABLE MANAGEMENT SYSTEM
+            -- ============================================================
+
+            -- 1. DAY TEMPLATES
+            CREATE TABLE IF NOT EXISTS timetable_day_templates (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                name VARCHAR(100) NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_tt_tpl_school ON timetable_day_templates(school_id);
+
+            -- 2. PERIODS
+            CREATE TABLE IF NOT EXISTS timetable_periods (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                day_template_id UUID NOT NULL REFERENCES timetable_day_templates(id) ON DELETE CASCADE,
+                period_number INTEGER NOT NULL,
+                start_time TIME NOT NULL,
+                end_time TIME NOT NULL,
+                is_break BOOLEAN DEFAULT false,
+                label VARCHAR(50),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(day_template_id, period_number)
+            );
+            CREATE INDEX IF NOT EXISTS idx_tt_prd_school ON timetable_periods(school_id);
+            CREATE INDEX IF NOT EXISTS idx_tt_prd_tpl ON timetable_periods(day_template_id);
+
+            -- 3. TIMETABLE ENTRIES
+            CREATE TABLE IF NOT EXISTS timetable_entries (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 1 AND 7), -- 1: Mon, 6: Sat, 7: Sun
+                period_id UUID NOT NULL REFERENCES timetable_periods(id) ON DELETE CASCADE,
+                class_section_id UUID NOT NULL REFERENCES class_sections(id) ON DELETE CASCADE,
+                subject_id UUID NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+                teacher_id UUID REFERENCES users(id) ON DELETE SET NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(day_of_week, period_id, class_section_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_tt_ent_school ON timetable_entries(school_id);
+            CREATE INDEX IF NOT EXISTS idx_tt_ent_section ON timetable_entries(class_section_id);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_tt_ent_teacher_clash ON timetable_entries(day_of_week, period_id, teacher_id) WHERE teacher_id IS NOT NULL;
+        `
+    },
+    {
+        name: '030_salary_enhancement',
+        sql: `
+            -- ============================================================
+            -- SALARY ENHANCEMENT SYSTEM
+            -- ============================================================
+
+            -- 1. SALARY COMPONENTS
+            CREATE TABLE IF NOT EXISTS salary_components (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                name VARCHAR(100) NOT NULL,
+                type VARCHAR(20) NOT NULL CHECK (type IN ('earning', 'deduction')),
+                is_percentage BOOLEAN DEFAULT false,
+                percentage_of VARCHAR(50), -- e.g. "base_salary"
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_sal_comp_school ON salary_components(school_id);
+
+            -- 2. SALARY ADVANCES
+            CREATE TABLE IF NOT EXISTS salary_advances (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                amount NUMERIC(10,2) NOT NULL,
+                given_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                repayment_start_month VARCHAR(7) NOT NULL, -- "YYYY-MM"
+                monthly_deduction NUMERIC(10,2) NOT NULL,
+                amount_repaid NUMERIC(10,2) DEFAULT 0,
+                status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'fully_repaid', 'written_off')),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_sal_adv_school ON salary_advances(school_id);
+            CREATE INDEX IF NOT EXISTS idx_sal_adv_user ON salary_advances(user_id);
+
+            -- 3. ALTER PAYMENTS TABLE
+            ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS advance_deducted NUMERIC(10,2) DEFAULT 0;
+        `
+    },
+    {
+        name: '031_feature_toggles',
+        sql: `
+            -- ============================================================
+            -- FEATURE TOGGLES SYSTEM
+            -- ============================================================
+
+            CREATE TABLE IF NOT EXISTS school_features (
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                feature_key VARCHAR(50) NOT NULL,
+                is_enabled BOOLEAN NOT NULL DEFAULT true,
+                disabled_reason TEXT,
+                toggled_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                toggled_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (school_id, feature_key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_school_feat_school ON school_features(school_id);
+        `
+    },
+    {
+        name: '032_hostel_system',
+        sql: `
+            -- ============================================================
+            -- HOSTEL MANAGEMENT SYSTEM
+            -- ============================================================
+
+            -- 1. HOSTELS
+            CREATE TABLE IF NOT EXISTS hostels (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                name VARCHAR(150) NOT NULL,
+                type VARCHAR(30) NOT NULL CHECK (type IN ('boys', 'girls', 'coed')),
+                warden_name VARCHAR(150),
+                warden_phone VARCHAR(20),
+                total_capacity INTEGER DEFAULT 0,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_hostels_school ON hostels(school_id);
+
+            -- 2. HOSTEL ROOMS
+            CREATE TABLE IF NOT EXISTS hostel_rooms (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                hostel_id UUID NOT NULL REFERENCES hostels(id) ON DELETE CASCADE,
+                room_number VARCHAR(50) NOT NULL,
+                floor INTEGER NOT NULL DEFAULT 0,
+                room_type VARCHAR(30) NOT NULL CHECK (room_type IN ('single', 'double', 'dormitory')),
+                capacity INTEGER NOT NULL DEFAULT 1,
+                monthly_rent NUMERIC(10,2) DEFAULT 0,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(hostel_id, room_number)
+            );
+            CREATE INDEX IF NOT EXISTS idx_hostel_rooms_school ON hostel_rooms(school_id);
+            CREATE INDEX IF NOT EXISTS idx_hostel_rooms_hostel ON hostel_rooms(hostel_id);
+
+            -- 3. HOSTEL ALLOCATIONS
+            CREATE TABLE IF NOT EXISTS hostel_allocations (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                room_id UUID NOT NULL REFERENCES hostel_rooms(id) ON DELETE CASCADE,
+                bed_number VARCHAR(10),
+                from_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                to_date DATE,
+                status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'vacated')),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_hostel_alloc_school ON hostel_allocations(school_id);
+            CREATE INDEX IF NOT EXISTS idx_hostel_alloc_student ON hostel_allocations(student_id);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_hostel_alloc_active ON hostel_allocations(school_id, student_id) WHERE status = 'active';
+
+            -- 4. HOSTEL FEE STRUCTURES
+            CREATE TABLE IF NOT EXISTS hostel_fee_structures (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                room_type VARCHAR(30) NOT NULL CHECK (room_type IN ('single', 'double', 'dormitory')),
+                rent_amount NUMERIC(10,2) NOT NULL,
+                mess_charge NUMERIC(10,2) NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, room_type)
+            );
+            CREATE INDEX IF NOT EXISTS idx_hostel_fee_school ON hostel_fee_structures(school_id);
+        `
+    },
+    {
+        name: '033_hostel_upgrade',
+        sql: `
+            -- ============================================================
+            -- HOSTEL MANAGEMENT SYSTEM — FULL UPGRADE
+            -- Extends buildings, rooms, allocations + adds leave, visitors, complaints
+            -- ============================================================
+
+            -- 1. EXTEND HOSTELS TABLE
+            ALTER TABLE hostels ADD COLUMN IF NOT EXISTS address TEXT;
+            ALTER TABLE hostels ADD COLUMN IF NOT EXISTS assistant_warden_name VARCHAR(150);
+            ALTER TABLE hostels ADD COLUMN IF NOT EXISTS assistant_warden_phone VARCHAR(20);
+            ALTER TABLE hostels ADD COLUMN IF NOT EXISTS mess_type VARCHAR(30) DEFAULT 'none'
+                CHECK (mess_type IN ('vegetarian', 'non_vegetarian', 'both', 'none'));
+            ALTER TABLE hostels ADD COLUMN IF NOT EXISTS mess_charge NUMERIC(10,2) DEFAULT 0;
+            ALTER TABLE hostels ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+            ALTER TABLE hostels ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES academic_sessions(id) ON DELETE SET NULL;
+
+            -- Fix mess_type CHECK: use DO block for safety on re-run
+            DO $$ BEGIN
+                ALTER TABLE hostels DROP CONSTRAINT IF EXISTS hostels_mess_type_check;
+                ALTER TABLE hostels ADD CONSTRAINT hostels_mess_type_check
+                    CHECK (mess_type IN ('vegetarian', 'non_vegetarian', 'both', 'none'));
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END $$;
+
+            -- 2. EXTEND HOSTEL ROOMS TABLE — new room types
+            DO $$ BEGIN
+                ALTER TABLE hostel_rooms DROP CONSTRAINT IF EXISTS hostel_rooms_room_type_check;
+                ALTER TABLE hostel_rooms ADD CONSTRAINT hostel_rooms_room_type_check
+                    CHECK (room_type IN ('single', 'double', 'triple', 'four_sharing', 'six_sharing', 'dormitory'));
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END $$;
+
+            ALTER TABLE hostel_rooms ADD COLUMN IF NOT EXISTS amenities TEXT;
+            ALTER TABLE hostel_rooms ADD COLUMN IF NOT EXISTS remarks TEXT;
+
+            -- 3. EXTEND HOSTEL ALLOCATIONS TABLE
+            ALTER TABLE hostel_allocations ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES academic_sessions(id) ON DELETE SET NULL;
+            ALTER TABLE hostel_allocations ADD COLUMN IF NOT EXISTS remarks TEXT;
+            ALTER TABLE hostel_allocations ADD COLUMN IF NOT EXISTS guardian_consent BOOLEAN DEFAULT false;
+
+            -- 4. HOSTEL LEAVE REQUESTS
+            CREATE TABLE IF NOT EXISTS hostel_leave_requests (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                leave_type VARCHAR(30) NOT NULL DEFAULT 'home_visit'
+                    CHECK (leave_type IN ('home_visit', 'medical', 'festival', 'emergency', 'other')),
+                from_date DATE NOT NULL,
+                to_date DATE NOT NULL,
+                reason TEXT NOT NULL,
+                guardian_phone VARCHAR(20),
+                status VARCHAR(20) DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'approved', 'rejected')),
+                approved_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                approved_at TIMESTAMP WITH TIME ZONE,
+                remarks TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_hostel_leave_school ON hostel_leave_requests(school_id);
+            CREATE INDEX IF NOT EXISTS idx_hostel_leave_student ON hostel_leave_requests(student_id);
+            CREATE INDEX IF NOT EXISTS idx_hostel_leave_status ON hostel_leave_requests(status);
+
+            -- 5. HOSTEL VISITORS LOG
+            CREATE TABLE IF NOT EXISTS hostel_visitors (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                visitor_name VARCHAR(150) NOT NULL,
+                visitor_relation VARCHAR(50) DEFAULT 'other'
+                    CHECK (visitor_relation IN ('father', 'mother', 'guardian', 'sibling', 'relative', 'other')),
+                visitor_phone VARCHAR(20),
+                purpose TEXT,
+                check_in TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                check_out TIMESTAMP WITH TIME ZONE,
+                approved_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                remarks TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_hostel_visitor_school ON hostel_visitors(school_id);
+            CREATE INDEX IF NOT EXISTS idx_hostel_visitor_student ON hostel_visitors(student_id);
+            CREATE INDEX IF NOT EXISTS idx_hostel_visitor_checkin ON hostel_visitors(check_in);
+
+            -- 6. HOSTEL COMPLAINTS / MAINTENANCE
+            CREATE TABLE IF NOT EXISTS hostel_complaints (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                student_id UUID REFERENCES students(id) ON DELETE SET NULL,
+                room_id UUID REFERENCES hostel_rooms(id) ON DELETE SET NULL,
+                complaint_type VARCHAR(50) NOT NULL DEFAULT 'other'
+                    CHECK (complaint_type IN ('maintenance', 'electrical', 'plumbing', 'furniture', 'cleanliness', 'other')),
+                description TEXT NOT NULL,
+                priority VARCHAR(20) DEFAULT 'medium'
+                    CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+                status VARCHAR(20) DEFAULT 'open'
+                    CHECK (status IN ('open', 'in_progress', 'resolved', 'closed')),
+                resolved_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                resolved_at TIMESTAMP WITH TIME ZONE,
+                resolution_notes TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_hostel_complaint_school ON hostel_complaints(school_id);
+            CREATE INDEX IF NOT EXISTS idx_hostel_complaint_status ON hostel_complaints(status);
+            CREATE INDEX IF NOT EXISTS idx_hostel_complaint_room ON hostel_complaints(room_id);
+        `
+    },
+    {
+        name: '034_library_management_system',
+        sql: `
+            -- ============================================================
+            -- LIBRARY MANAGEMENT SYSTEM (LMS)
+            -- Complete book catalog, circulation, reservations, and fines
+            -- Multi-tenant: all tables scoped by school_id
+            -- ============================================================
+
+            -- 1. LIBRARY SETTINGS — Per-school library configuration
+            CREATE TABLE IF NOT EXISTS library_settings (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                max_books_per_student INTEGER DEFAULT 3,
+                loan_duration_days INTEGER DEFAULT 14,
+                max_renewals INTEGER DEFAULT 2,
+                fine_per_day NUMERIC(10,2) DEFAULT 1.00,
+                fine_currency VARCHAR(10) DEFAULT 'INR',
+                allow_student_renewal BOOLEAN DEFAULT true,
+                allow_student_reservation BOOLEAN DEFAULT true,
+                overdue_alert_days_before INTEGER DEFAULT 2,
+                isbn_auto_fetch BOOLEAN DEFAULT true,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id)
+            );
+
+            -- 2. LIBRARY CATEGORIES — Book genres/categories
+            CREATE TABLE IF NOT EXISTS library_categories (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                name VARCHAR(100) NOT NULL,
+                description TEXT,
+                display_order INTEGER DEFAULT 0,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, name)
+            );
+
+            -- 3. LIBRARY BOOKS — Master catalog
+            CREATE TABLE IF NOT EXISTS library_books (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                title VARCHAR(500) NOT NULL,
+                author VARCHAR(300),
+                isbn VARCHAR(20),
+                publisher VARCHAR(300),
+                edition VARCHAR(50),
+                publication_year INTEGER,
+                category_id UUID REFERENCES library_categories(id) ON DELETE SET NULL,
+                language VARCHAR(50) DEFAULT 'English',
+                description TEXT,
+                cover_image_url TEXT,
+                total_copies INTEGER DEFAULT 1,
+                available_copies INTEGER DEFAULT 1,
+                shelf_location VARCHAR(100),
+                accession_number_prefix VARCHAR(20),
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- 4. LIBRARY BOOK COPIES — Individual physical copies
+            CREATE TABLE IF NOT EXISTS library_book_copies (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                book_id UUID NOT NULL REFERENCES library_books(id) ON DELETE CASCADE,
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                accession_number VARCHAR(50) NOT NULL,
+                barcode VARCHAR(100),
+                condition VARCHAR(20) DEFAULT 'good'
+                    CHECK (condition IN ('new', 'good', 'fair', 'damaged', 'lost')),
+                status VARCHAR(20) DEFAULT 'available'
+                    CHECK (status IN ('available', 'issued', 'reserved', 'lost', 'damaged', 'withdrawn')),
+                added_date DATE DEFAULT CURRENT_DATE,
+                remarks TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(school_id, accession_number)
+            );
+
+            -- 5. LIBRARY TRANSACTIONS — Issue/Return/Renew log
+            CREATE TABLE IF NOT EXISTS library_transactions (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                copy_id UUID NOT NULL REFERENCES library_book_copies(id) ON DELETE CASCADE,
+                book_id UUID NOT NULL REFERENCES library_books(id) ON DELETE CASCADE,
+                student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                issued_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                transaction_type VARCHAR(20) NOT NULL DEFAULT 'issue'
+                    CHECK (transaction_type IN ('issue', 'return', 'renew', 'lost')),
+                issued_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                due_date DATE NOT NULL,
+                returned_date DATE,
+                renewed_count INTEGER DEFAULT 0,
+                fine_amount NUMERIC(10,2) DEFAULT 0,
+                fine_paid BOOLEAN DEFAULT false,
+                fine_waived BOOLEAN DEFAULT false,
+                remarks TEXT,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- 6. LIBRARY RESERVATIONS — Book hold requests
+            CREATE TABLE IF NOT EXISTS library_reservations (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                book_id UUID NOT NULL REFERENCES library_books(id) ON DELETE CASCADE,
+                student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                reserved_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                expiry_date TIMESTAMP WITH TIME ZONE,
+                status VARCHAR(20) DEFAULT 'active'
+                    CHECK (status IN ('active', 'fulfilled', 'expired', 'cancelled')),
+                notified_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(book_id, student_id, status)
+            );
+
+            -- 7. LIBRARY FINES — Fine tracking
+            CREATE TABLE IF NOT EXISTS library_fines (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                transaction_id UUID NOT NULL REFERENCES library_transactions(id) ON DELETE CASCADE,
+                student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+                paid_amount NUMERIC(10,2) DEFAULT 0,
+                status VARCHAR(20) DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'paid', 'waived', 'partial')),
+                paid_date TIMESTAMP WITH TIME ZONE,
+                waived_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                waived_reason TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- 8. PERFORMANCE INDEXES
+            CREATE INDEX IF NOT EXISTS idx_library_books_school ON library_books(school_id);
+            CREATE INDEX IF NOT EXISTS idx_library_books_isbn ON library_books(isbn);
+            CREATE INDEX IF NOT EXISTS idx_library_books_title ON library_books(title);
+            CREATE INDEX IF NOT EXISTS idx_library_books_category ON library_books(category_id);
+            CREATE INDEX IF NOT EXISTS idx_library_copies_book ON library_book_copies(book_id);
+            CREATE INDEX IF NOT EXISTS idx_library_copies_school ON library_book_copies(school_id);
+            CREATE INDEX IF NOT EXISTS idx_library_copies_status ON library_book_copies(status);
+            CREATE INDEX IF NOT EXISTS idx_library_txn_school ON library_transactions(school_id);
+            CREATE INDEX IF NOT EXISTS idx_library_txn_student ON library_transactions(student_id);
+            CREATE INDEX IF NOT EXISTS idx_library_txn_copy ON library_transactions(copy_id);
+            CREATE INDEX IF NOT EXISTS idx_library_txn_due_date ON library_transactions(due_date);
+            CREATE INDEX IF NOT EXISTS idx_library_txn_active ON library_transactions(is_active);
+            CREATE INDEX IF NOT EXISTS idx_library_res_school ON library_reservations(school_id);
+            CREATE INDEX IF NOT EXISTS idx_library_res_student ON library_reservations(student_id);
+            CREATE INDEX IF NOT EXISTS idx_library_res_book ON library_reservations(book_id);
+            CREATE INDEX IF NOT EXISTS idx_library_res_status ON library_reservations(status);
+            CREATE INDEX IF NOT EXISTS idx_library_fines_school ON library_fines(school_id);
+            CREATE INDEX IF NOT EXISTS idx_library_fines_student ON library_fines(student_id);
+            CREATE INDEX IF NOT EXISTS idx_library_fines_status ON library_fines(status);
+
+            -- 9. SEED DEFAULT CATEGORIES (universal for any school type)
+            -- These will be auto-created when a school first enables the library
+        `
+    },
+    {
+        name: '035_admission_registration_history',
+        sql: `
+            -- ============================================================
+            -- ADMISSION REGISTRATION, ENTRANCE TESTS & STUDENT HISTORY
+            -- Real-world school workflow:
+            -- Registration Opens → Students Register → Entrance Exam → 
+            -- Merit List → Admission Granted → Added to Class
+            -- ============================================================
+
+            -- 1. ADMISSION REGISTRATION WINDOWS
+            -- Admin creates registration periods with dates and classes
+            CREATE TABLE IF NOT EXISTS admission_registration_windows (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                session_id UUID NOT NULL REFERENCES academic_sessions(id) ON DELETE CASCADE,
+                title VARCHAR(255) NOT NULL,
+                description TEXT,
+                open_date DATE NOT NULL,
+                close_date DATE NOT NULL,
+                classes_offered UUID[] DEFAULT '{}',
+                registration_fee NUMERIC(10,2) DEFAULT 0,
+                max_registrations INTEGER,
+                is_active BOOLEAN DEFAULT true,
+                slug VARCHAR(100),
+                created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(school_id, slug)
+            );
+            CREATE INDEX IF NOT EXISTS idx_reg_windows_school ON admission_registration_windows(school_id);
+            CREATE INDEX IF NOT EXISTS idx_reg_windows_session ON admission_registration_windows(session_id);
+            CREATE INDEX IF NOT EXISTS idx_reg_windows_active ON admission_registration_windows(is_active);
+
+            -- 2. ADMISSION REGISTRATIONS (public registration entries)
+            CREATE TABLE IF NOT EXISTS admission_registrations (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                window_id UUID NOT NULL REFERENCES admission_registration_windows(id) ON DELETE CASCADE,
+                registration_number VARCHAR(50) NOT NULL,
+                session_id UUID NOT NULL REFERENCES academic_sessions(id) ON DELETE CASCADE,
+                class_id UUID NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+                
+                -- Student info
+                student_name VARCHAR(150) NOT NULL,
+                date_of_birth DATE NOT NULL,
+                gender VARCHAR(10) NOT NULL CHECK (gender IN ('male', 'female', 'other')),
+                previous_school VARCHAR(255),
+                previous_class VARCHAR(50),
+                
+                -- Parent info
+                father_name VARCHAR(150),
+                father_phone VARCHAR(20),
+                father_occupation VARCHAR(100),
+                mother_name VARCHAR(150),
+                mother_phone VARCHAR(20),
+                guardian_name VARCHAR(150),
+                guardian_phone VARCHAR(20) NOT NULL,
+                guardian_email VARCHAR(255),
+                address TEXT,
+                city VARCHAR(100),
+                pincode VARCHAR(10),
+                
+                -- Status tracking
+                status VARCHAR(30) DEFAULT 'registered'
+                    CHECK (status IN ('registered', 'test_scheduled', 'test_appeared', 'test_absent',
+                                      'selected', 'waitlisted', 'rejected', 'admitted', 'cancelled')),
+                
+                -- Exam & Merit
+                entrance_score NUMERIC(6,2),
+                merit_rank INTEGER,
+                
+                -- Fee tracking
+                registration_fee_paid BOOLEAN DEFAULT false,
+                fee_receipt_number VARCHAR(50),
+                
+                remarks TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(school_id, registration_number)
+            );
+            CREATE INDEX IF NOT EXISTS idx_reg_school ON admission_registrations(school_id);
+            CREATE INDEX IF NOT EXISTS idx_reg_window ON admission_registrations(window_id);
+            CREATE INDEX IF NOT EXISTS idx_reg_class ON admission_registrations(class_id);
+            CREATE INDEX IF NOT EXISTS idx_reg_status ON admission_registrations(status);
+            CREATE INDEX IF NOT EXISTS idx_reg_guardian_phone ON admission_registrations(guardian_phone);
+
+            -- 3. ADMISSION ENTRANCE TESTS
+            CREATE TABLE IF NOT EXISTS admission_entrance_tests (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                window_id UUID NOT NULL REFERENCES admission_registration_windows(id) ON DELETE CASCADE,
+                class_id UUID NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+                test_name VARCHAR(150) NOT NULL DEFAULT 'Entrance Test',
+                test_date DATE NOT NULL,
+                test_time VARCHAR(20),
+                venue VARCHAR(255),
+                max_marks NUMERIC(6,2) NOT NULL DEFAULT 100,
+                passing_marks NUMERIC(6,2) DEFAULT 33,
+                instructions TEXT,
+                status VARCHAR(20) DEFAULT 'scheduled'
+                    CHECK (status IN ('scheduled', 'ongoing', 'completed', 'cancelled')),
+                created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_entrance_test_school ON admission_entrance_tests(school_id);
+            CREATE INDEX IF NOT EXISTS idx_entrance_test_window ON admission_entrance_tests(window_id);
+
+            -- 4. ADMISSION TEST SCORES
+            CREATE TABLE IF NOT EXISTS admission_test_scores (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                test_id UUID NOT NULL REFERENCES admission_entrance_tests(id) ON DELETE CASCADE,
+                registration_id UUID NOT NULL REFERENCES admission_registrations(id) ON DELETE CASCADE,
+                marks_obtained NUMERIC(6,2),
+                attendance VARCHAR(10) DEFAULT 'present'
+                    CHECK (attendance IN ('present', 'absent')),
+                remarks TEXT,
+                entered_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(test_id, registration_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_test_scores_test ON admission_test_scores(test_id);
+            CREATE INDEX IF NOT EXISTS idx_test_scores_reg ON admission_test_scores(registration_id);
+
+            -- 5. STUDENT HISTORY (permanent timeline)
+            -- Every event permanently recorded with snapshot data
+            CREATE TABLE IF NOT EXISTS student_history (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                event_type VARCHAR(50) NOT NULL,
+                event_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                session_id UUID REFERENCES academic_sessions(id) ON DELETE SET NULL,
+                from_class VARCHAR(100),
+                to_class VARCHAR(100),
+                from_session VARCHAR(100),
+                to_session VARCHAR(100),
+                details JSONB DEFAULT '{}',
+                recorded_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_student_history_school ON student_history(school_id);
+            CREATE INDEX IF NOT EXISTS idx_student_history_student ON student_history(student_id);
+            CREATE INDEX IF NOT EXISTS idx_student_history_type ON student_history(event_type);
+            CREATE INDEX IF NOT EXISTS idx_student_history_date ON student_history(event_date);
+            CREATE INDEX IF NOT EXISTS idx_student_history_session ON student_history(session_id);
+
+            -- 6. CERTIFICATE ENHANCEMENTS
+            ALTER TABLE issued_certificates ADD COLUMN IF NOT EXISTS verification_code VARCHAR(20);
+            ALTER TABLE issued_certificates ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+            ALTER TABLE issued_certificates ADD COLUMN IF NOT EXISTS print_count INTEGER DEFAULT 0;
+            ALTER TABLE issued_certificates ADD COLUMN IF NOT EXISTS last_printed_at TIMESTAMPTZ;
+            DO $$ BEGIN
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_issued_certs_verification ON issued_certificates(verification_code) WHERE verification_code IS NOT NULL;
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END $$;
+
+            -- 7. ADD status TO students IF NOT EXISTS
+            ALTER TABLE students ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
+
+            -- 8. UPDATE student_enrollments status constraint to include more statuses
+            DO $$ BEGIN
+                ALTER TABLE student_enrollments DROP CONSTRAINT IF EXISTS student_enrollments_status_check;
+                ALTER TABLE student_enrollments ADD CONSTRAINT student_enrollments_status_check
+                    CHECK (status IN ('active', 'promoted', 'retained', 'transferred', 'withdrawn', 'tc_issued', 'graduated'));
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END $$;
+        `
+    },
+    {
+        name: '013_library_advanced',
+        sql: `
+            -- 1. LIBRARY VENDORS
+            CREATE TABLE IF NOT EXISTS library_vendors (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                contact_person VARCHAR(255),
+                email VARCHAR(255),
+                phone VARCHAR(50),
+                address TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- 2. ALTER LIBRARY BOOKS
+            ALTER TABLE library_books ADD COLUMN IF NOT EXISTS vendor_id UUID REFERENCES library_vendors(id) ON DELETE SET NULL;
+            ALTER TABLE library_books ADD COLUMN IF NOT EXISTS purchase_price NUMERIC(10,2);
+            ALTER TABLE library_books ADD COLUMN IF NOT EXISTS purchase_date DATE;
         `
     },
 ];

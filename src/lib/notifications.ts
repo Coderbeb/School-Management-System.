@@ -1,8 +1,8 @@
 import { query, queryOne } from '@/lib/db';
-import { sendEmail, buildFeeReceiptEmail, buildResultEmail, buildAttendanceAlertEmail, buildFeeOverdueEmail } from '@/lib/email-provider';
-import { sendWhatsApp, buildFeeReceiptWhatsApp, buildResultWhatsApp, buildAttendanceAlertWhatsApp, buildFeeOverdueWhatsApp } from '@/lib/whatsapp-provider';
+import { sendEmail, buildFeeReceiptEmail, buildResultEmail, buildAttendanceAlertEmail, buildFeeOverdueEmail, buildBookDueReminderEmail, buildBookOverdueEmail, buildReservationAvailableEmail, buildBookIssuedEmail } from '@/lib/email-provider';
+import { sendWhatsApp, buildFeeReceiptWhatsApp, buildResultWhatsApp, buildAttendanceAlertWhatsApp, buildFeeOverdueWhatsApp, buildBookDueReminderWhatsApp, buildBookOverdueWhatsApp, buildReservationAvailableWhatsApp, buildBookIssuedWhatsApp } from '@/lib/whatsapp-provider';
 
-export type NotificationEvent = 'fee_receipt' | 'result_published' | 'low_attendance' | 'fee_overdue';
+export type NotificationEvent = 'fee_receipt' | 'result_published' | 'low_attendance' | 'fee_overdue' | 'book_due_reminder' | 'book_overdue' | 'reservation_available' | 'book_issued';
 
 interface SendNotificationParams {
     schoolId: string;
@@ -134,6 +134,26 @@ function buildMessages(event: NotificationEvent, vars: Record<string, string>) {
                 whatsapp: buildFeeOverdueWhatsApp(vars),
                 email: buildFeeOverdueEmail(vars),
             };
+        case 'book_due_reminder':
+            return {
+                whatsapp: buildBookDueReminderWhatsApp(vars),
+                email: buildBookDueReminderEmail(vars),
+            };
+        case 'book_overdue':
+            return {
+                whatsapp: buildBookOverdueWhatsApp(vars),
+                email: buildBookOverdueEmail(vars),
+            };
+        case 'reservation_available':
+            return {
+                whatsapp: buildReservationAvailableWhatsApp(vars),
+                email: buildReservationAvailableEmail(vars),
+            };
+        case 'book_issued':
+            return {
+                whatsapp: buildBookIssuedWhatsApp(vars),
+                email: buildBookIssuedEmail(vars),
+            };
     }
 }
 
@@ -160,7 +180,7 @@ export async function sendNotification(params: SendNotificationParams): Promise<
         const schoolName = await getSchoolName();
 
         // Inject school name into variables
-        const vars = { ...params.variables, schoolName };
+        const vars: Record<string, string> = { ...params.variables, schoolName };
         if (contact?.studentName && !vars.studentName) {
             vars.studentName = contact.studentName;
         }

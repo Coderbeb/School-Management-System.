@@ -55,9 +55,13 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export interface AuthResult {
     userId: string;
+    /** Alias for userId — used by hostel/salary APIs */
+    id: string;
     email: string;
     role: 'developer' | 'super_admin' | 'teacher' | 'accountant' | 'student';
     schoolId: string | null;
+    /** Only set for student role — links to students table */
+    studentId?: string;
 }
 
 /**
@@ -71,9 +75,11 @@ export function getAuthUser(request: NextRequest): AuthResult | null {
     if (!payload) return null;
     return {
         userId: payload.userId,
+        id: payload.userId,
         email: payload.email,
         role: payload.role,
         schoolId: payload.schoolId || null,
+        studentId: payload.studentId || undefined,
     };
 }
 

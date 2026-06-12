@@ -174,6 +174,90 @@ export function buildAttendanceAlertEmail(vars: Record<string, string>): { subje
     };
 }
 
+export function buildBookDueReminderEmail(vars: Record<string, string>): { subject: string; html: string } {
+    return {
+        subject: `📚 Book Due Reminder — ${vars.studentName}`,
+        html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background: #f0f9ff; border-radius: 16px; border: 1px solid #bae6fd;">
+            <div style="padding: 20px; background: linear-gradient(135deg, #0284c7, #0ea5e9); border-radius: 12px; color: white; margin-bottom: 20px;">
+                <h2 style="margin: 0 0 4px 0; font-size: 18px;">📚 Library Book Due Soon</h2>
+                <p style="margin: 0; font-size: 13px; opacity: 0.9;">${vars.schoolName}</p>
+            </div>
+            <p style="color: #0c4a6e; font-size: 14px; line-height: 1.6; margin-bottom: 16px;">
+                Dear Parent, <strong>${vars.studentName}</strong>'s library book is due soon.
+            </p>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #334155;">
+                <tr><td style="padding: 8px 0; color: #64748b;">Book</td><td style="padding: 8px 0; font-weight: 600; text-align: right;">${vars.bookTitle}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748b;">Due Date</td><td style="padding: 8px 0; font-weight: 700; text-align: right; color: #0284c7;">${vars.dueDate}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748b;">Days Left</td><td style="padding: 8px 0; font-weight: 600; text-align: right;">${vars.daysLeft} days</td></tr>
+            </table>
+            <p style="color: #0c4a6e; font-size: 13px; margin-top: 16px;">Please return or renew the book before the due date to avoid fines.</p>
+        </div>`,
+    };
+}
+
+export function buildBookOverdueEmail(vars: Record<string, string>): { subject: string; html: string } {
+    return {
+        subject: `⚠️ Library Book Overdue — ${vars.studentName}`,
+        html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background: #fef2f2; border-radius: 16px; border: 1px solid #fecaca;">
+            <div style="padding: 20px; background: linear-gradient(135deg, #dc2626, #ef4444); border-radius: 12px; color: white; margin-bottom: 20px;">
+                <h2 style="margin: 0 0 4px 0; font-size: 18px;">⚠️ Library Book Overdue</h2>
+                <p style="margin: 0; font-size: 13px; opacity: 0.9;">${vars.schoolName}</p>
+            </div>
+            <p style="color: #991b1b; font-size: 14px; line-height: 1.6; margin-bottom: 16px;">
+                Dear Parent, <strong>${vars.studentName}</strong> has an overdue library book.
+            </p>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #334155;">
+                <tr><td style="padding: 8px 0; color: #64748b;">Book</td><td style="padding: 8px 0; font-weight: 600; text-align: right;">${vars.bookTitle}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748b;">Due Date</td><td style="padding: 8px 0; font-weight: 600; text-align: right;">${vars.dueDate}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748b;">Overdue By</td><td style="padding: 8px 0; font-weight: 700; text-align: right; color: #dc2626;">${vars.overdueDays} days</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748b;">Fine</td><td style="padding: 8px 0; font-weight: 700; text-align: right; color: #dc2626; font-size: 18px;">₹${vars.fineAmount}</td></tr>
+            </table>
+            <p style="color: #991b1b; font-size: 13px; margin-top: 16px;">Please return the book to the library immediately.</p>
+        </div>`,
+    };
+}
+
+export function buildReservationAvailableEmail(vars: Record<string, string>): { subject: string; html: string } {
+    return {
+        subject: `🔖 Reserved Book Available — ${vars.studentName}`,
+        html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background: #f0fdf4; border-radius: 16px; border: 1px solid #bbf7d0;">
+            <div style="padding: 20px; background: linear-gradient(135deg, #059669, #10b981); border-radius: 12px; color: white; margin-bottom: 20px;">
+                <h2 style="margin: 0 0 4px 0; font-size: 18px;">🔖 Reserved Book Now Available!</h2>
+                <p style="margin: 0; font-size: 13px; opacity: 0.9;">${vars.schoolName}</p>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #334155;">
+                <tr><td style="padding: 8px 0; color: #64748b;">Book</td><td style="padding: 8px 0; font-weight: 600; text-align: right;">${vars.bookTitle}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748b;">Author</td><td style="padding: 8px 0; text-align: right;">${vars.bookAuthor}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748b;">Collect Before</td><td style="padding: 8px 0; font-weight: 700; text-align: right; color: #059669;">${vars.collectBy}</td></tr>
+            </table>
+            <p style="color: #065f46; font-size: 13px; margin-top: 16px;">Visit the library to collect your reserved book.</p>
+        </div>`,
+    };
+}
+
+export function buildBookIssuedEmail(vars: Record<string, string>): { subject: string; html: string } {
+    return {
+        subject: `📖 Book Issued — ${vars.studentName}`,
+        html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background: #f8fafc; border-radius: 16px;">
+            <div style="padding: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border-radius: 12px; color: white; margin-bottom: 20px;">
+                <h2 style="margin: 0 0 4px 0; font-size: 18px;">📖 Book Issued</h2>
+                <p style="margin: 0; font-size: 13px; opacity: 0.9;">${vars.schoolName}</p>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #334155;">
+                <tr><td style="padding: 8px 0; color: #64748b;">Student</td><td style="padding: 8px 0; font-weight: 600; text-align: right;">${vars.studentName}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748b;">Book</td><td style="padding: 8px 0; font-weight: 600; text-align: right;">${vars.bookTitle}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748b;">Issue Date</td><td style="padding: 8px 0; text-align: right;">${vars.issueDate}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748b;">Due Date</td><td style="padding: 8px 0; font-weight: 700; text-align: right; color: #6366f1;">${vars.dueDate}</td></tr>
+            </table>
+            <p style="color: #64748b; font-size: 12px; margin-top: 16px; text-align: center;">Please return or renew before the due date.</p>
+        </div>`,
+    };
+}
+
 export function buildFeeOverdueEmail(vars: Record<string, string>): { subject: string; html: string } {
     return {
         subject: `🔔 Fee Overdue Reminder — ${vars.studentName}`,

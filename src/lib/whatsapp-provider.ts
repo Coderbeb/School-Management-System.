@@ -207,3 +207,58 @@ Due Date: ${vars.dueDate} (${vars.overdueDays} days overdue)
 Please pay at the earliest.
 — ${vars.schoolName}`;
 }
+
+export function buildBookDueReminderWhatsApp(vars: Record<string, string>): string {
+    return `📚 *Library Book Due Soon*
+
+Dear Parent,
+${vars.studentName}'s library book is due soon.
+
+Book: ${vars.bookTitle}
+Due Date: ${vars.dueDate}
+Days Left: ${vars.daysLeft}
+
+Please return or renew before the due date.
+— ${vars.schoolName}`;
+}
+
+export function buildBookOverdueWhatsApp(vars: Record<string, string>): string {
+    return `⚠️ *Library Book Overdue*
+
+Dear Parent,
+${vars.studentName} has an overdue library book.
+
+Book: ${vars.bookTitle}
+Due Date: ${vars.dueDate}
+Overdue: ${vars.overdueDays} days
+Fine: ₹${vars.fineAmount}
+
+Please return the book immediately.
+— ${vars.schoolName}`;
+}
+
+export function buildReservationAvailableWhatsApp(vars: Record<string, string>): string {
+    return `🔖 *Reserved Book Available!*
+
+Dear ${vars.studentName},
+The book you reserved is now available!
+
+Book: ${vars.bookTitle}
+Author: ${vars.bookAuthor}
+Collect Before: ${vars.collectBy}
+
+Visit the library to collect your book.
+— ${vars.schoolName}`;
+}
+
+export function buildBookIssuedWhatsApp(vars: Record<string, string>): string {
+    return `📖 *Book Issued*
+
+Student: ${vars.studentName}
+Book: ${vars.bookTitle}
+Issue Date: ${vars.issueDate}
+Due Date: ${vars.dueDate}
+
+Please return or renew before the due date.
+— ${vars.schoolName}`;
+}

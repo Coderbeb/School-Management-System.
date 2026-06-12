@@ -2,11 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { requireSchoolAuth, resolveSchoolId } from '@/lib/auth';
 
-/**
- * GET /api/salary/payments — List salary payments
- * POST /api/salary/payments — Record a salary payment
- */
-
 // GET: List salary payments
 export async function GET(request: NextRequest) {
     const auth = requireSchoolAuth(request, ['super_admin', 'developer', 'accountant']);
@@ -55,7 +50,7 @@ export async function GET(request: NextRequest) {
 
 // POST: Record a salary payment
 export async function POST(request: NextRequest) {
-    const auth = requireSchoolAuth(request, ['super_admin', 'accountant']);
+    const auth = requireSchoolAuth(request, ['super_admin', 'accountant', 'developer']);
     if (auth.error) return auth.error;
     const schoolId = resolveSchoolId(auth.user, request);
 
@@ -63,22 +58,49 @@ export async function POST(request: NextRequest) {
         const {
             userId, salaryStructureId, month, grossAmount,
             deductionsAmount, netAmount, paymentMode,
-            paymentDate, referenceNumber, remarks
+            paymentDate, referenceNumber, remarks, advanceDeducted
         } = await request.json();
 
         if (!userId || !month || grossAmount === undefined || netAmount === undefined) {
             return NextResponse.json({ error: 'userId, month, grossAmount, and netAmount are required' }, { status: 400 });
         }
 
+        const finalAdvanceDeducted = parseFloat(advanceDeducted || 0);
+
+        // Record the payment
         const payment = await queryOne<any>(
             `INSERT INTO salary_payments
-                (school_id, user_id, salary_structure_id, month, gross_amount, deductions_amount, net_amount, payment_mode, payment_date, reference_number, remarks, paid_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
-            [schoolId, userId, salaryStructureId || null, month, grossAmount,
-             deductionsAmount || 0, netAmount, paymentMode || 'bank_transfer',
-             paymentDate || new Date().toISOString().split('T')[0],
-             referenceNumber || null, remarks || null, auth.user.userId]
+                (school_id, user_id, salary_structure_id, month, gross_amount, deductions_amount, net_amount, payment_mode, payment_date, reference_number, remarks, paid_by, advance_deducted)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+            [
+                schoolId, userId, salaryStructureId || null, month, grossAmount,
+                deductionsAmount || 0, netAmount, paymentMode || 'bank_transfer',
+                paymentDate || new Date().toISOString().split('T')[0],
+                referenceNumber || null, remarks || null, auth.user.userId,
+                finalAdvanceDeducted
+            ]
         );
+
+        // Deduct advance balance if relevant
+        if (finalAdvanceDeducted > 0) {
+            const activeAdvance = await queryOne<any>(
+                `SELECT * FROM salary_advances 
+                 WHERE school_id = $1 AND user_id = $2 AND status = 'active'`,
+                [schoolId, userId]
+            );
+
+            if (activeAdvance) {
+                const totalRepaid = parseFloat(activeAdvance.amount_repaid) + finalAdvanceDeducted;
+                const status = totalRepaid >= parseFloat(activeAdvance.amount) ? 'fully_repaid' : 'active';
+
+                await query(
+                    `UPDATE salary_advances 
+                     SET amount_repaid = $1, status = $2, updated_at = CURRENT_TIMESTAMP
+                     WHERE id = $3`,
+                    [totalRepaid, status, activeAdvance.id]
+                );
+            }
+        }
 
         return NextResponse.json({ payment }, { status: 201 });
     } catch (error) {

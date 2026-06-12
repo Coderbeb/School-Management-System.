@@ -23,7 +23,14 @@ import {
     Award,
     UserCog,
     Send,
-    IndianRupee
+    IndianRupee,
+    UserPlus,
+    ArrowUpRight,
+    Truck,
+    Clock,
+    Home,
+    Banknote,
+    BookMarked
 } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getInitials } from '@/lib/utils';
@@ -34,6 +41,7 @@ interface NavLink {
     title: string;
     href: string;
     icon: React.ReactNode;
+    featureKey?: string;
 }
 
 interface NavSection {
@@ -56,13 +64,13 @@ export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebar
     const [isVisible, setIsVisible] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
+    const [features, setFeatures] = useState<Record<string, boolean>>({});
     const router = useRouter();
     const pathname = usePathname();
 
     useEffect(() => {
         if (isOpen) {
             setIsVisible(true);
-            // Allow DOM to mount before triggering transition
             const timer = setTimeout(() => setIsMounted(true), 10);
             return () => clearTimeout(timer);
         } else {
@@ -72,11 +80,33 @@ export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebar
         }
     }, [isOpen]);
 
+    // Fetch school features on mount
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (!token || !user || user.role === 'developer') return;
+        fetch('/api/school-features', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.features) {
+                setFeatures(data.features);
+            }
+        })
+        .catch(err => console.error('Error fetching features in sidebar:', err));
+    }, [user]);
+
     if (!isVisible || !user) return null;
 
     const navigateTo = (href: string) => {
         onClose();
         router.push(href);
+    };
+
+    const isFeatureEnabled = (key?: string) => {
+        if (!key) return true;
+        if (user.role === 'developer') return true;
+        return features[key] !== false; // Enabled by default
     };
 
     const getNavSections = (): NavSection[] => {
@@ -101,11 +131,30 @@ export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebar
                     ]
                 },
                 {
+                    label: 'Admissions & Records',
+                    color: 'text-pink-500',
+                    links: [
+                        { id: 'admissions', title: 'Admissions', href: '/manage/admissions', icon: <UserPlus className="w-5 h-5" />, featureKey: 'admissions' },
+                        { id: 'promotions', title: 'Promotions', href: '/manage/promotions', icon: <ArrowUpRight className="w-5 h-5" />, featureKey: 'admissions' },
+                        { id: 'certificates', title: 'Certificates', href: '/manage/certificates', icon: <Award className="w-5 h-5" />, featureKey: 'certificates' },
+                    ]
+                },
+                {
+                    label: 'Services & Operations',
+                    color: 'text-blue-500',
+                    links: [
+                        { id: 'timetable', title: 'Class Timetable', href: '/manage/timetable', icon: <Clock className="w-5 h-5" />, featureKey: 'timetable' },
+                        { id: 'transport', title: 'Transport Mgmt', href: '/manage/transport', icon: <Truck className="w-5 h-5" />, featureKey: 'transport' },
+                        { id: 'hostel', title: 'Hostel Management', href: '/manage/hostel', icon: <Home className="w-5 h-5" />, featureKey: 'hostel' },
+                        { id: 'library', title: 'Library Management', href: '/manage/library', icon: <BookMarked className="w-5 h-5" />, featureKey: 'library' },
+                    ]
+                },
+                {
                     label: 'Teacher Attendance System',
                     color: 'text-emerald-500',
                     links: [
                         { id: 'teachers', title: 'Teachers Directory', href: '/manage/teachers', icon: <Users className="w-5 h-5" /> },
-                        { id: 'staff-attendance', title: 'Staff Attendance', href: '/manage/staff-attendance', icon: <UserCog className="w-5 h-5" /> },
+                        { id: 'staff-attendance', title: 'Staff Attendance', href: '/manage/staff-attendance', icon: <UserCog className="w-5 h-5" />, featureKey: 'attendance' },
                     ]
                 },
                 {
@@ -113,7 +162,7 @@ export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebar
                     color: 'text-blue-500',
                     links: [
                         { id: 'students', title: 'Students Directory', href: '/manage/students', icon: <GraduationCap className="w-5 h-5" /> },
-                        { id: 'attendance', title: 'Student Attendance', href: '/attendance', icon: <ClipboardCheck className="w-5 h-5" /> },
+                        { id: 'attendance', title: 'Student Attendance', href: '/attendance', icon: <ClipboardCheck className="w-5 h-5" />, featureKey: 'attendance' },
                         { id: 'holidays', title: 'Holidays Calendar', href: '/holidays', icon: <CalendarDays className="w-5 h-5" /> },
                     ]
                 },
@@ -121,19 +170,20 @@ export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebar
                     label: 'Exams & Academics',
                     color: 'text-gray-400',
                     links: [
-                        { id: 'exams', title: 'Exam Management', href: '/manage/exams', icon: <ClipboardList className="w-5 h-5" /> },
-                        { id: 'grading', title: 'Grading Scales', href: '/manage/grading', icon: <GraduationCap className="w-5 h-5" /> },
-                        { id: 'co-scholastic', title: 'Co-Scholastic', href: '/manage/co-scholastic', icon: <Award className="w-5 h-5" /> },
-                        { id: 'marks-overview', title: 'Marks Overview', href: '/marks/overview', icon: <BarChart3 className="w-5 h-5" /> },
-                        { id: 'class-results', title: 'Class Results', href: '/marks/class-results', icon: <Trophy className="w-5 h-5" /> },
-                        { id: 'report-cards', title: 'Report Cards', href: '/marks/report-card', icon: <FileText className="w-5 h-5" /> },
+                        { id: 'exams', title: 'Exam Management', href: '/manage/exams', icon: <ClipboardList className="w-5 h-5" />, featureKey: 'exams' },
+                        { id: 'grading', title: 'Grading Scales', href: '/manage/grading', icon: <GraduationCap className="w-5 h-5" />, featureKey: 'exams' },
+                        { id: 'co-scholastic', title: 'Co-Scholastic', href: '/manage/co-scholastic', icon: <Award className="w-5 h-5" />, featureKey: 'exams' },
+                        { id: 'marks-overview', title: 'Marks Overview', href: '/marks/overview', icon: <BarChart3 className="w-5 h-5" />, featureKey: 'exams' },
+                        { id: 'class-results', title: 'Class Results', href: '/marks/class-results', icon: <Trophy className="w-5 h-5" />, featureKey: 'exams' },
+                        { id: 'report-cards', title: 'Report Cards', href: '/marks/report-card', icon: <FileText className="w-5 h-5" />, featureKey: 'report_cards' },
                     ]
                 },
                 {
                     label: 'Finance & Salary',
                     color: 'text-emerald-500',
                     links: [
-                        { id: 'finance', title: 'Finance Dashboard', href: '/manage/finance', icon: <IndianRupee className="w-5 h-5" /> },
+                        { id: 'finance', title: 'Finance Dashboard', href: '/manage/finance', icon: <IndianRupee className="w-5 h-5" />, featureKey: 'finance' },
+                        { id: 'hr-salary', title: 'Salary Management', href: '/manage/salary-management', icon: <Banknote className="w-5 h-5" />, featureKey: 'hr_salary' },
                     ]
                 },
                 {
@@ -159,10 +209,17 @@ export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebar
                     label: 'Classroom (Student Portal)',
                     color: 'text-blue-500',
                     links: [
-                        { id: 'attendance', title: 'Mark Student Attendance', href: '/attendance/mark', icon: <ClipboardCheck className="w-5 h-5" /> },
+                        { id: 'attendance', title: 'Mark Student Attendance', href: '/attendance/mark', icon: <ClipboardCheck className="w-5 h-5" />, featureKey: 'attendance' },
                         { id: 'marks-entry', title: 'Marks Entry', href: '/marks/entry', icon: <PenLine className="w-5 h-5" /> },
-                        { id: 'co-scholastic', title: 'Co-Scholastic', href: '/manage/co-scholastic', icon: <Award className="w-5 h-5" /> },
+                        { id: 'co-scholastic', title: 'Co-Scholastic', href: '/manage/co-scholastic', icon: <Award className="w-5 h-5" />, featureKey: 'exams' },
                         { id: 'reports', title: 'Student Reports', href: '/reports', icon: <BarChart3 className="w-5 h-5" /> },
+                    ]
+                },
+                {
+                    label: 'Library',
+                    color: 'text-teal-500',
+                    links: [
+                        { id: 'library', title: 'Library Management', href: '/manage/library', icon: <BookMarked className="w-5 h-5" />, featureKey: 'library' },
                     ]
                 },
             ];
@@ -173,11 +230,12 @@ export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebar
                     color: 'text-blue-500',
                     links: [
                         { id: 'dashboard', title: 'Dashboard', href: '/student/dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
-                        { id: 'attendance', title: 'My Attendance', href: '/student/attendance', icon: <ClipboardCheck className="w-5 h-5" /> },
+                        { id: 'attendance', title: 'My Attendance', href: '/student/attendance', icon: <ClipboardCheck className="w-5 h-5" />, featureKey: 'attendance' },
                         { id: 'apply-leave', title: 'Apply for Leave', href: '/student/apply-leave', icon: <Send className="w-5 h-5" /> },
-                        { id: 'results', title: 'My Results', href: '/student/results', icon: <TrendingUp className="w-5 h-5" /> },
+                        { id: 'results', title: 'My Results', href: '/student/results', icon: <TrendingUp className="w-5 h-5" />, featureKey: 'exams' },
                         { id: 'subjects', title: 'My Subjects', href: '/student/subjects', icon: <BookOpen className="w-5 h-5" /> },
-                        { id: 'fees', title: 'Fee Status', href: '/student/fees', icon: <ClipboardList className="w-5 h-5" /> },
+                        { id: 'fees', title: 'Fee Status', href: '/student/fees', icon: <ClipboardList className="w-5 h-5" />, featureKey: 'finance' },
+                        { id: 'library', title: 'My Library', href: '/student/library', icon: <BookMarked className="w-5 h-5" />, featureKey: 'library' },
                     ]
                 },
             ];
@@ -199,17 +257,25 @@ export function MobileSidebar({ isOpen, onClose, user, onLogout }: MobileSidebar
                     label: 'Finance Portal',
                     color: 'text-emerald-500',
                     links: [
-                        { id: 'finance', title: 'Finance Dashboard', href: '/manage/finance', icon: <IndianRupee className="w-5 h-5" /> },
-                        { id: 'collect', title: 'Collect Fee', href: '/manage/finance?tab=collect', icon: <ClipboardList className="w-5 h-5" /> },
-                        { id: 'payments', title: 'Payment History', href: '/manage/finance?tab=payments', icon: <BarChart3 className="w-5 h-5" /> },
-                        { id: 'defaulters', title: 'Defaulters', href: '/manage/finance?tab=defaulters', icon: <Users className="w-5 h-5" /> },
+                        { id: 'finance', title: 'Finance Dashboard', href: '/manage/finance', icon: <IndianRupee className="w-5 h-5" />, featureKey: 'finance' },
+                        { id: 'collect', title: 'Collect Fee', href: '/manage/finance?tab=collect', icon: <ClipboardList className="w-5 h-5" />, featureKey: 'finance' },
+                        { id: 'payments', title: 'Payment History', href: '/manage/finance?tab=payments', icon: <BarChart3 className="w-5 h-5" />, featureKey: 'finance' },
+                        { id: 'defaulters', title: 'Defaulters', href: '/manage/finance?tab=defaulters', icon: <Users className="w-5 h-5" />, featureKey: 'finance' },
                     ]
                 },
             ];
         }
     };
 
-    const navSections = getNavSections();
+    // Filter nav sections based on enabled features
+    const rawSections = getNavSections();
+    const navSections = rawSections.map(section => {
+        const filteredLinks = section.links.filter(link => isFeatureEnabled(link.featureKey));
+        return {
+            ...section,
+            links: filteredLinks
+        };
+    }).filter(section => section.links.length > 0); // Hide empty sections
 
     return (
         <>
